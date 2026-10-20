@@ -1,0 +1,56 @@
+// Object Oriented Programming in MEMElang
+dikha "=== Welcome to MEMElang OOP Showcase ===";
+
+// 1. Base Class: Banda
+sancha Banda {
+    // Constructor
+    kar shuru(naam, umar) {
+        khud.naam = naam;
+        khud.umar = umar;
+    }
+
+    // Method
+    kar parichay() {
+        dikha "Namaste! Mera naam", khud.naam, "hai aur meri umar", khud.umar, "saal hai.";
+    }
+
+    kar kaam() {
+        dikha khud.naam, "seedha sadha kaam karta hai.";
+    }
+}
+
+// 2. Subclass: Don (inherits Banda using 'se')
+sancha Don se Banda {
+    kar shuru(naam, umar, ilaka) {
+        khud.naam = naam;
+        khud.umar = umar;
+        khud.ilaka = ilaka;
+    }
+
+    // Method Overriding
+    kar kaam() {
+        dikha "Khatarnak kaam! Mai", khud.ilaka, "ka Don hoon!";
+    }
+
+    // Specific Method
+    kar dhamki() {
+        dikha "Utha le re baba!", khud.naam, "se panga mat lena!";
+    }
+}
+
+// Instantiate Banda
+le raju = Banda("Raju", 25);
+raju.parichay();
+raju.kaam();
+
+dikha "";
+
+// Instantiate Don
+le baburao = Don("Baburao Ganpatrao Apte", 50, "Khadakwasla");
+baburao.parichay(); // Inherited method from Banda
+baburao.kaam();      // Overridden method
+baburao.dhamki();    // Don specific method
+
+// Dynamic property addition
+baburao.dialogue = "Khopdi tod saale ka!";
+dikha "Baburao ka favorite dialogue:", baburao.dialogue;

@@ -1,0 +1,18 @@
+// MEMElang - Hello World & Basics
+dikha "Namaste Duniya! Swagat hai MEMElang mein!";
+
+le naam = "MEMElang";
+le saal = 2026;
+dikha "Language:", naam, "Saal:", saal;
+
+// String multiplication meme
+le hasi = "ha" * 5;
+dikha "Joke pe hasi:", hasi;
+
+// Truthiness check
+le sach = han;
+dekh sach {
+    dikha "Bilkul sahi baat hai!";
+} warna {
+    dikha "Jhooth bol raha hai!";
+}

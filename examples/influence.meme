@@ -1,0 +1,22 @@
+biradari AmeeroKiAulaad {
+    jugaad shuru(naam, bank_balance) {
+        apun.naam = naam;
+        apun.paisa = point_wala(bank_balance);
+    }
+}
+
+biradari Influencer nepo AmeeroKiAulaad {
+    jugaad flex_kar() {
+        dekh apun.paisa > 1000.0 aur apun.naam != nalla {
+            dikha apun.naam, "bolta hai: Guys ye mera struggle hai!";
+            ye_le real;
+        } warna {
+            dikha "Bhai camera band kar.";
+            ye_le cap;
+        }
+    }
+}
+
+pakad bro = Influencer("Orry", "99999.50");
+dikha "Bro ki aukaat:", kya_hai(bro);
+bro.flex_kar();

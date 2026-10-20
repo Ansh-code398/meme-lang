@@ -1,0 +1,14 @@
+// FizzBuzz in MEMElang
+dikha "--- FizzBuzz (1 to 15) ---";
+
+ghoom i se 1 se 15 {
+    dekh (i % 3 == 0) aur (i % 5 == 0) {
+        dikha "FizzBuzz";
+    } warna dekh i % 3 == 0 {
+        dikha "Fizz";
+    } warna dekh i % 5 == 0 {
+        dikha "Buzz";
+    } warna {
+        dikha i;
+    }
+}

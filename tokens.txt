@@ -1,0 +1,23 @@
+le          // variable declaration
+kar         // function declaration
+wapas       // return
+
+dekh        // if
+warna       // else
+
+jabtak      // while
+ghoom       // for/foreach
+se          // range separator
+mein        // "in"
+bas         // break
+chal        // continue
+
+dikha       // print
+puch        // input
+
+aur         // AND
+ya          // OR
+
+haan        // true
+nahi        // false
+kuch_nahi   // null
