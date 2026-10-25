@@ -1,0 +1,209 @@
+{
+  "Function (jugaad)": {
+    "prefix": "jugaad",
+    "body": [
+      "jugaad ${1:naam}(${2:params}) {",
+      "\t${0:// masala logic yahan}",
+      "\tye_le ${3:result};",
+      "}"
+    ],
+    "description": "Define a MEMElang function (jugaad)"
+  },
+  "Arrow Lambda": {
+    "prefix": ["lambda", "arrow", "=>"],
+    "body": [
+      "(${1:x}) => ${2:x * 2}"
+    ],
+    "description": "Short single-expression arrow lambda"
+  },
+  "Arrow Lambda Block": {
+    "prefix": "lambdablock",
+    "body": [
+      "(${1:a, b}) => {",
+      "\t${0}",
+      "\tye_le ${2:res};",
+      "}"
+    ],
+    "description": "Multi-statement arrow lambda block"
+  },
+  "Class (biradari)": {
+    "prefix": "biradari",
+    "body": [
+      "biradari ${1:Naam} {",
+      "\tjugaad shuru(${2:params}) {",
+      "\t\tkhud.${3:prop} = ${2:params};",
+      "\t}",
+      "",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Define a MEMElang class (biradari)"
+  },
+  "Subclass (nepo)": {
+    "prefix": "nepo",
+    "body": [
+      "biradari ${1:Beta} nepo ${2:Baap} {",
+      "\tjugaad shuru(${3:params}) {",
+      "\t\tse.shuru(${3:params});",
+      "\t}",
+      "}"
+    ],
+    "description": "Inherit from a superclass (nepo inheritance)"
+  },
+  "Tantrik Method (__jod__)": {
+    "prefix": "__jod__",
+    "body": [
+      "jugaad __jod__(other) {",
+      "\tye_le ${1:khud.val + other.val};",
+      "}"
+    ],
+    "description": "Tantrik operator overloading for '+'"
+  },
+  "Tantrik Display (__dikha__)": {
+    "prefix": "__dikha__",
+    "body": [
+      "jugaad __dikha__() {",
+      "\tye_le f\"${1:Object}({khud.${2:prop}})\";",
+      "}"
+    ],
+    "description": "Tantrik string representation for printing and f-strings"
+  },
+  "Tantrik Comparison (__barabar__ & __chota__)": {
+    "prefix": "tantrik_cmp",
+    "body": [
+      "jugaad __barabar__(other) {",
+      "\tye_le khud.${1:prop} == other.${1:prop};",
+      "}",
+      "",
+      "jugaad __chota__(other) {",
+      "\tye_le khud.${1:prop} < other.${1:prop};",
+      "}"
+    ],
+    "description": "Tantrik comparison operators ('==' and '<', auto-derives '!=', '>', '<=', '>=')"
+  },
+  "Tantrik Indexing (__la__ & __daal__)": {
+    "prefix": "tantrik_index",
+    "body": [
+      "jugaad __la__(key) {",
+      "\tye_le khud.data[key];",
+      "}",
+      "",
+      "jugaad __daal__(key, val) {",
+      "\tkhud.data[key] = val;",
+      "}"
+    ],
+    "description": "Tantrik bracket indexing read and write (obj[k] and obj[k] = v)"
+  },
+  "If-Else (dekh-warna)": {
+    "prefix": "dekh",
+    "body": [
+      "dekh ${1:condition} {",
+      "\t${2:// true logic}",
+      "} warna {",
+      "\t${0:// false logic}",
+      "}"
+    ],
+    "description": "Conditional if-else statement"
+  },
+  "While Loop (jabtak)": {
+    "prefix": "jabtak",
+    "body": [
+      "jabtak ${1:condition} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "While loop (jabtak)"
+  },
+  "For Loop (ghoom)": {
+    "prefix": "ghoom",
+    "body": [
+      "ghoom pakad ${1:item} mein ${2:collection} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For-in iteration loop"
+  },
+  "Filter (chhaan)": {
+    "prefix": "chhaan",
+    "body": [
+      ".chhaan(${1:item} => ${2:item > 0})"
+    ],
+    "description": "Filter collection elements"
+  },
+  "Map (sab_pe)": {
+    "prefix": "sab_pe",
+    "body": [
+      ".sab_pe(${1:item} => ${2:item * 2})"
+    ],
+    "description": "Transform collection elements"
+  },
+  "Reduce (nichod)": {
+    "prefix": "nichod",
+    "body": [
+      ".nichod((${1:acc}, ${2:item}) => ${3:acc + item}, ${4:0})"
+    ],
+    "description": "Fold/reduce collection into a single value"
+  },
+  "Sort (line_mein)": {
+    "prefix": "line_mein",
+    "body": [
+      ".line_mein()"
+    ],
+    "description": "Sort list in-place"
+  },
+  "Try-Catch (panga-lafda)": {
+    "prefix": "panga",
+    "body": [
+      "panga {",
+      "\t${1:// risky code}",
+      "} lafda error {",
+      "\tdikha \"Gadbad pakdi gayi:\", error;",
+      "} pakka {",
+      "\t${0:// cleanup}",
+      "}"
+    ],
+    "description": "Exception handling block (panga / lafda / pakka)"
+  },
+  "Pattern Match (jaanch)": {
+    "prefix": "jaanch",
+    "body": [
+      "jaanch ${1:value} {",
+      "\t${2:case1} => {",
+      "\t\t${3}",
+      "\t},",
+      "\tbaaki => {",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Pattern matching switch statement"
+  },
+  "Print (dikha)": {
+    "prefix": "dikha",
+    "body": [
+      "dikha ${1:\"message\"};"
+    ],
+    "description": "Print to console"
+  },
+  "F-String": {
+    "prefix": "fstring",
+    "body": [
+      "f\"${1:Hello} {${2:variable}}\""
+    ],
+    "description": "F-String interpolation"
+  },
+  "Array Destructure": {
+    "prefix": "destruct_arr",
+    "body": [
+      "pakad [${1:a}, ${2:b}, *${3:baaki}] = ${4:arr};"
+    ],
+    "description": "Unpack array into variables with variadic rest"
+  },
+  "Map Destructure": {
+    "prefix": "destruct_map",
+    "body": [
+      "pakad {${1:key1}, ${2:key2}} = ${3:map_or_obj};"
+    ],
+    "description": "Unpack map or object fields into variables"
+  }
+}

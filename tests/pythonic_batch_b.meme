@@ -1,0 +1,195 @@
+// ==========================================
+// MEMElang Batch B Test Suite
+// Testing Tantrik Methods, F-Strings, Destructuring & Reflection
+// ==========================================
+
+dikha "=== TEST 1: Tantrik Methods (Arithmetic & Display) ===";
+biradari KhataBook {
+    jugaad shuru(rupaye) {
+        khud.balance = rupaye;
+    }
+
+    jugaad __jod__(other) {
+        ye_le KhataBook(khud.balance + other.balance);
+    }
+
+    jugaad __ghata__(other) {
+        ye_le KhataBook(khud.balance - other.balance);
+    }
+
+    jugaad __guna__(other) {
+        ye_le KhataBook(khud.balance * other.balance);
+    }
+
+    jugaad __bhaag__(other) {
+        ye_le KhataBook(khud.balance / other.balance);
+    }
+
+    jugaad __bacha__(other) {
+        ye_le KhataBook(khud.balance % other.balance);
+    }
+
+    jugaad __dikha__() {
+        ye_le f"KhataBook(₹{khud.balance})";
+    }
+
+    jugaad get_bal() {
+        ye_le khud.balance;
+    }
+}
+
+pakad k1 = KhataBook(500);
+pakad k2 = KhataBook(200);
+pakad k3 = k1 + k2;
+pakad k4 = k1 - k2;
+pakad k5 = k1 * k2;
+pakad k6 = k1 / k2;
+pakad k7 = k1 % k2;
+
+dikha f"k1: {k1}, k2: {k2}";
+dikha f"k1 + k2 = {k3}";
+dikha f"k1 - k2 = {k4}";
+dikha f"k1 * k2 = {k5}";
+dikha f"k1 / k2 = {k6}";
+dikha f"k1 % k2 = {k7}";
+
+// Test string concatenation triggering __dikha__
+pakad msg = "Account: " + k3;
+dikha msg;
+
+dikha "=== TEST 2: Comparisons & Auto-Derivation ===";
+biradari Khiladi {
+    jugaad shuru(naam, runs) {
+        khud.naam = naam;
+        khud.runs = runs;
+    }
+
+    jugaad __barabar__(other) {
+        ye_le khud.runs == other.runs;
+    }
+
+    jugaad __chota__(other) {
+        ye_le khud.runs < other.runs;
+    }
+
+    jugaad __dikha__() {
+        ye_le f"{khud.naam}({khud.runs})";
+    }
+}
+
+pakad kohli = Khiladi("Virat", 82);
+pakad rohit = Khiladi("Rohit", 82);
+pakad dhoni = Khiladi("Dhoni", 91);
+
+dikha f"Kohli == Rohit? {kohli == rohit}"; // han
+dikha f"Kohli != Dhoni? {kohli != dhoni}"; // han
+dikha f"Kohli < Dhoni? {kohli < dhoni}";   // han
+dikha f"Dhoni > Kohli? {dhoni > kohli}";   // auto-derived: han
+dikha f"Kohli <= Rohit? {kohli <= rohit}"; // auto-derived: han
+dikha f"Dhoni >= Kohli? {dhoni >= kohli}"; // auto-derived: han
+
+// Sorting instances using __chota__ with line_mein()
+pakad team = [dhoni, kohli, Khiladi("Gill", 45)];
+team.line_mein();
+dikha f"Sorted team: {team[0]}, {team[1]}, {team[2]}";
+
+dikha "=== TEST 3: Tantrik Indexing (__la__ & __daal__) ===";
+biradari Vault {
+    jugaad shuru() {
+        khud.data = {};
+    }
+
+    jugaad __la__(key) {
+        ye_le khud.data[key];
+    }
+
+    jugaad __daal__(key, val) {
+        khud.data[key] = val;
+    }
+
+    jugaad __size__() {
+        ye_le size(khud.data);
+    }
+}
+
+pakad v = Vault();
+v["tijori"] = 999999;
+v["passcode"] = "Jugaad123";
+
+dikha f"v['tijori'] = {v['tijori']}";
+dikha f"v['passcode'] = {v['passcode']}";
+dikha f"size(v) = {size(v)}";
+
+dikha "=== TEST 4: Callable Object Instances (__chala__) ===";
+biradari Multiplier {
+    jugaad shuru(factor) {
+        khud.factor = factor;
+    }
+
+    jugaad __chala__(x) {
+        ye_le x * khud.factor;
+    }
+}
+
+pakad triple = Multiplier(3);
+dikha f"triple(10) = {triple(10)}"; // 30
+dikha f"triple(25) = {triple(25)}"; // 75
+
+dikha "=== TEST 5: F-Strings & Escaping ===";
+pakad user = "Gabbru";
+pakad score = 95;
+pakad greeting = f"Namaste {user}, your final score is {score * 2}!";
+dikha greeting;
+
+pakad escaped = f"In MEMElang, {{curly}} brackets evaluate {2 + 3}!";
+dikha escaped;
+
+dikha "=== TEST 6: Destructuring Assignment ===";
+// Array Destructuring
+pakad [pehla, doosra, *baaki_items] = [10, 20, 30, 40, 50];
+dikha f"pehla: {pehla}, doosra: {doosra}, baaki: {baaki_items}";
+
+// Missing items default to nalla
+pakad [x, y, z] = [100];
+dikha f"x: {x}, y: {y}, z: {z}";
+
+// Map Destructuring
+pakad khata_info = { "naam": "Sharmaji", "umar": 42, "shehar": "Delhi" };
+pakad {naam, umar, shehar, missing} = khata_info;
+dikha f"Map Destructure -> naam: {naam}, umar: {umar}, shehar: {shehar}, missing: {missing}";
+
+dikha "=== TEST 7: Reflection Builtins (kundli & chala_de) ===";
+biradari Robot {
+    jugaad shuru(naam, battery) {
+        khud.naam = naam;
+        khud.battery = battery;
+    }
+
+    jugaad bolo(msg) {
+        ye_le f"[{khud.naam} says: {msg}]";
+    }
+
+    jugaad charge(units) {
+        khud.battery = khud.battery + units;
+        ye_le khud.battery;
+    }
+}
+
+pakad bot = Robot("Chitti", 80);
+
+// kundli(instance) returns dynamic fields map
+pakad bot_kundli = kundli(bot);
+dikha f"bot kundli (fields): {bot_kundli}";
+
+// kundli(Class) returns list of method names
+pakad class_kundli = kundli(Robot);
+dikha f"Robot class methods: {class_kundli}";
+
+// obj.chala_de(methodName, [args])
+pakad speech = bot.chala_de("bolo", ["Apun hi Bhagwan hai!"]);
+dikha speech;
+
+pakad new_battery = bot.chala_de("charge", [15]);
+dikha f"New battery: {new_battery}";
+
+dikha "=== BATCH B TESTS COMPLETE! Shabaash! ===";

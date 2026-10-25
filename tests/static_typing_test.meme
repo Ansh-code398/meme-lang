@@ -1,0 +1,38 @@
+// MEMElang Gradual Typing & Memory Efficiency Test
+// Testing static type annotations, generic collections, and functions
+
+dikha "=== Test 1: Explicitly Typed Variables ===";
+pakad count: ank = 42;
+pakad gpa: point = 3.95;
+pakad message: bol = "MEMElang Gradual Typing Rocking!";
+pakad isActive: sach = han;
+dikha count, gpa, message, isActive;
+
+dikha "=== Test 2: Numeric Widening (ank -> point) ===";
+pakad promoted: point = 100;
+dikha promoted;
+
+dikha "=== Test 3: Typed Collections ===";
+pakad scores: list[ank] = [98, 95, 100];
+pakad registry: map[bol, ank] = {"Raju": 100, "BabuRao": 50};
+dikha scores[0], scores[1], registry["Raju"];
+
+dikha "=== Test 4: Annotated Functions & Lambdas ===";
+kar jod(a: ank, b: ank): ank {
+    ye_le a + b;
+}
+dikha "jod(15, 27) =", jod(15, 27);
+
+pakad guna = (x: ank, y: ank): ank => x * y;
+dikha "guna(6, 7) =", guna(6, 7);
+
+dikha "=== Test 5: Dynamic Variable Reassignment (Backward Compatibility) ===";
+pakad flexible = 123;
+flexible = "Main dynamic hoon!";
+dikha flexible;
+
+dikha "=== Test 6: String Repetition & Concatenation ===";
+dikha "Meme! " * 3;
+dikha "Score is: " + 99;
+
+dikha "=== All Static Typing Tests Passed! ===";

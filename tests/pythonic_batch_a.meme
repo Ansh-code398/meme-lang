@@ -1,0 +1,79 @@
+// ==========================================
+// MEMElang Pythonic Superpowers - Batch A Test
+// ==========================================
+
+// 1. Multi-statement anonymous jugaad
+pakad calc = jugaad(x, y) {
+    pakad z = x + y;
+    ye_le z * 2;
+};
+dikha "1. Anonymous jugaad:", calc(10, 5);
+
+// 2. Short arrow lambdas
+pakad numbers = [1, 2, 3, 4, 5, 6];
+pakad evens = numbers.chhaan((n) => n % 2 == 0);
+dikha "2. Filter evens:", evens;
+
+pakad squares = evens.sab_pe(n => n * n);
+dikha "3. Map squares:", squares;
+
+// 3. Chaining .chhaan().sab_pe().nichod()
+pakad scores = [12, 45, 89, 23, 94, 67];
+pakad toppers_total = scores
+    .chhaan(s => s >= 50)
+    .sab_pe(s => s + 5)
+    .nichod((sum, s) => sum + s, 0);
+dikha "4. Chaining result:", toppers_total;
+
+// 4. Default parameter and alias testing (.sameto)
+pakad sumWithoutInit = [10, 20, 30].sameto((a, b) => a + b);
+dikha "5. Reduce without init:", sumWithoutInit;
+
+// 5. In-place sort (.line_mein) and comparator
+pakad unorganised = [50, 20, 40, 10, 30];
+unorganised.line_mein();
+dikha "6. Sort ascending:", unorganised;
+
+unorganised.line_mein((a, b) => a > b);
+dikha "7. Sort descending:", unorganised;
+
+// 6. forEach (.har_ek) and find (.pakad_ek)
+pakad firstBig = [5, 12, 8, 130, 44].pakad_ek(x => x > 100);
+dikha "8. Found first big:", firstBig;
+
+pakad collected = [];
+[1, 2, 3].har_ek(x => {
+    collected.ghusa(x * 10);
+});
+dikha "9. ForEach collected:", collected;
+
+// 7. Default parameters & variadic rest (*baaki)
+jugaad party(host, place = "Ghar", *mehmaan) {
+    ye_le [host, place, mehmaan];
+}
+
+dikha "10. Party default:", party("Raju");
+dikha "11. Party custom:", party("Raju", "Dhaba");
+dikha "12. Party variadic:", party("Raju", "Club", "Shyam", "Baburao");
+
+// 8. Spread in function call (*arr)
+pakad gang = ["Munna", "Circuit"];
+jugaad intro(a, b) {
+    ye_le a + " aur " + b;
+}
+dikha "13. Spread call:", intro(*gang);
+
+// 9. Error handling with panga / lafda for Doglapan and Gaddari korbe
+panga {
+    [].nichod((a, b) => a + b);
+} lafda err {
+    dikha "14. Caught empty reduce:", err;
+}
+
+panga {
+    intro("OnlyOne");
+} lafda err {
+    dikha "15. Caught arity error:", err;
+}
+
+dikha "BATCH A ALL TESTS PASSED!";

@@ -1,0 +1,54 @@
+{
+  "name": "memelang",
+  "displayName": "MEMElang Language Support",
+  "description": "Syntax Highlighting, Autocomplete, Snippets & Tooling for MEMElang (.meme)",
+  "version": "1.0.0",
+  "publisher": "memelang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "memelang",
+    "meme",
+    "desi",
+    "hindi",
+    "pythonic"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:memelang"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "memelang",
+        "aliases": [
+          "MEMElang",
+          "memelang",
+          "meme"
+        ],
+        "extensions": [
+          ".meme"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "memelang",
+        "scopeName": "source.meme",
+        "path": "./syntaxes/memelang.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "memelang",
+        "path": "./snippets/memelang.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,266 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "MEMElang",
+  "scopeName": "source.meme",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#fstrings" },
+    { "include": "#strings" },
+    { "include": "#types" },
+    { "include": "#tantrik-methods" },
+    { "include": "#functional-transforms" },
+    { "include": "#keywords-control" },
+    { "include": "#keywords-decl" },
+    { "include": "#keywords-oop" },
+    { "include": "#keywords-error" },
+    { "include": "#keywords-module" },
+    { "include": "#builtins" },
+    { "include": "#constants" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#function-call" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.meme",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.meme",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "fstrings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.fstring.meme",
+          "begin": "[fF]\"",
+          "beginCaptures": {
+            "0": { "name": "string.interpolated.meme" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "string.interpolated.meme" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\{\\{|\\}\\}"
+            },
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.expression.meme",
+              "begin": "\\{",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.embedded.begin.meme" }
+              },
+              "end": "\\}",
+              "endCaptures": {
+                "0": { "name": "punctuation.section.embedded.end.meme" }
+              },
+              "patterns": [
+                { "include": "$self" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.fstring.meme",
+          "begin": "[fF]'",
+          "beginCaptures": {
+            "0": { "name": "string.interpolated.meme" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "string.interpolated.meme" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\{\\{|\\}\\}"
+            },
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.expression.meme",
+              "begin": "\\{",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.embedded.begin.meme" }
+              },
+              "end": "\\}",
+              "endCaptures": {
+                "0": { "name": "punctuation.section.embedded.end.meme" }
+              },
+              "patterns": [
+                { "include": "$self" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.meme",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.meme",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.meme",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.meme",
+          "match": "\\b(ank|bina_point|sankhya|int|point|point_wala|dashamlav|float|double|bol|shabd|vakya|baat|string|str|sach|faisla|vibe_check|bool|nalla|kuch_nhi|khali|void|null|har_kism|joker|sab|kuch_bhi|any|soochi|tolli|gang|list|khata|kundli|map)\\b"
+        }
+      ]
+    },
+    "tantrik-methods": {
+      "patterns": [
+        {
+          "name": "support.function.magic.meme",
+          "match": "\\b(__jod__|__ghata__|__guna__|__bhaag__|__bacha__|__barabar__|__chota__|__bada__|__la__|__daal__|__rakh__|__dikha__|__size__|__chala__|__call__|shuru|paida|alvida)\\b"
+        }
+      ]
+    },
+    "functional-transforms": {
+      "patterns": [
+        {
+          "name": "entity.name.function.transform.meme",
+          "match": "(?<=\\.)\\b(sab_pe|badal_sab|chhaan|filter_kar|nichod|sameto|line_mein|chhaant|har_ek|pakad_ek|chala_de|jodo|hatao|chhodo|has|keys|values|nakal|clone)\\b"
+        }
+      ]
+    },
+    "keywords-decl": {
+      "patterns": [
+        {
+          "name": "storage.type.meme",
+          "match": "\\b(pakad|le|let|const|jugaad|kar|fn|def|biradari|vibe|class|sancha|avtar|kism|enum)\\b"
+        }
+      ]
+    },
+    "keywords-control": {
+      "patterns": [
+        {
+          "name": "keyword.control.meme",
+          "match": "\\b(dekh|agar|if|warna|nahito|else|jabtak|while|ghoom|for|mein|in|bas|break|chal|continue|ye_le|wapas|de|return|jaanch|parakh|match|baaki|default)\\b"
+        }
+      ]
+    },
+    "keywords-oop": {
+      "patterns": [
+        {
+          "name": "variable.language.this.meme",
+          "match": "\\b(khud|apun|this|self|nepo|extends|se|super)\\b"
+        }
+      ]
+    },
+    "keywords-error": {
+      "patterns": [
+        {
+          "name": "keyword.control.exception.meme",
+          "match": "\\b(panga|try|lafda|sambhal|catch|pakka|hamesha|finally|chillao|fek|throw)\\b"
+        }
+      ]
+    },
+    "keywords-module": {
+      "patterns": [
+        {
+          "name": "keyword.control.import.meme",
+          "match": "\\b(bula|chura|lao|shamil|import|jaise|as)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.meme",
+          "match": "\\b(dikha|flex|print|pooch|bata|input|kya_hai|size|nakal|bina_point|point_wala|kundli|gol|upar_gol|neeche_gol|vargmool|ghaat|kalam|chhota|bada|ab|ruk)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.meme",
+          "match": "\\b(han|real|sahi|true|yes|nhi|fake|galat|false|no)\\b"
+        },
+        {
+          "name": "constant.language.null.meme",
+          "match": "\\b(nalla|shunya|null|nil|none)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.meme",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.meme",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.meme",
+          "match": "(=>|->)"
+        },
+        {
+          "name": "keyword.operator.logical.meme",
+          "match": "\\b(aur|and|ya|or|nhi|not)\\b"
+        },
+        {
+          "name": "keyword.operator.comparison.meme",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.meme",
+          "match": "(\\+|\\-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.assignment.meme",
+          "match": "(=)"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "entity.name.function.meme",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+        }
+      ]
+    }
+  }
+}
