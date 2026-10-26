@@ -1,0 +1,37 @@
+// Header.meme - Polyglot Sentinel header with live bridge status pills
+kaam Header(props) {
+    pakad total = props.total;
+    pakad alerts = props.alerts;
+    pakad sessionToken = props.sessionToken;
+
+    de (
+        <div class="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-2xl font-black text-amber-400">⚡ Polyglot Sentinel</h1>
+                    <span class="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md">
+                        v2.0 Universal
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">
+                    Chameleon Universal Bridge: Python (NumPy/Pandas) • JS (Ably/Firebase) • Rust (Crypto/Rayon)
+                </p>
+            </div>
+
+            <div class="flex items-center space-x-2 mt-3 md:mt-0">
+                <span class="px-2.5 py-1 text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full flex items-center space-x-1">
+                    <span>🐍</span> <span>Python</span>
+                </span>
+                <span class="px-2.5 py-1 text-xs font-semibold bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-full flex items-center space-x-1">
+                    <span>⚡</span> <span>JS/NPM</span>
+                </span>
+                <span class="px-2.5 py-1 text-xs font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full flex items-center space-x-1">
+                    <span>🦀</span> <span>Rust</span>
+                </span>
+                <span class="px-2.5 py-1 text-xs font-semibold bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-full flex items-center space-x-1">
+                    <span>🗄️</span> <span>Tijori</span>
+                </span>
+            </div>
+        </div>
+    );
+}

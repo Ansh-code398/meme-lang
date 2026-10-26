@@ -1,0 +1,27 @@
+// TodoItem.meme - Individual todo row with checkbox & delete
+kaam TodoItem(props) {
+    pakad todo = props.todo;
+    pakad isDone = todo.done;
+
+    de (
+        <div class="flex items-center justify-between p-3.5 bg-slate-800/80 hover:bg-slate-800 rounded-xl border border-slate-700/60 mb-2">
+            <div class="flex items-center space-x-3 flex-1">
+                <button
+                    class={isDone ? "w-6 h-6 rounded-md bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xs" : "w-6 h-6 rounded-md border border-slate-500 text-transparent flex items-center justify-center text-xs"}
+                    onClick={() => props.onToggle(todo.id)}
+                >
+                    {isDone ? "✓" : ""}
+                </button>
+                <span class={isDone ? "line-through text-slate-500 text-sm" : "text-white text-sm"}>
+                    {todo.text}
+                </span>
+            </div>
+            <button
+                class="px-2.5 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold"
+                onClick={() => props.onDelete(todo.id)}
+            >
+                Hatao
+            </button>
+        </div>
+    );
+}

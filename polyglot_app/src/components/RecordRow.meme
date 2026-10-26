@@ -1,0 +1,31 @@
+// RecordRow.meme - Individual telemetry row signed by Rust SHA-256
+kaam RecordRow(props) {
+    pakad item = props.item;
+    pakad isAlert = item.status == "ALERT";
+
+    de (
+        <div class="flex items-center justify-between p-3.5 bg-slate-800/60 hover:bg-slate-800 rounded-xl border border-slate-700/50 mb-2">
+            <div class="flex items-center space-x-3 flex-1">
+                <span class={isAlert ? "w-2.5 h-2.5 rounded-full bg-rose-500" : "w-2.5 h-2.5 rounded-full bg-emerald-500"}></span>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-white font-bold text-sm">{item.sensor}</span>
+                        <span class={isAlert ? "text-xs font-semibold px-2 py-0.5 bg-rose-500/20 text-rose-300 rounded" : "text-xs font-semibold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded"}>
+                            {item.status}
+                        </span>
+                    </div>
+                    <div class="text-xs text-slate-400 mt-0.5">
+                        {"Reading: " + item.value + " • Hash: #" + item.hash}
+                    </div>
+                </div>
+            </div>
+
+            <button
+                class="px-2.5 py-1 bg-rose-600/70 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold"
+                onClick={() => props.onDelete(item.id)}
+            >
+                Hatao
+            </button>
+        </div>
+    );
+}

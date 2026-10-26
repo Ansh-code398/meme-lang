@@ -1,0 +1,83 @@
+// Tests for todo_app - Multiplatform Todo App Stress Test
+bula "@/components/Header.meme";
+bula "@/components/TodoItem.meme";
+bula "@/components/FilterBar.meme";
+
+test("Todo App - List length and property parity", () => {
+    pakad list = ["Task 1", "Task 2", "Task 3"];
+    expect(list.length).toBe(3);
+    expect(list.length()).toBe(3);
+    expect(list.size).toBe(3);
+    expect(list.size()).toBe(3);
+    expect(list.lambaai).toBe(3);
+    expect(list.lambai).toBe(3);
+});
+
+test("Todo App - Add todo using array spread", () => {
+    pakad todos = [
+        { "id": 1, "text": "Chai piyo", "done": sach }
+    ];
+    pakad newTodo = { "id": 2, "text": "Code likho", "done": jhooth };
+    pakad updated = [...todos, newTodo];
+
+    expect(updated.length).toBe(2);
+    expect(updated[1].text).toBe("Code likho");
+    expect(updated[1].done).toBe(jhooth);
+});
+
+test("Todo App - Toggle todo using map and ternary", () => {
+    pakad todos = [
+        { "id": 1, "text": "Task A", "done": jhooth },
+        { "id": 2, "text": "Task B", "done": jhooth }
+    ];
+    pakad updated = todos.map(t => t.id == 2 ? { ...t, "done": !t.done } : t);
+
+    expect(updated[0].done).toBe(jhooth);
+    expect(updated[1].done).toBe(sach);
+});
+
+test("Todo App - Delete todo using filter", () => {
+    pakad todos = [
+        { "id": 1, "text": "Task 1", "done": sach },
+        { "id": 2, "text": "Task 2", "done": jhooth }
+    ];
+    pakad remaining = todos.filter(t => t.id != 1);
+
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].id).toBe(2);
+});
+
+test("Todo App - Filter views (sab, baaki, poora)", () => {
+    pakad todos = [
+        { "id": 1, "text": "A", "done": sach },
+        { "id": 2, "text": "B", "done": jhooth },
+        { "id": 3, "text": "C", "done": jhooth }
+    ];
+    pakad active = todos.filter(t => !t.done);
+    pakad completed = todos.filter(t => t.done);
+
+    expect(active.length).toBe(2);
+    expect(completed.length).toBe(1);
+});
+
+test("Todo App - Tijori persistent DB storage", () => {
+    pakad tasks = [
+        { "id": 101, "text": "Persistent task", "done": sach }
+    ];
+    tijori.rakh("test_tasks", tasks);
+    pakad loaded = tijori.nikal("test_tasks", []);
+
+    expect(loaded.length).toBe(1);
+    expect(loaded[0].text).toBe("Persistent task");
+});
+
+test("Todo App - Component JSX rendering", () => {
+    pakad header = <Header total={3} remaining={1} />;
+    expect(header.tag).toBe("div");
+
+    pakad item = <TodoItem todo={{"id": 1, "text": "Hello", "done": sach}} onToggle={() => {}} onDelete={() => {}} />;
+    expect(item.tag).toBe("div");
+
+    pakad fb = <FilterBar filter="sab" totalCount={3} activeCount={1} completedCount={2} onFilterChange={() => {}} />;
+    expect(fb.tag).toBe("div");
+});

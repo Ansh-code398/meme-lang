@@ -1,0 +1,11 @@
+{
+  "name": "helloworld",
+  "version": "1.0.0",
+  "template": "react",
+  "scripts": {
+    "dev": "meme dev src/App.meme",
+    "start": "meme src/App.meme",
+    "test": "meme test tests"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,19 @@
+{
+  "name": "polyglot_app",
+  "version": "1.0.0",
+  "description": "Universal Polyglot Sentinel — Orchestrating Python (NumPy/Pandas), JavaScript (Ably/Firebase), and Rust (Crypto/Rayon) in MEMElang Native React UI",
+  "template": "react",
+  "scripts": {
+    "dev": "meme dev src/App.meme",
+    "start": "meme src/App.meme",
+    "test": "meme test tests"
+  },
+  "dependencies": {
+    "py:numpy": "latest",
+    "py:pandas": "latest",
+    "npm:ably": "latest",
+    "npm:firebase": "latest",
+    "rust:crypto": "latest",
+    "rust:rayon": "latest"
+  }
+}

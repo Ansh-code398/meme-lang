@@ -1,0 +1,44 @@
+// JsService.meme - Realtime pub/sub messaging & cloud audit collection via npm:ably and npm:firebase
+bula "npm:ably" jaise ably;
+bula "npm:firebase" jaise fb;
+
+pakad telemetryChannel = ably.channel("telemetry_stream");
+pakad auditCollection = fb.collection("telemetry_logs");
+pakad authService = fb.auth();
+
+kaam broadcastTelemetry(sensor, value, status) {
+    pakad payload = {
+        "sensor": sensor,
+        "value": value,
+        "status": status,
+        "timestamp": waqt.ab()
+    };
+
+    // 1. Publish to Ably Realtime Pub/Sub channel
+    telemetryChannel.publish("telemetry_event", payload);
+
+    // 2. Add to Firebase Cloud Document Store
+    auditCollection.add(payload);
+
+    de {
+        "ablyCount": telemetryChannel.history().lambai(),
+        "firebaseCount": auditCollection.get().lambai()
+    };
+}
+
+kaam authenticateAgent(email) {
+    pakad res = authService.signIn(email, "sentinel_secure_pass");
+    de {
+        "email": res.user.email,
+        "uid": res.user.uid,
+        "token": res.token
+    };
+}
+
+kaam getTelemetryHistory() {
+    de telemetryChannel.history();
+}
+
+kaam getAuditLogs() {
+    de auditCollection.get();
+}

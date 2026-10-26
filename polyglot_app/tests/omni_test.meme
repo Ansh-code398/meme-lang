@@ -1,0 +1,142 @@
+// Tests for Polyglot Sentinel - Universal Multi-Ecosystem Bridge Test Suite
+bula "@/services/PythonService.meme" jaise PyService;
+bula "@/services/JsService.meme" jaise JsService;
+bula "@/services/RustService.meme" jaise RustService;
+bula "@/components/Header.meme";
+bula "@/components/MetricCard.meme";
+bula "@/components/RecordRow.meme";
+
+bula "py:numpy" jaise np;
+bula "py:pandas" jaise pd;
+bula "npm:ably" jaise ably;
+bula "npm:firebase" jaise fb;
+bula "rust:crypto" jaise crypto;
+bula "rust:rayon" jaise rayon;
+
+test("Python Ecosystem - NumPy vector operations & statistics", () => {
+    pakad arr = np.arange(10, 60, 10);
+    expect(arr.length).toBe(5);
+    expect(np.sum(arr)).toBe(150);
+    expect(np.mean(arr)).toBe(30.0);
+
+    pakad ones = np.ones(5);
+    expect(np.dot(arr, ones)).toBe(150.0);
+
+    pakad stats = PyService.analyzeReadings([20, 40, 60, 80]);
+    expect(stats.count).toBe(4);
+    expect(stats.sum).toBe(200);
+    expect(stats.mean).toBe(50.0);
+});
+
+test("Python Ecosystem - Pandas DataFrame filtering & column access", () => {
+    pakad data = [
+        { "sensor": "Turbine-1", "val": 45, "status": "HEALTHY" },
+        { "sensor": "Reactor-2", "val": 95, "status": "ALERT" },
+        { "sensor": "Coolant-3", "val": 30, "status": "HEALTHY" }
+    ];
+
+    pakad df = pd.DataFrame(data);
+    expect(df.col("sensor").length).toBe(3);
+
+    pakad alerts = df.filter_rows("status", "ALERT");
+    expect(alerts.col("sensor").length).toBe(1);
+
+    pakad report = PyService.buildTelemetryReport(data);
+    expect(report.total).toBe(3);
+    expect(report.alerts).toBe(1);
+    expect(report.healthy).toBe(2);
+});
+
+test("JavaScript / NPM Ecosystem - Ably realtime channel pub/sub", () => {
+    pakad ch = ably.channel("test_channel");
+    pakad published = ch.publish("sensor_ping", { "node": "N1", "status": "OK" });
+    expect(published).toBe(sach);
+
+    pakad hist = ch.history();
+    expect(hist.length >= 1).toBe(sach);
+    expect(hist[0].event).toBe("sensor_ping");
+});
+
+test("JavaScript / NPM Ecosystem - Firebase cloud document collection & auth", () => {
+    pakad col = fb.collection("test_sensors");
+    pakad doc = col.add({ "name": "Pressure-A", "psi": 120, "tier": "CRITICAL" });
+    expect(doc.name).toBe("Pressure-A");
+
+    pakad allDocs = col.get();
+    expect(allDocs.length >= 1).toBe(sach);
+
+    pakad crit = col.where("tier", "==", "CRITICAL");
+    expect(crit.length >= 1).toBe(sach);
+
+    pakad authRes = JsService.authenticateAgent("engineer@sentinel.org");
+    expect(authRes.email).toBe("engineer@sentinel.org");
+    expect(authRes.token.length > 10).toBe(sach);
+});
+
+test("Rust Ecosystem - Cryptographic SHA-256 digests & HMAC signatures", () => {
+    pakad hash1 = crypto.sha256("telemetry_payload_123");
+    pakad hash2 = crypto.sha256("telemetry_payload_123");
+    expect(hash1.length).toBe(64);
+    expect(hash1).toBe(hash2);
+
+    pakad sig = crypto.hmac("secret_key_88", hash1);
+    expect(sig.length).toBe(64);
+
+    pakad uuid = crypto.uuid_v4();
+    expect(uuid.length).toBe(36);
+});
+
+test("Rust Ecosystem - Rayon parallel mapping transformation", () => {
+    pakad inputList = [10, 20, 30, 40, 50];
+    pakad parallelResult = rayon.par_map(inputList, (x) => x * 3);
+
+    expect(parallelResult.length).toBe(5);
+    expect(parallelResult[0]).toBe(30);
+    expect(parallelResult[2]).toBe(90);
+    expect(parallelResult[4]).toBe(150);
+
+    pakad scaled = RustService.parallelTransform([5, 10, 15], 2);
+    expect(scaled[0]).toBe(10);
+    expect(scaled[1]).toBe(20);
+    expect(scaled[2]).toBe(30);
+});
+
+test("Tijori Persistent KV Database Storage", () => {
+    pakad payload = [
+        { "id": 1, "sensor": "Turbine-Alpha", "value": 45, "status": "HEALTHY", "hash": "a3f89b1c" }
+    ];
+    tijori.rakh("omni_test_records", payload);
+
+    pakad loaded = tijori.nikal("omni_test_records", []);
+    expect(loaded.length).toBe(1);
+    expect(loaded[0].sensor).toBe("Turbine-Alpha");
+    expect(loaded[0].value).toBe(45);
+});
+
+test("End-to-End Polyglot Pipeline Orchestration", () => {
+    // 1. Rust Signs payload
+    pakad rustSig = RustService.signTelemetry("Substation-9", 88);
+    expect(rustSig.shortHash.length).toBe(8);
+    expect(rustSig.uuid.length).toBe(36);
+
+    // 2. JS / NPM Broadcasts & Stores
+    pakad jsBroadcast = JsService.broadcastTelemetry("Substation-9", 88, "ALERT");
+    expect(jsBroadcast.ablyCount >= 1).toBe(sach);
+    expect(jsBroadcast.firebaseCount >= 1).toBe(sach);
+
+    // 3. Python Analyzes Aggregates
+    pakad pyStats = PyService.analyzeReadings([45, 92, 38, 88]);
+    expect(pyStats.count).toBe(4);
+    expect(pyStats.mean > 60).toBe(sach);
+});
+
+test("Component JSX Tree Rendering Parity", () => {
+    pakad header = <Header total={4} alerts={2} sessionToken="tok_xyz_123" />;
+    expect(header.tag).toBe("div");
+
+    pakad card = <MetricCard title="Python" stat="Mean: 50" subtitle="NumPy" badge="Active" badgeColor="bg-green-500" />;
+    expect(card.tag).toBe("div");
+
+    pakad row = <RecordRow item={{ "id": 1, "sensor": "Sensor-A", "value": 50, "status": "HEALTHY", "hash": "abc" }} onDelete={() => {}} />;
+    expect(row.tag).toBe("div");
+});

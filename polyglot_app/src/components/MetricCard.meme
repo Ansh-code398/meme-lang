@@ -1,0 +1,25 @@
+// MetricCard.meme - Reusable status and telemetry card for ecosystem metrics
+kaam MetricCard(props) {
+    pakad title = props.title;
+    pakad stat = props.stat;
+    pakad subtitle = props.subtitle;
+    pakad badge = props.badge;
+    pakad badgeColor = props.badgeColor;
+
+    de (
+        <div class="flex-1 min-w-[240px] p-4 bg-slate-800/80 border border-slate-700/60 rounded-xl flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">{title}</span>
+                <span class={"px-2 py-0.5 text-xs font-bold rounded-md " + badgeColor}>
+                    {badge}
+                </span>
+            </div>
+            <div class="text-xl font-black text-white my-1">
+                {stat}
+            </div>
+            <div class="text-xs text-slate-400 mt-1">
+                {subtitle}
+            </div>
+        </div>
+    );
+}

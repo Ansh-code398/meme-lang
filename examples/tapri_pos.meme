@@ -1,0 +1,31 @@
+// 1. Save initial data in Tijori (Local Persistent DB)
+tijori.rakh("orders", [
+    {"item": "Masala Chai", "price": 20, "status": "Ready"},
+    {"item": "Bun Maska", "price": 40, "status": "Cooking"}
+])
+
+// 2. Define a FastAPI-style Backend Server (Dhaba)
+dhaba.get("/orders", (req) => {
+    de {"ok": han, "maal": tijori.nikal("orders")}
+})
+
+// 3. Build a Cross-Platform Native/Web/Mobile UI
+screen = ui.khamba([
+    ui.likh("☕ Tapri POS App", "heading"),
+    ui.katar([
+        ui.dabba([
+            ui.likh("Masala Chai - ₹20"),
+            ui.badge("Ready", "hara")
+        ], "Order #1"),
+        ui.dabba([
+            ui.likh("Bun Maska - ₹40"),
+            ui.badge("Cooking", "peela")
+        ], "Order #2")
+    ]),
+    ui.puch("Naya order likho..."),
+    ui.button("🔥 Order Bhej", () => {
+        dikha "[hara mota]Naya order lag gaya![/]"
+    })
+])
+
+ui.dikha(screen, "Tapri Multi-Platform App")

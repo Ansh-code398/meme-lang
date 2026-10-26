@@ -1,0 +1,7 @@
+kaam Badge(props) {
+    de (
+        <span class="px-2 py-1 bg-amber-500 rounded text-slate-950 font-bold text-xs">
+            {props.text}
+        </span>
+    );
+}

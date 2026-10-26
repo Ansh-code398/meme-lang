@@ -1,0 +1,8 @@
+// Tests for helloworld
+test("math check for helloworld", () => {
+    expect(1 + 1).toBe(2);
+});
+
+test("env variable loaded", () => {
+    expect(systumm.env("APP_NAME")).toBe("helloworld");
+});

@@ -1,0 +1,8 @@
+// Tests for demo_test_app
+test("math check for demo_test_app", () => {
+    expect(1 + 1).toBe(2);
+});
+
+test("env variable loaded", () => {
+    expect(systumm.env("APP_NAME")).toBe("demo_test_app");
+});

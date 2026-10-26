@@ -1,0 +1,49 @@
+// PythonService.meme - High-performance numerical analytics via py:numpy and py:pandas
+bula "py:numpy" jaise np;
+bula "py:pandas" jaise pd;
+
+kaam analyzeReadings(readings) {
+    agar (readings.lambai() == 0) {
+        de {
+            "count": 0,
+            "sum": 0.0,
+            "mean": 0.0,
+            "std": 0.0,
+            "dot": 0.0
+        };
+    }
+
+    pakad sumVal = np.sum(readings);
+    pakad meanVal = np.mean(readings);
+    pakad stdVal = np.std(readings);
+    pakad weights = np.ones(readings.lambai());
+    pakad dotVal = np.dot(readings, weights);
+
+    de {
+        "count": readings.lambai(),
+        "sum": sumVal,
+        "mean": meanVal,
+        "std": stdVal,
+        "dot": dotVal
+    };
+}
+
+kaam buildTelemetryReport(records) {
+    agar (records.lambai() == 0) {
+        de {
+            "total": 0,
+            "alerts": 0,
+            "healthy": 0
+        };
+    }
+
+    pakad df = pd.DataFrame(records);
+    pakad alertRows = df.filter_rows("status", "ALERT");
+    pakad alertCount = alertRows.col("sensor").lambai();
+
+    de {
+        "total": records.lambai(),
+        "alerts": alertCount,
+        "healthy": records.lambai() - alertCount
+    };
+}

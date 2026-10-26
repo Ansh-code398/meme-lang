@@ -1,0 +1,26 @@
+// RustService.meme - High-throughput cryptography & parallel data execution via rust:crypto and rust:rayon
+bula "rust:crypto" jaise crypto;
+bula "rust:rayon" jaise rayon;
+
+kaam signTelemetry(sensor, value) {
+    pakad raw = sensor + ":" + value;
+    pakad hash = crypto.sha256(raw);
+    pakad secretKey = "sentinel_root_key_2026";
+    pakad hmacSig = crypto.hmac(secretKey, hash);
+    pakad uuidToken = crypto.uuid_v4();
+
+    de {
+        "hash": hash,
+        "hmac": hmacSig,
+        "uuid": uuidToken,
+        "shortHash": hash.kaat(0, 8)
+    };
+}
+
+kaam parallelTransform(readings, multiplier) {
+    agar (readings.lambai() == 0) {
+        de [];
+    }
+    // High-speed parallel mapping via Rayon
+    de rayon.par_map(readings, (x) => x * multiplier);
+}

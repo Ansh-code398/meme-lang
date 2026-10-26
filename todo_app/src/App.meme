@@ -1,0 +1,95 @@
+// todo_app - MEMElang Native React Todo App
+bula "@/components/Header.meme";
+bula "@/components/TodoItem.meme";
+bula "@/components/FilterBar.meme";
+
+kaam App() {
+    pakad saved = tijori.nikal("todos", []);
+    pakad initialList = saved.length > 0 ? saved : [
+        { "id": 1, "text": "MEMElang Todo App banao", "done": sach },
+        { "id": 2, "text": "Chai piyo aur chill karo", "done": jhooth },
+        { "id": 3, "text": "Zero-WebView 60 FPS stress test", "done": jhooth }
+    ];
+
+    [todos, setTodos] = useState(initialList);
+    [inputVal, setInputVal] = useState("");
+    [filter, setFilter] = useState("sab");
+
+    // Handlers
+    kaam addTodo() {
+        agar (inputVal != "") {
+            pakad nextId = todos.length + 1;
+            pakad newTodo = { "id": nextId, "text": inputVal, "done": jhooth };
+            pakad updated = [...todos, newTodo];
+            setTodos(updated);
+            tijori.rakh("todos", updated);
+            setInputVal("");
+        }
+    }
+
+    kaam toggleTodo(id) {
+        pakad updated = todos.map(t => t.id == id ? { ...t, "done": !t.done } : t);
+        setTodos(updated);
+        tijori.rakh("todos", updated);
+    }
+
+    kaam deleteTodo(id) {
+        pakad updated = todos.filter(t => t.id != id);
+        setTodos(updated);
+        tijori.rakh("todos", updated);
+    }
+
+    // Filter calculations
+    pakad filtered = filter == "baaki" ? todos.filter(t => !t.done) : (filter == "poora" ? todos.filter(t => t.done) : todos);
+    pakad activeCount = todos.filter(t => !t.done).length;
+    pakad completedCount = todos.filter(t => t.done).length;
+
+    de (
+        <div class="p-6 bg-slate-950 min-h-screen flex flex-col items-center">
+            <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                <Header total={todos.length} remaining={activeCount} />
+
+                <div class="flex items-center space-x-2 mb-4">
+                    <input
+                        class="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                        placeholder="Naya task likho..."
+                        value={inputVal}
+                        onChange={(e) => setInputVal(e.target.value)}
+                    />
+                    <button
+                        class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-sm"
+                        onClick={addTodo}
+                    >
+                        + Add
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    {filtered.map(item => (
+                        <TodoItem
+                            key={item.id}
+                            todo={item}
+                            onToggle={toggleTodo}
+                            onDelete={deleteTodo}
+                        />
+                    ))}
+                    {filtered.length == 0 && (
+                        <div class="py-8 text-center text-slate-500 text-sm">
+                            Koi task nahi mila! Maza hi maza.
+                        </div>
+                    )}
+                </div>
+
+                <FilterBar
+                    filter={filter}
+                    totalCount={todos.length}
+                    activeCount={activeCount}
+                    completedCount={completedCount}
+                    onFilterChange={setFilter}
+                />
+            </div>
+        </div>
+    );
+}
+
+ui.mount(<App />);

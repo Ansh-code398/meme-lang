@@ -1,0 +1,5 @@
+APP_NAME=PolyglotSentinel
+APP_ENV=production
+TELEMETRY_KEY=poly_sec_key_2026
+DEFAULT_BATCH_SIZE=8
+PORT=3000
