@@ -1,0 +1,111 @@
+// notes_desktop/src/App.meme
+// A Native Desktop Note & Task Vault in MEMElang
+
+kaam App() {
+    pakad defaultNotes = [
+        { "id": 1, "title": "Compiler Optimizations", "category": "Dev", "priority": "High" },
+        { "id": 2, "title": "Chai break at 5 PM", "category": "Personal", "priority": "Low" },
+        { "id": 3, "title": "Zero-WebView GPU Profiling", "category": "Dev", "priority": "Urgent" }
+    ];
+    pakad savedNotes = tijori.nikal("desktop_notes", defaultNotes);
+
+    [notes, setNotes] = useState(savedNotes);
+    [noteTitle, setNoteTitle] = useState("");
+    [activeFilter, setActiveFilter] = useState("all");
+
+    kaam addNote() {
+        agar (noteTitle != "") {
+            pakad nextId = notes.lambai() + 1;
+            pakad newNote = {
+                "id": nextId,
+                "title": noteTitle,
+                "category": "Quick Note",
+                "priority": "Normal"
+            };
+            pakad updated = [...notes, newNote];
+            setNotes(updated);
+            tijori.rakh("desktop_notes", updated);
+            setNoteTitle("");
+        }
+    }
+
+    kaam deleteNote(id) {
+        pakad updated = notes.filter(n => n.id != id);
+        setNotes(updated);
+        tijori.rakh("desktop_notes", updated);
+    }
+
+    pakad filtered = activeFilter == "dev" ? notes.filter(n => n.category == "Dev") : notes;
+
+    de (
+        <div class="p-6 bg-slate-950 min-h-screen flex flex-col items-center">
+            <div class="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
+                    <div>
+                        <h1 class="text-2xl font-black text-amber-400">⚡ ChaiVault Desktop</h1>
+                        <p class="text-xs text-slate-400">Native Cocoa Window • Zero-WebView • 60 FPS</p>
+                    </div>
+                    <div class="px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full">
+                        <span class="text-xs font-bold text-amber-300">{notes.lambai() + " Notes"}</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 mb-4">
+                    <input
+                        class="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                        placeholder="Naya note likho aur Enter dabao..."
+                        value={noteTitle}
+                        onChange={(e) => setNoteTitle(e.target.value)}
+                    />
+                    <button
+                        class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-sm"
+                        onClick={addNote}
+                    >
+                        + Add
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 mb-4">
+                    <button
+                        class={activeFilter == "all" ? "px-3 py-1 bg-slate-700 text-white font-bold rounded-lg text-xs" : "px-3 py-1 bg-slate-800 text-slate-400 rounded-lg text-xs"}
+                        onClick={() => setActiveFilter("all")}
+                    >
+                        {"Sabhi (" + notes.lambai() + ")"}
+                    </button>
+                    <button
+                        class={activeFilter == "dev" ? "px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg text-xs" : "px-3 py-1 bg-slate-800 text-slate-400 rounded-lg text-xs"}
+                        onClick={() => setActiveFilter("dev")}
+                    >
+                        Dev Only
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    {filtered.map(item => (
+                        <div key={item.id} class="flex items-center justify-between p-3.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
+                            <div class="flex flex-col">
+                                <span class="text-white text-sm font-medium">{item.title}</span>
+                                <span class="text-xs text-slate-400">{item.category + " • Priority: " + item.priority}</span>
+                            </div>
+                            <button
+                                class="px-2.5 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold"
+                                onClick={() => deleteNote(item.id)}
+                            >
+                                Hatao
+                            </button>
+                        </div>
+                    ))}
+                    {filtered.lambai() == 0 && (
+                        <div class="py-8 text-center text-slate-500 text-sm">
+                            Koi notes nahi mile! Ek naya note add karo.
+                        </div>
+                    )}
+                </div>
+
+            </div>
+        </div>
+    );
+}
+
+ui.mount(<App />);

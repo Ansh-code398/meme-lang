@@ -1,0 +1,72 @@
+// notes_desktop/tests/notes_test.meme
+// Automated test suite for ChaiVault Desktop app
+
+test("Desktop Notes - Initial Data & Length Parity", () => {
+    pakad defaultNotes = [
+        { "id": 1, "title": "Compiler Optimizations", "category": "Dev", "priority": "High" },
+        { "id": 2, "title": "Chai break at 5 PM", "category": "Personal", "priority": "Low" },
+        { "id": 3, "title": "Zero-WebView GPU Profiling", "category": "Dev", "priority": "Urgent" }
+    ];
+    expect(defaultNotes.lambai()).toBe(3);
+    expect(defaultNotes[0].title).toBe("Compiler Optimizations");
+    expect(defaultNotes[1].priority).toBe("Low");
+});
+
+test("Desktop Notes - Add Note Spread Immutability", () => {
+    pakad notes = [
+        { "id": 1, "title": "First", "category": "General", "priority": "Normal" }
+    ];
+    pakad newNote = { "id": 2, "title": "Second", "category": "Dev", "priority": "High" };
+    pakad updated = [...notes, newNote];
+
+    expect(updated.lambai()).toBe(2);
+    expect(updated[1].title).toBe("Second");
+    expect(notes.lambai()).toBe(1); // original unchanged
+});
+
+test("Desktop Notes - Delete Note Filter", () => {
+    pakad notes = [
+        { "id": 1, "title": "First" },
+        { "id": 2, "title": "Second" },
+        { "id": 3, "title": "Third" }
+    ];
+    pakad afterDelete = notes.filter(n => n.id != 2);
+    expect(afterDelete.lambai()).toBe(2);
+    expect(afterDelete[0].id).toBe(1);
+    expect(afterDelete[1].id).toBe(3);
+});
+
+test("Desktop Notes - Category Filtering", () => {
+    pakad notes = [
+        { "id": 1, "title": "A", "category": "Dev" },
+        { "id": 2, "title": "B", "category": "Personal" },
+        { "id": 3, "title": "C", "category": "Dev" }
+    ];
+    pakad devOnly = notes.filter(n => n.category == "Dev");
+    expect(devOnly.lambai()).toBe(2);
+    expect(devOnly[0].title).toBe("A");
+    expect(devOnly[1].title).toBe("C");
+});
+
+test("Desktop Notes - Tijori Persistent Storage", () => {
+    pakad key = "test_desktop_vault";
+    pakad sampleData = [{ "id": 101, "title": "Vault Secret" }];
+    tijori.rakh(key, sampleData);
+
+    pakad retrieved = tijori.nikal(key, []);
+    expect(retrieved.lambai()).toBe(1);
+    expect(retrieved[0].title).toBe("Vault Secret");
+});
+
+test("Desktop Notes - JSX Component Mounting & Native Layout", () => {
+    pakad screen = (
+        <div class="p-6 bg-slate-950">
+            <h1 class="text-2xl font-black text-amber-400">⚡ ChaiVault Desktop</h1>
+            <div class="space-y-2">
+                <span class="text-white text-sm">Note Item</span>
+            </div>
+        </div>
+    );
+    pakad cmds = ui.mount(screen);
+    expect(cmds.lambai() > 0).toBe(sach);
+});

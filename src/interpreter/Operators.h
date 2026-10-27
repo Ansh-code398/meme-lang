@@ -6,9 +6,12 @@
 #include <variant>
 #include <limits>
 #include "Value.h"
+#include "Environment.h"
 
 inline Value add(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value
@@ -40,16 +43,18 @@ inline Value add(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Ye kya bawasir bana diye ho? '" + a.typeName() +
-                    "' aur '" + b.typeName() + "' ko aapas mein jod (+) nahi sakte!");
+                    "Ye kya bawasir bana diye ho? '" + da.typeName() +
+                    "' aur '" + db.typeName() + "' ko aapas mein jod (+) nahi sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value subtract(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value
@@ -77,16 +82,18 @@ inline Value subtract(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Zor-zabardasti mat karo! '" + a.typeName() +
-                    "' mein se '" + b.typeName() + "' ko ghata (-) nahi sakte!");
+                    "Zor-zabardasti mat karo! '" + da.typeName() +
+                    "' mein se '" + db.typeName() + "' ko ghata (-) nahi sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value multiply(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value
@@ -115,52 +122,88 @@ inline Value multiply(const Value &a, const Value &b)
             {
                 if (rhs < 0)
                 {
-                    throw std::runtime_error("Delulu is not the solulu! String ko negative baar kaise multiply karoge?");
+                    throw std::runtime_error(
+                        "String ko negative baar guna (*) karne chale ho? Time machine mein piche jaana hai kya?");
                 }
-                std::string res;
+                if (rhs == 0)
+                {
+                    return Value("");
+                }
+                if (lhs.empty())
+                {
+                    return Value("");
+                }
+
+                if (static_cast<unsigned long long>(rhs) > 1000000000ULL / lhs.length())
+                {
+                    throw std::runtime_error("Itna lamba string multiply karoge toh RAM dharamsala thodi hai jo sab jhel lega!");
+                }
+
+                std::string result;
+                result.reserve(lhs.length() * rhs);
                 for (long long i = 0; i < rhs; ++i)
                 {
-                    res += lhs;
+                    result += lhs;
                 }
-                return Value(res);
+                return Value(result);
             },
             [](long long lhs, const std::string &rhs) -> Value
             {
                 if (lhs < 0)
                 {
-                    throw std::runtime_error("Delulu is not the solulu! String ko negative baar kaise multiply karoge?");
+                    throw std::runtime_error(
+                        "String ko negative baar guna (*) karne chale ho? Time machine mein piche jaana hai kya?");
                 }
-                std::string res;
+                if (lhs == 0)
+                {
+                    return Value("");
+                }
+                if (rhs.empty())
+                {
+                    return Value("");
+                }
+
+                if (static_cast<unsigned long long>(lhs) > 1000000000ULL / rhs.length())
+                {
+                    throw std::runtime_error("Itna lamba string multiply karoge toh RAM dharamsala thodi hai jo sab jhel lega!");
+                }
+
+                std::string result;
+                result.reserve(rhs.length() * lhs);
                 for (long long i = 0; i < lhs; ++i)
                 {
-                    res += rhs;
+                    result += rhs;
                 }
-                return Value(res);
+                return Value(result);
             },
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Kuch bhi?! '" + a.typeName() +
-                    "' aur '" + b.typeName() + "' ka aapas mein guna (*) nahi ho sakta!");
+                    "Ye kya hisaab hai? '" + da.typeName() +
+                    "' ko '" + db.typeName() + "' se guna (*) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value divide(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value
             {
                 if (rhs == 0)
                 {
-                    throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
+                    throw std::runtime_error(
+                        "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
                 }
                 if (lhs == std::numeric_limits<long long>::min() && rhs == -1)
                 {
-                    throw std::runtime_error("Miracle! Miracle! Division karte-karte hi integer overflow ho gaya!");
+                    throw std::runtime_error(
+                        "Integer overflow ho gaya! Is hisaab ko sambhalne ki aukaat nahi hai.");
                 }
                 return Value(lhs / rhs);
             },
@@ -168,7 +211,8 @@ inline Value divide(const Value &a, const Value &b)
             {
                 if (rhs == 0.0)
                 {
-                    throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
+                    throw std::runtime_error(
+                        "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
                 }
                 return Value(static_cast<double>(lhs) / rhs);
             },
@@ -176,7 +220,8 @@ inline Value divide(const Value &a, const Value &b)
             {
                 if (rhs == 0)
                 {
-                    throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
+                    throw std::runtime_error(
+                        "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
                 }
                 return Value(lhs / static_cast<double>(rhs));
             },
@@ -184,23 +229,26 @@ inline Value divide(const Value &a, const Value &b)
             {
                 if (rhs == 0.0)
                 {
-                    throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
+                    throw std::runtime_error(
+                        "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
                 }
                 return Value(lhs / rhs);
             },
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Aap apna aur mera time waste kar rahe ho! '" + a.typeName() +
-                    "' aur '" + b.typeName() + "' ko divide (/) nahi kar sakte!");
+                    "Aukaat ke bahar! '" + da.typeName() +
+                    "' ko '" + db.typeName() + "' se divide (/) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value modulo(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value
@@ -214,16 +262,17 @@ inline Value modulo(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Modulo (%) sirf bina_point (int) numbers ke beech hota hai, '" + a.typeName() +
-                    "' aur '" + b.typeName() + "' pe nahi!");
+                    "Modulo (%) sirf bina_point (int) numbers ke beech hota hai, '" + da.typeName() +
+                    "' aur '" + db.typeName() + "' pe nahi!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value negate(const Value &a)
 {
+    Value da = a.deref();
     return std::visit(
         overload{
             [](long long v) -> Value
@@ -241,10 +290,10 @@ inline Value negate(const Value &a)
             [&](const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "'" + a.typeName() + "' ke aage minus (-) kaise laga diya tune?");
+                    "'" + da.typeName() + "' ke aage minus (-) kaise laga diya tune?");
             }
         },
-        a.data);
+        da.data);
 }
 
 inline Value logicalNot(const Value &a)
@@ -264,6 +313,8 @@ inline Value notEqual(const Value &a, const Value &b)
 
 inline Value lessThan(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value { return Value(lhs < rhs); },
@@ -274,15 +325,17 @@ inline Value lessThan(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko compare (<) nahi kar sakte!");
+                    "Seb ko santre se mat tolo! '" + da.typeName() + "' aur '" + db.typeName() + "' ko compare (<) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value lessThanEqual(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value { return Value(lhs <= rhs); },
@@ -293,15 +346,17 @@ inline Value lessThanEqual(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko compare (<=) nahi kar sakte!");
+                    "Seb ko santre se mat tolo! '" + da.typeName() + "' aur '" + db.typeName() + "' ko compare (<=) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value greaterThan(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value { return Value(lhs > rhs); },
@@ -312,15 +367,17 @@ inline Value greaterThan(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko compare (>) nahi kar sakte!");
+                    "Seb ko santre se mat tolo! '" + da.typeName() + "' aur '" + db.typeName() + "' ko compare (>) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 inline Value greaterThanEqual(const Value &a, const Value &b)
 {
+    Value da = a.deref();
+    Value db = b.deref();
     return std::visit(
         overload{
             [](long long lhs, long long rhs) -> Value { return Value(lhs >= rhs); },
@@ -331,11 +388,11 @@ inline Value greaterThanEqual(const Value &a, const Value &b)
             [&](const auto &, const auto &) -> Value
             {
                 throw std::runtime_error(
-                    "Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko compare (>=) nahi kar sakte!");
+                    "Seb ko santre se mat tolo! '" + da.typeName() + "' aur '" + db.typeName() + "' ko compare (>=) nahi kar sakte!");
             }
         },
-        a.data,
-        b.data);
+        da.data,
+        db.data);
 }
 
 #endif

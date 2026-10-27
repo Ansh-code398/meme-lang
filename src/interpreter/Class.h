@@ -20,12 +20,26 @@ private:
     std::unordered_map<std::string, Value> fields;
 
 public:
+    bool isDropped = false;
+
     Instance(std::shared_ptr<ClassCallable> klass) : klass(klass) {}
 
     std::shared_ptr<ClassCallable> getClass() const
     {
         return klass;
     }
+
+    const std::unordered_map<std::string, Value> &getFields() const
+    {
+        return fields;
+    }
+
+    bool hasField(const std::string &name) const
+    {
+        return fields.find(name) != fields.end();
+    }
+
+    std::shared_ptr<Instance> clone() const;
 
     Value get(const std::string &name);
 
@@ -74,7 +88,28 @@ public:
         return nullptr;
     }
 
-    size_t arity() const override
+    std::vector<std::string> getMethodNames() const
+    {
+        std::vector<std::string> names;
+        for (const auto &pair : methods)
+        {
+            names.push_back(pair.first);
+        }
+        if (superclass != nullptr)
+        {
+            auto superNames = superclass->getMethodNames();
+            for (const auto &sn : superNames)
+            {
+                if (methods.find(sn) == methods.end())
+                {
+                    names.push_back(sn);
+                }
+            }
+        }
+        return names;
+    }
+
+    std::shared_ptr<UserFunction> findInitializer() const
     {
         auto initializer = findMethod("shuru");
         if (initializer == nullptr)
@@ -85,11 +120,57 @@ public:
         {
             initializer = findMethod("init");
         }
+        return initializer;
+    }
+
+    size_t arity() const override
+    {
+        auto initializer = findInitializer();
         if (initializer != nullptr)
         {
             return initializer->arity();
         }
         return 0;
+    }
+
+    size_t minArity() const override
+    {
+        auto initializer = findInitializer();
+        if (initializer != nullptr)
+        {
+            return initializer->minArity();
+        }
+        return 0;
+    }
+
+    size_t maxArity() const override
+    {
+        auto initializer = findInitializer();
+        if (initializer != nullptr)
+        {
+            return initializer->maxArity();
+        }
+        return 0;
+    }
+
+    bool isVariadic() const override
+    {
+        auto initializer = findInitializer();
+        if (initializer != nullptr)
+        {
+            return initializer->isVariadic();
+        }
+        return false;
+    }
+
+    bool checkArity(size_t count) const override
+    {
+        auto initializer = findInitializer();
+        if (initializer != nullptr)
+        {
+            return initializer->checkArity(count);
+        }
+        return count == 0;
     }
 
     Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
@@ -115,6 +196,26 @@ public:
         return method->arity();
     }
 
+    size_t minArity() const override
+    {
+        return method->minArity();
+    }
+
+    size_t maxArity() const override
+    {
+        return method->maxArity();
+    }
+
+    bool isVariadic() const override
+    {
+        return method->isVariadic();
+    }
+
+    bool checkArity(size_t count) const override
+    {
+        return method->checkArity(count);
+    }
+
     Value call(Interpreter &interpreter, const std::vector<Value> &args) override
     {
         auto env = std::make_shared<Environment>(method->getClosure());
@@ -122,6 +223,7 @@ public:
         env->define("khud", Value(instance));
         env->define("apna", Value(instance));
         env->define("this", Value(instance));
+        env->define("self", Value(instance));
 
         auto boundFunc = std::make_shared<UserFunction>(method->getDeclaration(), env);
         return boundFunc->call(interpreter, args);
@@ -130,6 +232,27 @@ public:
     std::string toString() const override
     {
         return "<method " + method->getName() + ">";
+    }
+};
+
+class InstanceCloneCallable : public Callable
+{
+private:
+    std::shared_ptr<Instance> instance;
+
+public:
+    InstanceCloneCallable(std::shared_ptr<Instance> instance) : instance(instance) {}
+
+    size_t arity() const override { return 0; }
+
+    Value call(Interpreter &, const std::vector<Value> &) override
+    {
+        return Value(instance->clone());
+    }
+
+    std::string toString() const override
+    {
+        return "<method nakal>";
     }
 };
 
@@ -147,7 +270,30 @@ inline Value Instance::get(const std::string &name)
         return Value(std::make_shared<BoundMethod>(shared_from_this(), method));
     }
 
+    if (name == "nakal" || name == "clone")
+    {
+        return Value(std::make_shared<InstanceCloneCallable>(shared_from_this()));
+    }
+
     throw std::runtime_error("Khopdi tod saale ka! '" + klass->getName() + "' biradari ke paas '" + name + "' naam ka kuch nahi hai!");
+}
+
+inline std::shared_ptr<Instance> Instance::clone() const
+{
+    auto copy = std::make_shared<Instance>(klass);
+    for (const auto &pair : fields)
+    {
+        if (pair.second.isInstance())
+        {
+            auto child = pair.second.getInstance();
+            copy->set(pair.first, child ? Value(child->clone()) : pair.second);
+        }
+        else
+        {
+            copy->set(pair.first, pair.second);
+        }
+    }
+    return copy;
 }
 
 inline std::string Instance::toString() const

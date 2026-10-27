@@ -16,6 +16,7 @@ class Interpreter;
 class UserFunction : public Callable
 {
 private:
+    std::shared_ptr<const FuncDeclStmt> declarationOwner;
     const FuncDeclStmt *declaration;
     std::shared_ptr<Environment> closure;
 
@@ -23,15 +24,46 @@ public:
     UserFunction(const FuncDeclStmt *declaration, std::shared_ptr<Environment> closure)
         : declaration(declaration), closure(closure) {}
 
+    UserFunction(std::shared_ptr<const FuncDeclStmt> declarationOwner, std::shared_ptr<Environment> closure)
+        : declarationOwner(declarationOwner), declaration(declarationOwner.get()), closure(closure) {}
+
     size_t arity() const override
     {
-        return declaration->params.size();
+        return declaration->minArity();
+    }
+
+    size_t minArity() const override
+    {
+        return declaration->minArity();
+    }
+
+    size_t maxArity() const override
+    {
+        return declaration->maxArity();
+    }
+
+    bool isVariadic() const override
+    {
+        return declaration->isVariadic();
+    }
+
+    bool checkArity(size_t count) const override
+    {
+        if (isVariadic())
+        {
+            return count >= minArity();
+        }
+        return count >= minArity() && count <= maxArity();
     }
 
     Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
 
     std::string toString() const override
     {
+        if (declaration->name.empty())
+        {
+            return "<jugaad lambda>";
+        }
         return "<kar " + declaration->name + ">";
     }
 
@@ -68,14 +100,7 @@ class LambaiBuiltin : public Callable
 {
 public:
     size_t arity() const override { return 1; }
-    Value call(Interpreter &, const std::vector<Value> &args) override
-    {
-        if (std::holds_alternative<std::string>(args[0].data))
-        {
-            return Value(static_cast<long long>(std::get<std::string>(args[0].data).size()));
-        }
-        throw std::runtime_error("'size()' sirf string naapta hai, '" + args[0].typeName() + "' pe fita mat lagao!");
-    }
+    Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
     std::string toString() const override { return "<builtin size>"; }
 };
 
@@ -86,6 +111,7 @@ public:
     size_t arity() const override { return 1; }
     Value call(Interpreter &, const std::vector<Value> &args) override
     {
+        Value val = args[0].deref();
         return std::visit(
             overload{
                 [](long long v) -> Value { return Value(v); },
@@ -107,7 +133,7 @@ public:
                     throw std::runtime_error("Utha le re baba! Is type ko bina_point (integer) number mein convert nahi kar sakte!");
                 }
             },
-            args[0].data);
+            val.data);
     }
     std::string toString() const override { return "<builtin bina_point>"; }
 };
@@ -119,6 +145,7 @@ public:
     size_t arity() const override { return 1; }
     Value call(Interpreter &, const std::vector<Value> &args) override
     {
+        Value val = args[0].deref();
         return std::visit(
             overload{
                 [](double v) -> Value { return Value(v); },
@@ -140,9 +167,27 @@ public:
                     throw std::runtime_error("Daya, kuch toh gadbad hai! Is type ko point_wala (decimal) number mein convert nahi kar sakte!");
                 }
             },
-            args[0].data);
+            val.data);
     }
     std::string toString() const override { return "<builtin point_wala>"; }
+};
+
+// Builtin: nakal(val) -> explicit clone
+class NakalBuiltin : public Callable
+{
+public:
+    size_t arity() const override { return 1; }
+    Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
+    std::string toString() const override { return "<builtin nakal>"; }
+};
+
+// Builtin: kundli(obj) -> returns dynamic fields map or class methods list
+class KundliBuiltin : public Callable
+{
+public:
+    size_t arity() const override { return 1; }
+    Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
+    std::string toString() const override { return "<builtin kundli>"; }
 };
 
 #endif

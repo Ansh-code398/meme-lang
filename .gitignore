@@ -1,6 +1,12 @@
 a.out
 meme
+meme_minimal
+meme_oop
 *.o
 test_runner
 test_ops
 .DS_Store
+tools/emsdk/
+docs/node_modules/
+docs/dist/
+.tijori.json

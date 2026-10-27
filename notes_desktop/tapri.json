@@ -1,0 +1,7 @@
+{
+  "name": "notes_desktop",
+  "version": "1.0.0",
+  "description": "Zero-WebView Native Desktop Notes & Task Manager",
+  "entry": "src/App.meme",
+  "dependencies": {}
+}

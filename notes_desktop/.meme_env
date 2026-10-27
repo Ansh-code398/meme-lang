@@ -1,0 +1,4 @@
+APP_NAME=ChaiVault
+APP_ENV=development
+PORT=3002
+PLATFORM=desktop

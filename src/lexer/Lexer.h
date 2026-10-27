@@ -14,6 +14,7 @@ enum class TokenType
     WAPAS,
     DEKH,
     WARNA,
+    ELIF,
     JABTAK,
     GHOOM,
     SE,
@@ -30,6 +31,26 @@ enum class TokenType
     SANCHA,
     NEPO,
 
+    // Memory Safety & Borrowing (Rust-style)
+    UDHAAR,
+    UDHAAR_BADAL,
+    NAKAL,
+
+    // Error Handling
+    PANGA,
+    LAFDA,
+    PAKKA,
+    CHILLAO,
+
+    // Module Imports
+    IMPORT,
+    AS,
+
+    // Enums & Pattern Matching
+    AVTAR,
+    JAANCH,
+    BAAKI,
+
     // Operators
     PLUS,
     MINUS,
@@ -44,6 +65,8 @@ enum class TokenType
     LESS_THAN_EQUAL,
     GREATER_THAN_EQUAL,
     NOT,
+    ARROW,
+    THIN_ARROW,
 
     // Punctuation
     SEMICOLON,
@@ -53,12 +76,16 @@ enum class TokenType
     OPEN_BRACE,
     CLOSE_BRACE,
     DOT,
+    ELLIPSIS,
     OPEN_SQUARE_BRACKET,
     CLOSE_SQUARE_BRACKET,
+    COLON,
+    QUESTION,
     // Literals
     INT_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,
+    FSTRING_LITERAL,
 
     // Identifiers
     IDENTIFIER,
@@ -135,59 +162,135 @@ public:
             // Variables & Functions
             {"pakad", TokenType::LE},
             {"le", TokenType::LE},
+            {"let", TokenType::LE},
+            {"var", TokenType::LE},
             {"jugaad", TokenType::KAR},
             {"kar", TokenType::KAR},
+            {"kaam", TokenType::KAR},
+            {"def", TokenType::KAR},
+            {"fn", TokenType::KAR},
             {"ye_le", TokenType::WAPAS},
             {"wapas", TokenType::WAPAS},
+            {"de", TokenType::WAPAS},
+            {"return", TokenType::WAPAS},
 
             // Conditionals
             {"dekh", TokenType::DEKH},
             {"agar", TokenType::DEKH},
+            {"if", TokenType::DEKH},
             {"warna", TokenType::WARNA},
             {"nahi_toh", TokenType::WARNA},
+            {"else", TokenType::WARNA},
+            {"elif", TokenType::ELIF},
 
             // Loops & Flow Control
             {"jabtak", TokenType::JABTAK},
+            {"while", TokenType::JABTAK},
             {"ghuma", TokenType::GHOOM},
             {"ghoom", TokenType::GHOOM},
+            {"har", TokenType::GHOOM},
+            {"for", TokenType::GHOOM},
             {"se", TokenType::SE},
+            {"from", TokenType::SE},
             {"mein", TokenType::MEIN},
             {"andar", TokenType::MEIN},
+            {"in", TokenType::MEIN},
             {"bas_kar", TokenType::BAS},
             {"bas", TokenType::BAS},
+            {"break", TokenType::BAS},
             {"aage_badh", TokenType::CHAL},
             {"chal", TokenType::CHAL},
+            {"continue", TokenType::CHAL},
 
             // OOP
             {"biradari", TokenType::SANCHA},
             {"vibe", TokenType::SANCHA},
             {"class", TokenType::SANCHA},
             {"sancha", TokenType::SANCHA},
+            {"roop", TokenType::SANCHA},
             {"nepo", TokenType::NEPO},
 
             // Input / Output
             {"dikha", TokenType::DIKHA},
             {"flex", TokenType::DIKHA},
             {"bol", TokenType::DIKHA},
+            {"print", TokenType::DIKHA},
             {"bata", TokenType::POOCH},
             {"pooch", TokenType::POOCH},
             {"puch", TokenType::POOCH},
+            {"input", TokenType::POOCH},
 
             // Logic
             {"aur", TokenType::AUR},
+            {"and", TokenType::AUR},
             {"ya", TokenType::YA},
+            {"or", TokenType::YA},
+            {"not", TokenType::NOT},
 
             // Literals
             {"han", TokenType::HAN},
             {"haan", TokenType::HAN},
+            {"sach", TokenType::HAN},
             {"real", TokenType::HAN},
+            {"true", TokenType::HAN},
             {"nhi", TokenType::NHI},
             {"nahi", TokenType::NHI},
+            {"na", TokenType::NHI},
+            {"jhooth", TokenType::NHI},
             {"cap", TokenType::NHI},
+            {"false", TokenType::NHI},
             {"nalla", TokenType::KUCH_NHI},
             {"khali", TokenType::KUCH_NHI},
             {"kuch_nhi", TokenType::KUCH_NHI},
-            {"kuch_nahi", TokenType::KUCH_NHI}};
+            {"kuch_nahi", TokenType::KUCH_NHI},
+            {"null", TokenType::KUCH_NHI},
+            {"none", TokenType::KUCH_NHI},
+            {"nil", TokenType::KUCH_NHI},
+
+            // Memory Safety & Borrowing
+            {"udhaar", TokenType::UDHAAR},
+            {"borrow", TokenType::UDHAAR},
+            {"ref", TokenType::UDHAAR},
+            {"udhaar_badal", TokenType::UDHAAR_BADAL},
+            {"udhaar_badlo", TokenType::UDHAAR_BADAL},
+            {"borrow_mut", TokenType::UDHAAR_BADAL},
+            {"mut_ref", TokenType::UDHAAR_BADAL},
+            {"nakal", TokenType::NAKAL},
+            {"clone", TokenType::NAKAL},
+            {"copy", TokenType::NAKAL},
+
+            // Error Handling
+            {"panga", TokenType::PANGA},
+            {"koshish", TokenType::PANGA},
+            {"try", TokenType::PANGA},
+            {"lafda", TokenType::LAFDA},
+            {"sambhal", TokenType::LAFDA},
+            {"catch", TokenType::LAFDA},
+            {"pakka", TokenType::PAKKA},
+            {"hamesha", TokenType::PAKKA},
+            {"finally", TokenType::PAKKA},
+            {"chillao", TokenType::CHILLAO},
+            {"fek", TokenType::CHILLAO},
+            {"throw", TokenType::CHILLAO},
+
+            // Module Imports
+            {"bula", TokenType::IMPORT},
+            {"chura", TokenType::IMPORT},
+            {"lao", TokenType::IMPORT},
+            {"shamil", TokenType::IMPORT},
+            {"import", TokenType::IMPORT},
+            {"jaise", TokenType::AS},
+            {"as", TokenType::AS},
+
+            // Enums & Pattern Matching
+            {"avtar", TokenType::AVTAR},
+            {"kism", TokenType::AVTAR},
+            {"enum", TokenType::AVTAR},
+            {"jaanch", TokenType::JAANCH},
+            {"parakh", TokenType::JAANCH},
+            {"match", TokenType::JAANCH},
+            {"baaki", TokenType::BAAKI},
+            {"default", TokenType::BAAKI}};
 
         while (!isAtEnd())
         {
@@ -251,6 +354,79 @@ public:
                                       "💤 Comment likhte-likhte so gaye kya? '*/' lagana bhool gaye!",
                                       tokenLine,
                                       tokenColumn});
+                }
+
+                continue;
+            }
+
+
+            // --------------------------------
+            // F-String literals (f"..." or f'...' or F"..." or F'...')
+            // --------------------------------
+            if ((currentChar == 'f' || currentChar == 'F') &&
+                (peekNext() == '"' || peekNext() == '\''))
+            {
+                advance(); // consume 'f' or 'F'
+                char quote = advance(); // consume opening quote
+
+                std::string value;
+                bool terminated = false;
+
+                while (!isAtEnd())
+                {
+                    char c = peek();
+
+                    if (c == quote)
+                    {
+                        advance();
+                        terminated = true;
+                        break;
+                    }
+
+                    if (c == '\\')
+                    {
+                        advance();
+
+                        if (isAtEnd())
+                            break;
+
+                        char escaped = advance();
+
+                        switch (escaped)
+                        {
+                        case 'n':
+                            value += '\n';
+                            break;
+                        case 't':
+                            value += '\t';
+                            break;
+                        case '"':
+                            value += '"';
+                            break;
+                        case '\'':
+                            value += '\'';
+                            break;
+                        case '\\':
+                            value += '\\';
+                            break;
+                        default:
+                            value += escaped;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        value += advance();
+                    }
+                }
+
+                if (!terminated)
+                {
+                    tokens.push_back({TokenType::ERROR, "😒 F-string khol ke chhod diya... band tera baap karega?", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    tokens.push_back({TokenType::FSTRING_LITERAL, value, tokenLine, tokenColumn});
                 }
 
                 continue;
@@ -323,6 +499,7 @@ public:
 
                 continue;
             }
+
 
             // --------------------------------
             // String literals
@@ -415,6 +592,26 @@ public:
                 advance();
 
                 tokens.push_back({TokenType::EQUAL, "==", tokenLine, tokenColumn});
+
+                continue;
+            }
+
+            else if (currentChar == '=' && peekNext() == '>')
+            {
+                advance();
+                advance();
+
+                tokens.push_back({TokenType::ARROW, "=>", tokenLine, tokenColumn});
+
+                continue;
+            }
+
+            else if (currentChar == '-' && peekNext() == '>')
+            {
+                advance();
+                advance();
+
+                tokens.push_back({TokenType::THIN_ARROW, "->", tokenLine, tokenColumn});
 
                 continue;
             }
@@ -545,8 +742,56 @@ public:
                 break;
 
             case '.':
+                if (peekNext() == '.' && position + 2 < source.length() && source[position + 2] == '.')
+                {
+                    advance(); // 1st dot
+                    advance(); // 2nd dot
+                    advance(); // 3rd dot
+                    tokens.push_back({TokenType::ELLIPSIS, "...", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    advance();
+                    tokens.push_back({TokenType::DOT, ".", tokenLine, tokenColumn});
+                }
+                break;
+
+            case '&':
+                if (peekNext() == '&')
+                {
+                    advance(); // 1st &
+                    advance(); // 2nd &
+                    tokens.push_back({TokenType::AUR, "&&", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    advance();
+                    tokens.push_back({TokenType::ERROR, "Akela '&' kya kar raha hai? '&&' (aur) likhna chahte ho kya?", tokenLine, tokenColumn});
+                }
+                break;
+
+            case '|':
+                if (peekNext() == '|')
+                {
+                    advance(); // 1st |
+                    advance(); // 2nd |
+                    tokens.push_back({TokenType::YA, "||", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    advance();
+                    tokens.push_back({TokenType::ERROR, "Akela '|' kya kar raha hai? '||' (ya) likhna chahte ho kya?", tokenLine, tokenColumn});
+                }
+                break;
+
+            case ':':
                 advance();
-                tokens.push_back({TokenType::DOT, ".", tokenLine, tokenColumn});
+                tokens.push_back({TokenType::COLON, ":", tokenLine, tokenColumn});
+                break;
+
+            case '?':
+                advance();
+                tokens.push_back({TokenType::QUESTION, "?", tokenLine, tokenColumn});
                 break;
 
                 // --------------------------------
@@ -554,6 +799,20 @@ public:
                 // --------------------------------
 
             default:
+                if (static_cast<unsigned char>(currentChar) >= 0x80)
+                {
+                    std::string utfVal = "";
+                    while (!isAtEnd() && static_cast<unsigned char>(peek()) >= 0x80)
+                    {
+                        utfVal += advance();
+                    }
+                    while (!isAtEnd() && (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_' || static_cast<unsigned char>(peek()) >= 0x80))
+                    {
+                        utfVal += advance();
+                    }
+                    tokens.push_back({TokenType::IDENTIFIER, utfVal, tokenLine, tokenColumn});
+                    break;
+                }
                 advance();
 
                 tokens.push_back({TokenType::ERROR, std::string("😭 Chi sasura! Ye kaisa alien symbol ghusa diye ho code mein: ") + currentChar, tokenLine, tokenColumn});
@@ -586,6 +845,8 @@ public:
             return "DEKH";
         case TokenType::WARNA:
             return "WARNA";
+        case TokenType::ELIF:
+            return "ELIF";
         case TokenType::JABTAK:
             return "JABTAK";
         case TokenType::GHOOM:
@@ -626,6 +887,8 @@ public:
             return "FLOAT_LITERAL";
         case TokenType::STRING_LITERAL:
             return "STRING_LITERAL";
+        case TokenType::FSTRING_LITERAL:
+            return "FSTRING_LITERAL";
 
         // Operators
         case TokenType::PLUS:
@@ -655,6 +918,10 @@ public:
             return "GREATER_THAN_EQUAL";
         case TokenType::NOT:
             return "NOT";
+        case TokenType::ARROW:
+            return "ARROW";
+        case TokenType::THIN_ARROW:
+            return "THIN_ARROW";
 
         // Punctuation
         case TokenType::SEMICOLON:
@@ -663,6 +930,8 @@ public:
             return "COMMA";
         case TokenType::DOT:
             return "DOT";
+        case TokenType::ELLIPSIS:
+            return "ELLIPSIS";
 
         case TokenType::OPEN_PAREN:
             return "OPEN_PAREN";
@@ -678,6 +947,10 @@ public:
             return "OPEN_SQUARE_BRACKET";
         case TokenType::CLOSE_SQUARE_BRACKET:
             return "CLOSE_SQUARE_BRACKET";
+        case TokenType::COLON:
+            return "COLON";
+        case TokenType::QUESTION:
+            return "QUESTION";
 
         // Special
         case TokenType::ERROR:
