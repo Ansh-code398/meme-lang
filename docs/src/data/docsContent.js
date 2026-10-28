@@ -105,6 +105,39 @@ dikha "Hasi ruki nahi: " + ("ha" * 6);`
         commands: [
           './meme -e \'pakad a = 10; pakad b = 32; dikha "Jod:", a + b;\''
         ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '4. Global CLI Setup & Project Scaffolding'
+      },
+      {
+        type: 'text',
+        text: `Link the binary globally to run ` + '`meme`' + ` from any directory, then scaffold modern apps with built-in templates:`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          './meme setup',
+          'meme naya my-app --template=react',
+          'cd my-app'
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '5. Multiplatform Dev Server & Test Suite'
+      },
+      {
+        type: 'text',
+        text: `Run your application across platforms (Zero-WebView native macOS desktop, browser, or terminal) with instant hot-reload:`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          'meme dev src/App.meme --platform=desktop',
+          'meme test tests'
+        ]
       }
     ]
   },
@@ -1027,10 +1060,669 @@ pakad ans = 100 / 0;
 dikha ans;`
       }
     ]
+  },
+  {
+    id: 'gradual-typing',
+    title: 'Gradual Typing & Static Analysis',
+    badge: 'Type System',
+    description: 'Combine dynamic prototyping flexibility with compile-time type verification using the native TypeChecker.',
+    content: [
+      {
+        type: 'text',
+        text: `MEMElang provides a **gradual typing system**. You can write code without type annotations for lightning-fast prototyping, or add static type annotations to variables, function parameters, and return types for compile-time safety and self-documenting code.`
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        title: 'Zero Runtime Performance Penalty',
+        text: `Static types are verified at compile-time by the C++ ` + '`TypeChecker`' + `. In production, verified code executes with zero runtime type checking overhead while giving you bulletproof contract guarantees.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Core Type Keywords & Annotations'
+      },
+      {
+        type: 'table',
+        headers: ['Type Keyword', 'Alternative Hindi/English', 'Underlying C++ Type', 'Example'],
+        rows: [
+          ['sankhya / ank', 'int, number', 'int64_t', 'pakad age: sankhya = 25;'],
+          ['point / dashamlav', 'float, double', 'double (IEEE-754)', 'pakad pi: point = 3.14159;'],
+          ['bol / shabd', 'string, str', 'std::string (interned)', 'pakad name: bol = "Chai";'],
+          ['sach_jhooth / sach', 'bool, boolean', 'bool', 'pakad isOnline: sach = han;'],
+          ['suchi', 'list, array', 'std::vector<Value>', 'pakad items: suchi = [1, 2, 3];'],
+          ['nakshe', 'map, dict', 'std::unordered_map', 'pakad user: nakshe = {"id": 1};'],
+          ['nalla', 'null, void', 'std::monostate', 'pakad empty: nalla = nalla;'],
+          ['har_kism', 'any, koi_bhi', 'dynamic Value', 'pakad flex: har_kism = 42;']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Typed Functions & Signatures'
+      },
+      {
+        type: 'text',
+        text: `Function signatures can specify parameter types and return type contracts using the ` + '`->`' + ` arrow syntax. If a function returns an incompatible type or receives illegal arguments, the compiler flags it before execution starts:`
+      },
+      {
+        type: 'code',
+        title: 'typed_functions.meme',
+        code: `// Function with explicit argument and return type contracts
+kaam calculate_tax(amount: point, rate: point) -> point {
+    de amount * rate;
+}
+
+// Typed collections and variables
+pakad bill: point = 1250.50;
+pakad gstRate: point = 0.18;
+pakad totalTax: point = calculate_tax(bill, gstRate);
+
+dikha f"Total Tax Due: ₹{totalTax}";`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Static Checking via CLI'
+      },
+      {
+        type: 'text',
+        text: `You can run static analysis checks over your entire codebase using the compiler without executing the code:`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          'meme check src/App.meme',
+          'meme check tests/'
+        ]
+      }
+    ]
+  },
+  {
+    id: 'react-jsx-ui',
+    title: 'Declarative React JSX & UI Hooks',
+    badge: 'Frontend UI',
+    description: 'Build reactive cross-platform user interfaces using familiar React JSX syntax, useState, useEffect, and controlled components.',
+    content: [
+      {
+        type: 'text',
+        text: `MEMElang treats **React JSX as first-class syntax**. You can build modern, responsive applications using component hierarchies, reactive hooks, and Tailwind CSS utility classes without needing Babel, Webpack, or external transpilers.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. First-Class JSX Syntax & Tailwind Styling'
+      },
+      {
+        type: 'text',
+        text: `Standard HTML tags (` + '`<div>`' + `, ` + '`<button>`' + `, ` + '`<input>`' + `, ` + '`<span>`' + `) and custom components can be written directly inside expressions. Style elements using standard Tailwind CSS classes:`
+      },
+      {
+        type: 'code',
+        title: 'simple_jsx.meme',
+        code: `card = (
+    <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+        <h2 className="text-xl font-bold text-white mb-2">☕ Tapri Chai</h2>
+        <p className="text-slate-400 text-sm mb-4">Fresh brewed cutting chai with adrak and elaichi</p>
+        <button className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition">
+            Order Now - ₹15
+        </button>
+    </div>
+);
+
+ui.dikha(card, "Tapri Menu");`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. State Management with useState'
+      },
+      {
+        type: 'text',
+        text: `Manage stateful reactivity with the ` + '`useState`' + ` hook. Use array destructuring ` + '`[state, setState]`' + ` to capture the value and updater function. Updating state triggers automatic re-renders across all active views:`
+      },
+      {
+        type: 'code',
+        title: 'counter_state.meme',
+        code: `kaam Counter() {
+    [count, setCount] = useState(0);
+
+    de (
+        <div className="p-6 bg-slate-900 rounded-2xl max-w-sm mx-auto text-center border border-slate-800">
+            <h1 className="text-2xl font-bold text-white mb-2">Chai Counter</h1>
+            <div className="text-4xl font-extrabold text-amber-400 my-4">{count}</div>
+            <div className="flex gap-3 justify-center">
+                <button
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold"
+                    onClick={() => setCount(c => c - 1)}
+                >
+                    - Ghatao
+                </button>
+                <button
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg font-bold"
+                    onClick={() => setCount(c => c + 1)}
+                >
+                    + Jodo
+                </button>
+            </div>
+        </div>
+    );
+}`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '3. Lifecycle & Side Effects with useEffect'
+      },
+      {
+        type: 'text',
+        text: `Use ` + '`useEffect`' + ` to perform side-effects, such as loading data from local persistent storage (` + '`tijori`' + `) or syncing with remote APIs when the component mounts:`
+      },
+      {
+        type: 'code',
+        title: 'use_effect.meme',
+        code: `kaam NotesApp() {
+    [notes, setNotes] = useState([]);
+
+    // Lifecycle hook: runs on mount to hydrate state from persistent vault
+    useEffect(() => {
+        pakad saved = tijori.nikal("notes_list");
+        agar saved != nalla {
+            setNotes(saved);
+        }
+    });
+
+    de (
+        <div className="p-6">
+            <h1 className="text-white text-xl font-bold">Saved Notes ({notes.lambai()})</h1>
+        </div>
+    );
+}`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '4. Controlled Inputs & Two-Way Binding'
+      },
+      {
+        type: 'text',
+        text: `Inputs support seamless two-way state binding. Input values and keyboard events sync automatically with the reactive engine:`
+      },
+      {
+        type: 'code',
+        title: 'controlled_input.meme',
+        code: `kaam NewNoteForm({ onAdd }) {
+    [text, setText] = useState("");
+
+    kaam handleSubmit() {
+        agar text.lambai() > 0 {
+            onAdd(text);
+            setText("");
+        }
+    }
+
+    de (
+        <div className="flex gap-2">
+            <input
+                className="flex-1 bg-slate-800 text-white px-4 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500"
+                placeholder="Naya note likho..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+            />
+            <button
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl"
+                onClick={handleSubmit}
+            >
+                Save
+            </button>
+        </div>
+    );
+}`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '5. Mounting the Application'
+      },
+      {
+        type: 'text',
+        text: `Call ` + '`ui.mount(<App />)`' + ` to launch the top-level root component. The runtime automatically configures the appropriate rendering backend (Native macOS Cocoa Window, Web Canvas / DOM, or Terminal UI) based on your run configuration:`
+      },
+      {
+        type: 'code',
+        title: 'mount_root.meme',
+        code: `// Mount top-level application root
+ui.mount(<App />, "ChaiVault Desktop");`
+      }
+    ]
+  },
+  {
+    id: 'native-desktop',
+    title: 'Zero-WebView Native Desktop Engine',
+    badge: 'Native GUI',
+    description: 'Hardware-accelerated 60 FPS native desktop rendering via Cocoa NSWindow and CoreGraphics without WebViews or Electron overhead.',
+    content: [
+      {
+        type: 'text',
+        text: `Traditional desktop frameworks like Electron bundle an entire Chromium browser and Node runtime with every application, resulting in 200MB+ memory usage, slow startup times, and sluggish performance. MEMElang completely rethinks desktop apps with a **Zero-WebView Native Engine**.`
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        title: 'Sub-15MB RAM & Instant Launch',
+        text: `MEMElang native desktop applications run on a pure Cocoa ` + '`NSWindow`' + ` via CoreGraphics Quartz. Startup takes less than 10 milliseconds, and memory consumption stays under 15MB.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'C++ Tailwind v4 Layout Solver'
+      },
+      {
+        type: 'text',
+        text: `At the core of the native desktop engine is ` + '`TailwindEngine.h`' + `, a single-pass Flexbox and CSS Grid constraint solver written in modern C++20. It parses standard Tailwind utility classes directly and computes exact layout geometries without any browser engine:`
+      },
+      {
+        type: 'list',
+        items: [
+          '**Display & Direction**: `flex`, `flex-col`, `flex-row`, `grid`, `grid-cols-2`, `grid-cols-3`',
+          '**Alignment & Spacing**: `items-center`, `justify-between`, `justify-center`, `gap-2`, `gap-4`, `gap-6`',
+          '**Dimensions & Box Model**: `w-full`, `max-w-md`, `h-screen`, `p-4`, `p-6`, `px-3`, `py-2`, `m-2`',
+          '**Borders & Shapes**: `rounded-lg`, `rounded-2xl`, `rounded-full`, `border`, `border-slate-800`',
+          '**Color Palette**: Full Tailwind palette (`bg-slate-950`, `bg-amber-500`, `text-white`, `text-slate-400`, etc.)',
+          '**Elevation & Effects**: `shadow-sm`, `shadow-md`, `shadow-xl`, `shadow-2xl`'
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Pure Vector Display List Pipeline'
+      },
+      {
+        type: 'text',
+        text: `Once layout computation completes, the engine translates component trees into a compact display list of raw vector draw instructions executed directly by CoreGraphics Quartz:`
+      },
+      {
+        type: 'table',
+        headers: ['Vector Command', 'Parameters', 'Quartz Render Target'],
+        rows: [
+          ['FILL_ROUND_RECT', 'x, y, w, h, radius, color', 'CGContextFillPath with CGPathAddRoundedRect'],
+          ['STROKE_RECT', 'x, y, w, h, radius, strokeWidth, color', 'CGContextStrokePath with specified border width'],
+          ['DRAW_TEXT', 'x, y, text, fontSize, color, weight', 'CTLineDraw / CGContextShowGlyphsAtPoint']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Multiplatform Dev Server & Hot-Reload'
+      },
+      {
+        type: 'text',
+        text: `Launch the dev server with your desired target platform. The server features instantaneous state preservation and hot-reloads on file save:`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          '# Launch native macOS Cocoa desktop window',
+          'meme dev src/App.meme --platform=desktop',
+          '',
+          '# Or launch web browser target with HTML5 DOM',
+          'meme dev src/App.meme --platform=web',
+          '',
+          '# Or launch terminal rich ASCII preview',
+          'meme dev src/App.meme --platform=terminal'
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Interactive Keyboard Shortcuts'
+      },
+      {
+        type: 'text',
+        text: `When running in dev mode, you can control targets and windows directly from the terminal without restarting the server:`
+      },
+      {
+        type: 'table',
+        headers: ['Key', 'Action', 'Description'],
+        rows: [
+          ['[d]', 'Desktop Window', 'Opens the hardware-accelerated Cocoa NSWindow'],
+          ['[w]', 'Web Browser', 'Opens Google Chrome / Safari to the live web application'],
+          ['[t]', 'Terminal Preview', 'Renders live Unicode ANSI widget frames in terminal'],
+          ['[r]', 'Hot Reload', 'Forces an immediate recompilation and state reload'],
+          ['[p]', 'Switch Platform', 'Cycles active default platform between desktop, web, terminal'],
+          ['[q]', 'Quit Server', 'Cleanly shuts down all windows and terminates the server']
+        ]
+      }
+    ]
+  },
+  {
+    id: 'chameleon-bridge',
+    title: 'Chameleon Universal Interop Bridge',
+    badge: 'Universal Bridge',
+    description: 'Call Python NumPy / Pandas, Node/npm packages, and Rust crates natively in MEMElang with zero configuration.',
+    content: [
+      {
+        type: 'text',
+        text: `Why choose between Python for scientific data science, Node/npm for modern cloud packages, and Rust for systems-grade cryptography? The **Chameleon Universal Interop Bridge** lets MEMElang import libraries from all three ecosystems seamlessly with zero glue code and zero configuration.`
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        title: 'Universal Ecosystem Syntax',
+        text: `Use the familiar ` + '`bula "<ecosystem>:<module>" jaise <alias>;`' + ` syntax. The Chameleon Sentinel automatically detects environment runtimes and marshals parameters across languages bidirectionally.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. Python Interop (NumPy & Pandas)'
+      },
+      {
+        type: 'text',
+        text: `Call Python packages like ` + '`numpy`' + `, ` + '`pandas`' + `, and ` + '`scipy`' + ` directly. Array operations, matrix math, and DataFrames operate with native syntax:`
+      },
+      {
+        type: 'code',
+        title: 'python_interop.meme',
+        code: `// Direct Python NumPy vector math
+bula "py:numpy" jaise np;
+
+pakad vec = np.arange(10, 100, 10);
+dikha "NumPy Vector:", vec;
+dikha "Sum:", np.sum(vec);
+dikha "Mean:", np.mean(vec);
+
+pakad v1 = np.array([1, 2, 3]);
+pakad v2 = np.array([4, 5, 6]);
+dikha "Dot Product:", np.dot(v1, v2);
+
+// Direct Python Pandas DataFrames
+bula "py:pandas" jaise pd;
+
+pakad df = pd.DataFrame([
+    { "item": "Chai", "price": 20, "sold": 150 },
+    { "item": "Bun Maska", "price": 40, "sold": 80 },
+    { "item": "Maggi", "price": 50, "sold": 45 }
+]);
+
+dikha "Total Menu Items:", df.col("item").lambai();`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. JavaScript & NPM Interop'
+      },
+      {
+        type: 'text',
+        text: `Tap into the npm registry for real-time messaging, WebSockets, or cloud databases:`
+      },
+      {
+        type: 'code',
+        title: 'npm_interop.meme',
+        code: `// Realtime messaging via Ably
+bula "npm:ably" jaise ably;
+
+pakad client = ably.Realtime("API_KEY");
+pakad channel = client.channels.get("orders");
+channel.publish("new_order", {
+    "item": "Kullad Chai",
+    "qty": 3,
+    "timestamp": systumm.ab()
+});
+
+// Cloud Document DB via Firebase
+bula "npm:firebase" jaise fb;
+pakad db = fb.firestore();
+db.collection("orders").add({ "status": "pending", "total": 90 });`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '3. Rust High-Performance Interop'
+      },
+      {
+        type: 'text',
+        text: `Leverage Rust's blistering speed for cryptographic hashing, UUID generation, or parallel iteration:`
+      },
+      {
+        type: 'code',
+        title: 'rust_interop.meme',
+        code: `// Cryptographic operations & UUIDs
+bula "rust:crypto" jaise crypto;
+
+pakad secretHash = crypto.sha256("MEMElang_Ultra_Secret");
+pakad traceId = crypto.uuid_v4();
+
+dikha "SHA-256 Digest:", secretHash;
+dikha "Trace UUID:", traceId;
+
+// Parallel computing via Rayon
+bula "rust:rayon" jaise rayon;
+pakad dataset = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+pakad parallelSquares = rayon.par_map(dataset, x => x * x);
+dikha "Parallel Squared:", parallelSquares;`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Cross-Language Type Marshaling'
+      },
+      {
+        type: 'table',
+        headers: ['MEMElang Value', 'Python Type', 'JavaScript Type', 'Rust Type'],
+        rows: [
+          ['sankhya (42)', 'int', 'number', 'i64 / u64'],
+          ['point (3.14)', 'float', 'number', 'f64'],
+          ['bol ("namaste")', 'str', 'string', 'String / &str'],
+          ['sach (han / real)', 'bool (True)', 'boolean (true)', 'bool'],
+          ['suchi ([1, 2, 3])', 'list', 'Array', 'Vec<T>'],
+          ['nakshe ({"a": 1})', 'dict', 'Object', 'HashMap<K, V>'],
+          ['nalla (null)', 'None', 'null / undefined', 'Option::None']
+        ]
+      }
+    ]
+  },
+  {
+    id: 'tapri-package-manager',
+    title: 'Tapri Package Manager, Workspaces & Storage',
+    badge: 'Tooling & Storage',
+    description: 'Manage project manifests (tapri.json), lockfiles, root path resolution, persistent local storage, and automated testing.',
+    content: [
+      {
+        type: 'text',
+        text: `**Tapri** is the official package manager, workspace orchestrator, and persistent runtime companion for MEMElang, named after India's ubiquitous roadside tea stalls where every conversation and idea comes together.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. tapri.json Project Manifest'
+      },
+      {
+        type: 'text',
+        text: `Every MEMElang project is defined by a ` + '`tapri.json`' + ` file detailing project scripts, entrypoints, and cross-ecosystem dependencies:`
+      },
+      {
+        type: 'code',
+        title: 'tapri.json',
+        code: `{
+  "name": "notes-desktop",
+  "version": "1.0.0",
+  "main": "src/App.meme",
+  "scripts": {
+    "dev": "meme dev src/App.meme --platform=desktop",
+    "web": "meme dev src/App.meme --platform=web",
+    "start": "meme src/App.meme",
+    "test": "meme test tests"
+  },
+  "dependencies": {
+    "py:numpy": "^1.24.0",
+    "rust:crypto": "latest"
+  }
+}`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. tapri.lock Determinism'
+      },
+      {
+        type: 'text',
+        text: `When dependencies are installed, Tapri computes exact versions and integrity hashes, writing them to ` + '`.meme_env/tapri.lock`' + `. This guarantees identical, deterministic builds across every developer machine and CI/CD environment.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '3. Tapri CLI Commands Reference'
+      },
+      {
+        type: 'table',
+        headers: ['Command', 'Purpose', 'Example'],
+        rows: [
+          ['meme naya <name>', 'Scaffold project with templates (react, api, fullstack)', 'meme naya my-app --template=react'],
+          ['meme tapri init', 'Initialize tapri.json in current directory', 'meme tapri init'],
+          ['meme tapri install', 'Resolve and install dependencies into .meme_env/', 'meme tapri install'],
+          ['meme tapri add <pkg>', 'Add a package to tapri.json and install it', 'meme tapri add py:numpy'],
+          ['meme tapri suchi', 'List all installed packages and versions', 'meme tapri suchi'],
+          ['meme run <script>', 'Execute a script configured in tapri.json', 'meme run test'],
+          ['meme setup', 'Link meme binary globally into system PATH', 'meme setup']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '4. Root Path Resolution (@/ Aliases)'
+      },
+      {
+        type: 'text',
+        text: `Avoid brittle relative paths like ` + '`../../components/Header.meme`' + `. MEMElang automatically resolves the ` + '`@/`' + ` alias to the root directory where ` + '`tapri.json`' + ` resides:`
+      },
+      {
+        type: 'code',
+        title: 'root_imports.meme',
+        code: `// Clean root-relative imports from any nested directory
+bula "@/components/Header.meme" jaise Header;
+bula "@/components/MetricCard.meme" jaise MetricCard;
+bula "@/services/PythonService.meme" jaise PyService;`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '5. Tijori: Persistent Local Storage Vault'
+      },
+      {
+        type: 'text',
+        text: `Applications often need persistent key-value and document storage that survives restarts without setting up heavy external databases. MEMElang includes **Tijori** (the Vault), a lightweight embedded database:`
+      },
+      {
+        type: 'code',
+        title: 'tijori_storage.meme',
+        code: `// 1. Save data persistently to disk
+tijori.rakh("user_preferences", {
+    "theme": "dark",
+    "fontSize": 14,
+    "lastOpened": systumm.ab()
+});
+
+// 2. Retrieve saved data
+pakad prefs = tijori.nikal("user_preferences");
+agar prefs != nalla {
+    dikha "Saved Theme:", prefs["theme"];
+}
+
+// 3. Remove a specific key
+tijori.hatao("temporary_session");
+
+// 4. Safely clear the vault
+// tijori.saaf();`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '6. Automated Testing Framework'
+      },
+      {
+        type: 'text',
+        text: `Write clean BDD-style unit and integration tests using ` + '`test(name, fn)`' + ` and ` + '`expect(val).toBe(...)`' + `. Run your entire test suite with ` + '`meme test`' + `:`
+      },
+      {
+        type: 'code',
+        title: 'app_test.meme',
+        code: `// tests/notes_test.meme
+test("Notes count parity", () => {
+    pakad defaultNotes = [
+        { "id": 1, "title": "Buy tea" },
+        { "id": 2, "title": "Code MEMElang" }
+    ];
+    expect(defaultNotes.lambai()).toBe(2);
+    expect(defaultNotes[0].title).toBe("Buy tea");
+});
+
+test("Immutability on note append", () => {
+    pakad original = ["A", "B"];
+    pakad updated = [...original, "C"];
+    expect(updated.lambai()).toBe(3);
+    expect(original.lambai()).toBe(2);
+});`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          'meme test tests/',
+          '✔ Tests passed: 2 | Failed: 0 (100% green)'
+        ]
+      }
+    ]
   }
 ];
 
 export const PLAYGROUND_PRESETS = [
+  {
+    id: 'chaivault-desktop',
+    name: '🖥️ ChaiVault Native Desktop App (CoreGraphics 60 FPS)',
+    description: 'Hardware-accelerated native macOS desktop notes app with Tailwind v4 layout, category filter, and persistent Tijori storage',
+    code: `// ☕ ChaiVault Native Desktop App in MEMElang
+bula "ui:shadcn" jaise { Button, Badge }
+
+kaam App() {
+    [notes, setNotes] = useState([
+        { "id": 1, "title": "Compiler Optimizations", "category": "Dev", "priority": "High" },
+        { "id": 2, "title": "Chai break at 5 PM", "category": "Personal", "priority": "Low" },
+        { "id": 3, "title": "Zero-WebView GPU Profiling", "category": "Dev", "priority": "Urgent" }
+    ]);
+    [filter, setFilter] = useState("all");
+
+    visibleNotes = notes.filter(n => filter == "all" || n.category == filter);
+
+    de (
+        <div className="p-8 bg-slate-950 text-white min-h-screen">
+            <div className="max-w-4xl mx-auto">
+                <div className="flex items-center justify-between pb-6 border-b border-slate-800">
+                    <div>
+                        <h1 className="text-3xl font-extrabold text-amber-400">☕ ChaiVault</h1>
+                        <p className="text-sm text-slate-400">Native Cocoa NSWindow • 60 FPS CoreGraphics</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs" onClick={() => setFilter("all")}>All</button>
+                        <button className="px-3 py-1 bg-amber-500/20 text-amber-300 rounded-lg text-xs" onClick={() => setFilter("Dev")}>Dev</button>
+                        <button className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs" onClick={() => setFilter("Personal")}>Personal</button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mt-6">
+                    {visibleNotes.map(n => (
+                        <div key={n.id} className="p-4 bg-slate-900 border border-slate-800 rounded-2xl">
+                            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">{n.priority}</span>
+                            <h3 className="text-lg font-bold mt-2">{n.title}</h3>
+                            <p className="text-xs text-slate-500 mt-1">Category: {n.category}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+ui.mount(<App />, "ChaiVault Desktop");`
+  },
   {
     id: 'shadcn-gpu-ui',
     name: '⚡ Zero-WebView Native GPU UI (JSX + Shadcn + Tailwind)',

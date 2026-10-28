@@ -15,8 +15,20 @@ const CATEGORIES = [
     sectionIds: ['functions', 'oop', 'error-handling', 'modules']
   },
   {
-    name: 'Memory Safety',
-    sectionIds: ['memory-safety']
+    name: 'Type System & Memory Safety',
+    sectionIds: ['gradual-typing', 'memory-safety']
+  },
+  {
+    name: 'Native UI & Reactivity',
+    sectionIds: ['react-jsx-ui', 'native-desktop']
+  },
+  {
+    name: 'Universal Interop',
+    sectionIds: ['chameleon-bridge']
+  },
+  {
+    name: 'Tooling & Package Manager',
+    sectionIds: ['tapri-package-manager']
   },
   {
     name: 'Standard Library & Errors',
