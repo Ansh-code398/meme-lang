@@ -358,6 +358,20 @@ public:
     }
 };
 
+class AwaitExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> expression;
+
+    AwaitExpr(std::unique_ptr<Expr> expression, int line = 0)
+        : Expr(line), expression(std::move(expression)) {}
+
+    std::string toString() const override
+    {
+        return "sabar " + (expression ? expression->toString() : "");
+    }
+};
+
 // ==========================================
 // 2. Statement AST Hierarchy (Stmt)
 // ==========================================
@@ -659,14 +673,16 @@ public:
     std::vector<FuncParam> paramList;
     std::unique_ptr<Stmt> body;
     std::shared_ptr<Type> returnTypeAnnotation;
+    bool isAsync = false;
 
     FuncDeclStmt(const std::string &name,
                  std::vector<FuncParam> paramList,
                  std::unique_ptr<Stmt> body,
-                 std::shared_ptr<Type> returnTypeAnnotation = nullptr,
+                 std::shared_ptr<Type> returnTypeAnnotation,
+                 bool isAsync,
                  int line = 0)
         : Stmt(line), name(name), paramList(std::move(paramList)), body(std::move(body)),
-          returnTypeAnnotation(std::move(returnTypeAnnotation))
+          returnTypeAnnotation(std::move(returnTypeAnnotation)), isAsync(isAsync)
     {
         for (const auto &p : this->paramList)
         {
@@ -677,15 +693,22 @@ public:
     FuncDeclStmt(const std::string &name,
                  std::vector<FuncParam> paramList,
                  std::unique_ptr<Stmt> body,
+                 std::shared_ptr<Type> returnTypeAnnotation,
                  int line)
-        : FuncDeclStmt(name, std::move(paramList), std::move(body), nullptr, line) {}
+        : FuncDeclStmt(name, std::move(paramList), std::move(body), std::move(returnTypeAnnotation), false, line) {}
+
+    FuncDeclStmt(const std::string &name,
+                 std::vector<FuncParam> paramList,
+                 std::unique_ptr<Stmt> body,
+                 int line)
+        : FuncDeclStmt(name, std::move(paramList), std::move(body), nullptr, false, line) {}
 
     FuncDeclStmt(const std::string &name,
                  std::vector<std::string> oldParams,
                  std::unique_ptr<Stmt> body,
                  int line = 0)
         : Stmt(line), name(name), params(std::move(oldParams)), body(std::move(body)),
-          returnTypeAnnotation(nullptr)
+          returnTypeAnnotation(nullptr), isAsync(false)
     {
         for (const auto &p : this->params)
         {
@@ -1063,6 +1086,20 @@ public:
             return parseGhoomStmt();
         case TokenType::SANCHA:
             return parseClassDeclStmt();
+        case TokenType::ASYNC:
+        {
+            current++; // consume 'async' / 'side_mein'
+            if (peek().type == TokenType::KAR && peekNext().type == TokenType::IDENTIFIER)
+            {
+                return parseFuncDeclStmt(true);
+            }
+            if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::OPEN_PAREN)
+            {
+                return parseFuncDeclStmt(true);
+            }
+            current--; // backtrack
+            return parseExprStmt();
+        }
         case TokenType::PANGA:
             return parseTryCatchStmt();
         case TokenType::CHILLAO:
@@ -1732,11 +1769,14 @@ public:
     }
 
     // 9. `kar funcName(a, b = 10, *rest) { ... }`
-    std::unique_ptr<Stmt> parseFuncDeclStmt()
+    std::unique_ptr<Stmt> parseFuncDeclStmt(bool isAsync = false)
     {
         int line = peek().line;
-        current++; // consume 'kar'
-        checkNotError();
+        if (peek().type == TokenType::KAR)
+        {
+            current++; // consume 'kar'
+            checkNotError();
+        }
 
         if (peek().type != TokenType::IDENTIFIER)
         {
@@ -1757,6 +1797,12 @@ public:
         std::vector<FuncParam> params = parseParameterList(funcName);
         consumeCloseParen("function '" + funcName + "' ke parameters");
 
+        if (peek().type == TokenType::ASYNC)
+        {
+            isAsync = true;
+            current++; // consume 'asar'
+        }
+
         std::shared_ptr<Type> returnType = nullptr;
         checkNotError();
         if (peek().type == TokenType::COLON || peek().type == TokenType::THIN_ARROW || peek().type == TokenType::ARROW)
@@ -1766,7 +1812,7 @@ public:
         }
 
         std::unique_ptr<Stmt> body = parseBlockStmt();
-        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, line);
+        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, isAsync, line);
     }
 
     // 10. `ghoom i se 1 se 10 { ... }` (optional step: `ghoom i se 1 se 10 se 2 { ... }`)
@@ -1908,13 +1954,26 @@ public:
         current++; // consume 'lafda'
         checkNotError();
 
-        if (peek().type != TokenType::IDENTIFIER)
+        std::string catchVar = "err";
+        if (peek().type == TokenType::OPEN_PAREN)
         {
-            errorAt(peek(),
-                "Lafda kiske sar phodoge? 'lafda' ke baad variable ka naam do! Mila: '" + peek().value + "'");
+            current++; // consume '('
+            checkNotError();
+            if (peek().type == TokenType::IDENTIFIER)
+            {
+                catchVar = peek().value;
+                current++;
+            }
+            if (peek().type == TokenType::CLOSE_PAREN)
+            {
+                current++;
+            }
         }
-        std::string catchVar = peek().value;
-        current++; // consume catch variable name
+        else if (peek().type == TokenType::IDENTIFIER)
+        {
+            catchVar = peek().value;
+            current++;
+        }
         checkNotError();
 
         if (peek().type != TokenType::OPEN_BRACE)
@@ -1948,7 +2007,7 @@ public:
         current++; // consume 'chillao'
         checkNotError();
 
-        auto expr = parseLogicalOr();
+        auto expr = parseAssignment();
         consumeSemicolon();
         return std::make_unique<ThrowStmt>(std::move(expr), line);
     }
@@ -2427,6 +2486,14 @@ public:
             return std::make_unique<SpreadExpr>(std::move(operand), op.line);
         }
 
+        if (peek().type == TokenType::SABAR)
+        {
+            Token op = peek();
+            current++;
+            std::unique_ptr<Expr> operand = parseUnary();
+            return std::make_unique<AwaitExpr>(std::move(operand), op.line);
+        }
+
         return parseCall();
     }
 
@@ -2882,6 +2949,126 @@ public:
             return std::make_unique<PoochExpr>(std::move(prompt), poochLine);
         }
 
+        case TokenType::ASYNC:
+        {
+            int funcLine = token.line;
+            current++; // consume 'async'
+            checkNotError();
+
+            if (peek().type == TokenType::KAR)
+            {
+                current++; // consume 'kar' / 'kaam' / 'fn'
+                checkNotError();
+
+                std::string funcName = "";
+                if (peek().type == TokenType::IDENTIFIER)
+                {
+                    funcName = peek().value;
+                    current++;
+                }
+
+                checkNotError();
+                if (peek().type != TokenType::OPEN_PAREN)
+                {
+                    errorAt(peek(), "Async function ke baad '(' lagana bhool gaye!");
+                }
+                current++; // consume '('
+
+                std::vector<FuncParam> params = parseParameterList(funcName);
+                consumeCloseParen("async function ke parameters");
+
+                std::shared_ptr<Type> returnType = nullptr;
+                checkNotError();
+                if (peek().type == TokenType::COLON || peek().type == TokenType::THIN_ARROW || peek().type == TokenType::ARROW)
+                {
+                    current++;
+                    returnType = parseTypeExpression();
+                }
+
+                checkNotError();
+                if (peek().type != TokenType::OPEN_BRACE)
+                {
+                    errorAt(peek(), "Async function ka body '{' se shuru hona chahiye! Mila: '" + peek().value + "'");
+                }
+                std::unique_ptr<Stmt> body = parseBlockStmt();
+
+                auto decl = std::make_shared<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, true, funcLine);
+                return std::make_unique<LambdaExpr>(decl, funcLine);
+            }
+
+            if (isArrowLambdaAhead())
+            {
+                current++; // consume '('
+                std::vector<FuncParam> params = parseParameterList("");
+                consumeCloseParen("async arrow lambda parameters");
+
+                std::shared_ptr<Type> returnType = nullptr;
+                checkNotError();
+                if (peek().type == TokenType::COLON || peek().type == TokenType::THIN_ARROW)
+                {
+                    current++;
+                    returnType = parseTypeExpression();
+                }
+
+                checkNotError();
+                if (peek().type != TokenType::ARROW)
+                {
+                    errorAt(peek(), "Async arrow lambda mein '=>' lagana zaroori hai! Mila: '" + peek().value + "'");
+                }
+                int arrowLine = peek().line;
+                current++; // consume '=>'
+
+                std::unique_ptr<Stmt> body;
+                checkNotError();
+                if (peek().type == TokenType::OPEN_BRACE)
+                {
+                    body = parseBlockStmt();
+                }
+                else
+                {
+                    int exprLine = peek().line;
+                    auto expr = parseTernary();
+                    std::vector<std::unique_ptr<Stmt>> stmts;
+                    stmts.push_back(std::make_unique<ReturnStmt>(std::move(expr), exprLine));
+                    body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
+                }
+
+                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), returnType, true, arrowLine);
+                return std::make_unique<LambdaExpr>(decl, arrowLine);
+            }
+
+            if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::ARROW)
+            {
+                int arrowLine = peek().line;
+                std::string paramName = peek().value;
+                current++; // consume identifier
+                current++; // consume '=>'
+
+                std::vector<FuncParam> params;
+                params.push_back(FuncParam{paramName, nullptr, false});
+
+                std::unique_ptr<Stmt> body;
+                checkNotError();
+                if (peek().type == TokenType::OPEN_BRACE)
+                {
+                    body = parseBlockStmt();
+                }
+                else
+                {
+                    int exprLine = peek().line;
+                    auto expr = parseTernary();
+                    std::vector<std::unique_ptr<Stmt>> stmts;
+                    stmts.push_back(std::make_unique<ReturnStmt>(std::move(expr), exprLine));
+                    body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
+                }
+
+                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), nullptr, true, arrowLine);
+                return std::make_unique<LambdaExpr>(decl, arrowLine);
+            }
+
+            errorAt(token, "'async' ke baad function ya arrow lambda chahiye!");
+        }
+
         case TokenType::KAR:
         {
             int funcLine = token.line;
@@ -2922,7 +3109,7 @@ public:
             }
             std::unique_ptr<Stmt> body = parseBlockStmt();
 
-            auto decl = std::make_shared<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, funcLine);
+            auto decl = std::make_shared<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, false, funcLine);
             return std::make_unique<LambdaExpr>(decl, funcLine);
         }
 
@@ -2961,7 +3148,7 @@ public:
                     body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
                 }
 
-                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), arrowLine);
+                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), nullptr, false, arrowLine);
                 return std::make_unique<LambdaExpr>(decl, arrowLine);
             }
 
@@ -3108,7 +3295,7 @@ public:
                     body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
                 }
 
-                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), returnType, arrowLine);
+                auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), returnType, false, arrowLine);
                 return std::make_unique<LambdaExpr>(decl, arrowLine);
             }
 
@@ -3185,12 +3372,13 @@ private:
         return tokens.back();
     }
 
-    bool isArrowLambdaAhead() const
+    bool isArrowLambdaAhead(size_t offset = 0) const
     {
-        if (peek().type != TokenType::OPEN_PAREN)
+        if (current + offset >= tokens.size()) return false;
+        if (tokens[current + offset].type != TokenType::OPEN_PAREN)
             return false;
 
-        size_t i = current + 1;
+        size_t i = current + offset + 1;
         int parenDepth = 1;
         while (i < tokens.size() && tokens[i].type != TokenType::END_OF_FILE)
         {

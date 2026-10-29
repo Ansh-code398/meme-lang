@@ -42,6 +42,10 @@ enum class TokenType
     PAKKA,
     CHILLAO,
 
+    // Async & Concurrency
+    ASYNC,
+    SABAR,
+
     // Module Imports
     IMPORT,
     AS,
@@ -266,12 +270,21 @@ public:
             {"lafda", TokenType::LAFDA},
             {"sambhal", TokenType::LAFDA},
             {"catch", TokenType::LAFDA},
+            {"except", TokenType::LAFDA},
             {"pakka", TokenType::PAKKA},
             {"hamesha", TokenType::PAKKA},
             {"finally", TokenType::PAKKA},
             {"chillao", TokenType::CHILLAO},
             {"fek", TokenType::CHILLAO},
             {"throw", TokenType::CHILLAO},
+            {"raise", TokenType::CHILLAO},
+
+            // Async & Concurrency
+            {"async", TokenType::ASYNC},
+            {"side_mein", TokenType::ASYNC},
+            {"asar", TokenType::ASYNC},
+            {"sabar", TokenType::SABAR},
+            {"await", TokenType::SABAR},
 
             // Module Imports
             {"bula", TokenType::IMPORT},
@@ -877,6 +890,10 @@ public:
             return "SANCHA";
         case TokenType::NEPO:
             return "NEPO";
+        case TokenType::ASYNC:
+            return "ASYNC";
+        case TokenType::SABAR:
+            return "SABAR";
 
         // Literals / identifiers
         case TokenType::IDENTIFIER:

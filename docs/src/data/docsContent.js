@@ -575,32 +575,300 @@ star.show_swag();          // Defined on Influencer`
   },
   {
     id: 'error-handling',
-    title: 'User-Level Error Handling (panga / lafda)',
-    badge: 'Exceptions',
-    description: 'Catch runtime errors with `panga`, handle with `lafda`, guarantee execution with `pakka`, and throw with `chillao`.',
+    title: 'Structured try / catch / finally / throw (panga / lafda)',
+    badge: 'Universal Aliases & Structured Errors',
+    description: 'Structured Error objects with .baat/.message, .kism/.type, .line, Galti() constructor, and full Python/JS keyword aliases.',
     content: [
       {
         type: 'text',
-        text: `MEMElang provides robust exception handling inspired by modern systems languages. Errors can be raised with ` + '`chillao`' + ` and caught using ` + '`panga`' + ` / ` + '`lafda`' + ` / ` + '`pakka`' + ` blocks.`
+        text: `MEMElang provides robust, structured exception handling with full keyword aliases across WhatsApp Hinglish, Python, and JavaScript/TypeScript. Caught errors are rich Error objects with full backward compatibility (printing cleanly in ` + '`dikha`' + ` and supporting string methods).`
+      },
+      {
+        type: 'table',
+        headers: ['WhatsApp Hinglish', 'Universal Alias', 'Role / Purpose'],
+        rows: [
+          ['panga { ... }', 'try { ... } / koshish', 'Block of code that might fail or throw an exception'],
+          ['lafda (err) { ... }', 'catch (err) { ... } / except (err)', 'Catches structured errors or runtime exceptions (optional parens or bare)'],
+          ['pakka { ... }', 'finally { ... } / hamesha', 'Guaranteed execution block, runs whether an error occurred or not'],
+          ['chillao expr', 'throw expr / raise expr / fek', 'Throws custom error string, Map, or Galti(msg, type) instance']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Structured Error Object Properties'
+      },
+      {
+        type: 'table',
+        headers: ['Property', 'Universal Alias', 'Description', 'Example'],
+        rows: [
+          ['err.baat', 'err.message', 'Human-readable error description string', '"Something went wrong"'],
+          ['err.kism', 'err.type', 'Categorized error category', '"NetworkLafda", "FileLafda", "MathLafda", "UserLafda"'],
+          ['err.line', 'err.line', 'Source code line number where exception was raised', '42']
+        ]
       },
       {
         type: 'code',
-        title: 'try_catch_finally.meme',
-        code: `jugaad divide(a, b) {
-    dekh b == 0 {
-        chillao "0 se divide karne ki koshish mat kar!";
-    }
-    ye_le a / b;
+        title: 'structured_errors.meme',
+        code: `// Throwing structured error with Galti / Error
+panga {
+    chillao Galti("Database connection timed out", "NetworkLafda");
+} lafda (err) {
+    dikha "Caught error message:", err.baat;      // or err.message
+    dikha "Error category:", err.kism;            // or err.type
+    dikha "Source line:", err.line;
+    dikha "Direct print:", err;                   // Formats cleanly as plain message string
+} pakka {
+    dikha "Connection cleaned up!";
 }
 
-panga {
-    dikha "Dividing 10 by 2:", divide(10, 2);
-    dikha "Dividing 10 by 0:", divide(10, 0);
-} lafda err {
-    dikha "Lafda pakda gaya:", err;
-} pakka {
-    dikha "Cleanup complete: pakka (finally) hamesha chalta hai!";
+// Full Python / JS keyword parity
+try {
+    raise Error("Invalid payload schema", "TypeLafda");
+} catch (e) {
+    dikha f"Type error: {e.message} (kind: {e.type})";
 }`
+      }
+    ]
+  },
+  {
+    id: 'async-await-promises',
+    title: 'Async / Await (sabar) & Promises (Vaada)',
+    badge: 'True Asynchrony',
+    description: 'Non-blocking async task scheduling backed by C++ worker threads and Promises with Promise.all and Promise.race.',
+    content: [
+      {
+        type: 'text',
+        text: `MEMElang delivers non-blocking asynchronous execution with standard ` + '`async / await`' + ` semantics and WhatsApp Hinglish aliases (` + '`sabar`' + ` / ` + '`side_mein kaam`' + `). Async functions automatically return a ` + '`Vaada`' + ` (` + '`Promise`' + `).`
+      },
+      {
+        type: 'table',
+        headers: ['WhatsApp Hinglish', 'Universal Alias', 'Description'],
+        rows: [
+          ['async kaam fn() / side_mein kaam fn()', 'async def fn() / async fn()', 'Declares an asynchronous function returning a Promise'],
+          ['sabar expr', 'await expr', 'Awaits a Promise, Thread handle, or async fetch request'],
+          ['Vaada.de(val)', 'Promise.resolve(val)', 'Creates an instantly resolved Promise'],
+          ['Vaada.radh(err)', 'Promise.reject(err)', 'Creates an instantly rejected Promise'],
+          ['Vaada.sab([p1, p2])', 'Promise.all([p1, p2])', 'Runs promises in parallel and resolves to a list of all results'],
+          ['Vaada.race([p1, p2])', 'Promise.race([p1, p2])', 'Resolves or rejects as soon as the first promise settles'],
+          ['Vaada.ruk(ms)', 'Promise.sleep(ms)', 'Non-blocking asynchronous delay in milliseconds']
+        ]
+      },
+      {
+        type: 'code',
+        title: 'async_demo.meme',
+        code: `// 1. Asynchronous functions
+async kaam fetchUserData(id) {
+    sabar Vaada.ruk(50); // non-blocking 50ms pause
+    ye_le {"id": id, "name": "Raju", "role": "Dev"};
+}
+
+// 2. Awaiting Promises with 'sabar' or 'await'
+pakad user = sabar fetchUserData(101);
+dikha f"Fetched user: {user.name} ({user.role})";
+
+// 3. Parallel concurrency with Promise.all (Vaada.sab)
+pakad p1 = fetchUserData(1);
+pakad p2 = fetchUserData(2);
+pakad allUsers = sabar Promise.all([p1, p2]);
+dikha f"Total loaded users: {allUsers.lambai()}";
+
+// 4. Promise method chaining (.then / .phir and .catch / .pakad)
+fetchUserData(99)
+    .then(u => dikha f"Chained user: {u.name}")
+    .catch(err => dikha f"Lafda: {err.message}");`
+      }
+    ]
+  },
+  {
+    id: 'fetch-http-client',
+    title: 'Full-Featured fetch() & jaal (http) Client',
+    badge: 'HTTP & Networking',
+    description: 'REST client supporting GET, POST, PUT, PATCH, DELETE, custom headers, query params, Bearer auth, timeouts, and rich Response objects.',
+    content: [
+      {
+        type: 'text',
+        text: `The global ` + '`fetch(url, options)`' + ` (alias ` + '`mangwa`' + `) and ` + '`jaal`' + ` (alias ` + '`http`' + `) client provide native HTTP networking with Bearer authentication, auto-serialized JSON bodies, query parameter encoding, and deterministic 0ms offline mock testing via ` + '`mock://`' + ` URLs.`
+      },
+      {
+        type: 'table',
+        headers: ['Option / Property', 'Type', 'Description'],
+        rows: [
+          ['method', 'string', 'HTTP verb: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" (default: "GET")'],
+          ['headers', 'Map', 'Custom HTTP headers map (e.g. {"Content-Type": "application/json", "X-Custom": "val"})'],
+          ['params', 'Map', 'Query parameters auto-encoded into ?k1=v1&k2=v2 URL query string'],
+          ['auth / token', 'string', 'Bearer authorization token auto-injected into Authorization: Bearer <token>'],
+          ['body / json', 'Map / List / string', 'Request payload (maps and lists are auto-serialized to JSON string)'],
+          ['timeout', 'number', 'Timeout duration in milliseconds']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: 'Response Object Properties & Methods'
+      },
+      {
+        type: 'table',
+        headers: ['Member', 'Type', 'Description'],
+        rows: [
+          ['res.status', 'int', 'HTTP status code (e.g. 200, 201, 404, 500)'],
+          ['res.ok / res.sahi', 'bool', 'True if status code is in 200..299 range'],
+          ['res.url', 'string', 'Final requested URL including encoded query parameters'],
+          ['res.method', 'string', 'HTTP request method utilized'],
+          ['res.headers', 'Map', 'Map of response headers'],
+          ['res.body / res.raw', 'string', 'Raw response body text'],
+          ['res.data / res.maal', 'Value', 'Parsed JSON map/list if body is JSON, otherwise raw string'],
+          ['res.time_ms', 'int', 'Elapsed request duration in milliseconds'],
+          ['res.json()', 'Callable', 'Method parsing response body into a Map / List'],
+          ['res.text()', 'Callable', 'Method returning raw string body'],
+          ['res.raise_for_status()', 'Callable', 'Throws a structured NetworkLafda if res.ok is false']
+        ]
+      },
+      {
+        type: 'code',
+        title: 'http_fetch_demo.meme',
+        code: `// Global fetch with POST, query params, Bearer auth, and JSON body
+pakad res = sabar fetch("https://api.example.com/items", {
+    "method": "POST",
+    "params": {"category": "chai", "page": 1},
+    "token": "secret_bearer_token_123",
+    "body": {"name": "Masala Chai", "price": 20},
+    "timeout": 5000
+});
+
+dekh res.ok {
+    pakad item = res.json();
+    dikha f"Item added in {res.time_ms}ms: {item.name}";
+} warna {
+    dikha f"Request failed with status {res.status}";
+}
+
+// Clean shorthand methods on jaal / http
+pakad items = sabar jaal.get("mock://items", {"params": {"q": "chai"}});
+pakad updated = sabar jaal.put("mock://items/1", {"price": 25});
+pakad patched = sabar jaal.patch("mock://items/1", {"stock": 100});
+pakad deleted = sabar jaal.delete("mock://items/1");`
+      }
+    ]
+  },
+  {
+    id: 'concurrency-threads-mp',
+    title: 'Multi-Threading (dhaga) & Multi-Processing (kaamgar)',
+    badge: 'Hardware Concurrency',
+    description: 'Hardware threads (dhaga.chala), Mutex locks (dhaga.tala), Go channels (dhaga.naali), parallel work-stealing pool (mp.map), and OS child processes (mp.spawn).',
+    content: [
+      {
+        type: 'text',
+        text: `MEMElang provides first-class primitives for hardware concurrency. Multi-threading is exposed via ` + '`dhaga`' + ` (` + '`thread`' + `), thread synchronization via recursive Mutex locks and Go-style channels, parallel data processing via ` + '`kaamgar`' + ` (` + '`mp`' + `), and OS subprocess execution.`
+      },
+      {
+        type: 'table',
+        headers: ['WhatsApp Hinglish', 'Universal Alias', 'Capability'],
+        rows: [
+          ['dhaga.chala(fn, ...args)', 'thread.spawn(fn, ...args)', 'Spawns an isolated hardware thread running fn with args'],
+          ['t.jod() / sabar t', 't.join() / await t', 'Waits for thread execution and returns its result'],
+          ['dhaga.sab([fn1, fn2])', 'thread.all([fn1, fn2])', 'Spawns and joins multiple threads concurrently, returning results list'],
+          ['dhaga.tala()', 'thread.mutex()', 'Recursive mutex with .band() (lock), .khol() (unlock), and .surakshit(fn) (with_lock)'],
+          ['dhaga.naali(capacity?)', 'thread.channel(capacity?)', 'Go-style channel with .bhej(val) (send), .le() (recv), and .band()'],
+          ['dhaga.cores()', 'thread.cores()', 'Returns number of CPU hardware execution cores'],
+          ['kaamgar.sab_pe(fn, list, cores?)', 'mp.map(fn, list, workers?)', 'Parallel work-stealing pool mapping across CPU cores'],
+          ['kaamgar.alag(cmd, args?)', 'mp.spawn(cmd, args?)', 'Spawns OS child process with .ruk() (wait), .code(), and .out() (stdout)']
+        ]
+      },
+      {
+        type: 'code',
+        title: 'concurrency_showcase.meme',
+        code: `// 1. Spawning OS threads
+pakad t = dhaga.chala((a, b) => a * b, 6, 7);
+pakad product = sabar t; // or t.jod()
+dikha f"Thread product: {product}"; // 42
+
+// 2. Thread-safe Mutex lock
+pakad lock = dhaga.tala();
+pakad sharedCounter = 0;
+lock.surakshit(() => {
+    sharedCounter = sharedCounter + 1;
+});
+
+// 3. Go-style channel message passing
+pakad ch = dhaga.naali();
+dhaga.chala(() => {
+    ch.bhej("packet_from_worker");
+});
+pakad msg = ch.le();
+dikha f"Received channel message: {msg}";
+
+// 4. Parallel work-stealing map across CPU cores
+pakad numbers = [10, 20, 30, 40, 50];
+pakad squares = mp.map(x => x * x, numbers);
+dikha f"Parallel squares: {squares}";
+
+// 5. Child processes
+pakad proc = mp.spawn("echo 'Child process execution'");
+pakad exitCode = proc.ruk();
+dikha f"Process code {exitCode}: {proc.out()}";`
+      }
+    ]
+  },
+  {
+    id: 'filesystem-paths',
+    title: 'File System (file / fs) & Paths (rasta / path)',
+    badge: 'File Management',
+    description: 'Complete file operations, CSV table parsing/writing, JSON storage, recursive directory walking, and cross-platform path helpers.',
+    content: [
+      {
+        type: 'text',
+        text: `The ` + '`file`' + ` (` + '`fs`' + `) and ` + '`rasta`' + ` (` + '`path`' + `) standard libraries offer full file system management, automated CSV reading and writing into Lists of Maps, JSON serialization, recursive file discovery (glob), and cross-platform path manipulation.`
+      },
+      {
+        type: 'table',
+        headers: ['Category', 'WhatsApp Hinglish', 'Universal Alias', 'Description'],
+        rows: [
+          ['Read / Write', 'file.padh(p) / file.likh(p, s)', 'fs.read / fs.write', 'Reads full text file or overwrites file contents'],
+          ['Append / Lines', 'file.jod(p, s) / file.lines(p)', 'fs.append / fs.read_lines', 'Appends text or reads file into a List of line strings'],
+          ['JSON Storage', 'file.padh_json(p) / file.likh_json(p, v)', 'fs.read_json / fs.write_json', 'Reads and writes JSON structured files automatically'],
+          ['CSV Engine', 'file.padh_csv(p) / file.likh_csv(p, rows)', 'fs.read_csv / fs.write_csv', 'Parses CSV into a List of Maps [{"col": val}] and writes back'],
+          ['Copy / Move / Del', 'file.nakal(a, b) / file.hila(a, b)', 'fs.copy / fs.move / fs.remove', 'Recursively copies, renames/moves, or deletes files & directories'],
+          ['Stats & Meta', 'file.kundli(p)', 'fs.stat(p)', 'Returns {"size", "is_file", "is_dir", "modified", "ext"} map'],
+          ['Search & Glob', 'file.khoj(dir, "*.meme")', 'fs.glob(dir, pattern)', 'Recursively walks directories matching wildcard pattern'],
+          ['Path Resolution', 'rasta.jod(a, b) / rasta.asli(p)', 'path.join / path.resolve', 'Joins path components or resolves canonical absolute path']
+        ]
+      },
+      {
+        type: 'code',
+        title: 'fs_path_demo.meme',
+        code: `// 1. Reading and writing text files
+fs.write("notes.txt", "Pehli line\\nDusri line\\n");
+pakad lines = fs.read_lines("notes.txt");
+dikha f"Total lines: {lines.lambai()}";
+
+// 2. CSV parsing into List of Maps
+pakad staff = [
+    {"id": "1", "name": "Raju", "role": "Fullstack Dev"},
+    {"id": "2", "name": "Baburao", "role": "Team Lead"}
+];
+fs.write_csv("staff.csv", staff);
+pakad loadedStaff = fs.read_csv("staff.csv");
+dikha f"Staff member: {loadedStaff[0].name} ({loadedStaff[0].role})";
+
+// 3. File statistics
+pakad stat = fs.stat("staff.csv");
+dikha f"File size: {stat.size} bytes, Modified: {stat.modified}";
+
+// 4. Wildcard globbing
+pakad memeFiles = fs.glob(".", "*.meme");
+dikha f"Found meme scripts: {memeFiles.lambai()}";
+
+// 5. Cross-platform path helpers
+pakad full = path.join("workspace", "src", "main.meme");
+dikha f"Basename: {path.basename(full)}"; // main.meme
+dikha f"Stem: {path.stem(full)}";         // main
+dikha f"Extension: {path.ext(full)}";      // .meme
+dikha f"Dirname: {path.dirname(full)}";   // workspace/src
+
+// Clean up
+fs.remove("notes.txt");
+fs.remove("staff.csv");`
       }
     ]
   },

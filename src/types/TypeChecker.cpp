@@ -789,5 +789,10 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
         return Type::Bol();
     }
 
+    if (auto *aw = dynamic_cast<const AwaitExpr *>(expr))
+    {
+        return checkExpr(aw->expression.get(), env);
+    }
+
     return Type::Any();
 }

@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <memory>
 #include <stdexcept>
+#include <mutex>
 #include "Value.h"
 
 struct VariableSlot
@@ -19,6 +20,7 @@ struct VariableSlot
 class Environment : public std::enable_shared_from_this<Environment>
 {
 private:
+    mutable std::recursive_mutex envMutex;
     std::shared_ptr<Environment> enclosing;
     std::unordered_map<std::string, VariableSlot> values;
 
@@ -35,16 +37,19 @@ public:
 
     std::unordered_map<std::string, VariableSlot> &getSlots()
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         return values;
     }
 
     const std::unordered_map<std::string, VariableSlot> &getSlots() const
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         return values;
     }
 
     void define(const std::string &name, Value value)
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         VariableSlot slot;
         slot.value = std::move(value);
         slot.isMoved = false;
@@ -56,6 +61,7 @@ public:
 
     VariableSlot *findSlot(const std::string &name)
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -70,6 +76,7 @@ public:
 
     const VariableSlot *findSlot(const std::string &name) const
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -84,6 +91,7 @@ public:
 
     void assign(const std::string &name, Value value)
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         VariableSlot *slot = findSlot(name);
         if (!slot)
         {
@@ -145,6 +153,7 @@ public:
 
     Value getDirect(const std::string &name) const
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -159,6 +168,7 @@ public:
 
     void setDirect(const std::string &name, Value value)
     {
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -176,7 +186,9 @@ public:
 
     bool contains(const std::string &name) const
     {
-        if (values.find(name) != values.end())
+        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        auto it = values.find(name);
+        if (it != values.end())
         {
             return true;
         }

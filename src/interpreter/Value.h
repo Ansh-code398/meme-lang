@@ -151,6 +151,18 @@ struct Value
         return std::get<std::shared_ptr<MemeMap>>(data);
     }
 
+    bool isCallable() const
+    {
+        Value d = deref();
+        return std::holds_alternative<std::shared_ptr<Callable>>(d.data);
+    }
+
+    std::shared_ptr<Callable> getCallable() const
+    {
+        Value d = deref();
+        return std::get<std::shared_ptr<Callable>>(d.data);
+    }
+
     long long asInt() const
     {
         Value d = deref();

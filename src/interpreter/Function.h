@@ -56,7 +56,13 @@ public:
         return count >= minArity() && count <= maxArity();
     }
 
+    bool isAsync() const
+    {
+        return declaration ? declaration->isAsync : false;
+    }
+
     Value call(Interpreter &interpreter, const std::vector<Value> &args) override;
+    Value callSync(Interpreter &interpreter, const std::vector<Value> &args);
 
     std::string toString() const override
     {

@@ -15,6 +15,10 @@ const CATEGORIES = [
     sectionIds: ['functions', 'oop', 'error-handling', 'modules']
   },
   {
+    name: 'Async, Networking & Concurrency',
+    sectionIds: ['async-await-promises', 'fetch-http-client', 'concurrency-threads-mp', 'filesystem-paths']
+  },
+  {
     name: 'Type System & Memory Safety',
     sectionIds: ['gradual-typing', 'memory-safety']
   },

@@ -1600,6 +1600,216 @@ void testMultiplatformTodoAppErgonomicsAndStress()
     std::cout << "PASSED\n";
 }
 
+void testAsyncFetchThreadsMultiprocessingAndFs()
+{
+    std::cout << "[TEST] Async, Fetch, Threads, Multiprocessing, and File Systems... " << std::flush;
+
+    // 1. Structured try/catch/finally/throw with Error objects and aliases
+    std::string errCode = R"raw(
+        pakad outList = [];
+
+        panga {
+            chillao Galti("Something exploded!", "CustomLafda");
+        } lafda (err) {
+            outList.daal("caught_galti");
+            outList.daal(err.baat);
+            outList.daal(err.kism);
+        } pakka {
+            outList.daal("pakka_done");
+        }
+
+        try {
+            throw "Plain string error";
+        } catch (e) {
+            outList.daal("caught_string");
+            outList.daal(e.message);
+            outList.daal(e.type);
+        } finally {
+            outList.daal("finally_done");
+        }
+
+        // Bare catch
+        try {
+            chillao "bare test";
+        } catch {
+            outList.daal("bare_catch_ok");
+        }
+
+        dikha outList;
+    )raw";
+    std::string errOut = runAndCapture(errCode);
+    assert(errOut.find("caught_galti") != std::string::npos);
+    assert(errOut.find("Something exploded!") != std::string::npos);
+    assert(errOut.find("CustomLafda") != std::string::npos);
+    assert(errOut.find("pakka_done") != std::string::npos);
+    assert(errOut.find("caught_string") != std::string::npos);
+    assert(errOut.find("Plain string error") != std::string::npos);
+    assert(errOut.find("finally_done") != std::string::npos);
+    assert(errOut.find("bare_catch_ok") != std::string::npos);
+
+    // 2. Fetch and jaal (http) client with mock protocol
+    std::string fetchCode = R"raw(
+        pakad res1 = sabar fetch("mock://users", {
+            "method": "POST",
+            "body": {"naam": "Raju", "umar": 25},
+            "params": {"v": 2}
+        });
+        dikha "f1_ok=" + res1.ok;
+        dikha "f1_status=" + res1.status;
+        dikha "f1_method=" + res1.method;
+
+        pakad res2 = sabar jaal.get("mock://items", {"params": {"q": "chai"}});
+        dikha "f2_ok=" + res2.sahi;
+        dikha "f2_url=" + res2.url;
+
+        pakad res3 = sabar jaal.post("mock://items", {"title": "Samosa"});
+        dikha "f3_method=" + res3.method;
+
+        pakad res4 = sabar jaal.delete("mock://items/99");
+        dikha "f4_method=" + res4.method;
+
+        panga {
+            pakad errRes = sabar fetch("mock://status/404");
+            errRes.raise_for_status();
+        } lafda (err) {
+            dikha "status_err_caught=" + err.kism;
+        }
+    )raw";
+    std::string fetchOut = runAndCapture(fetchCode);
+    assert(fetchOut.find("f1_ok=han") != std::string::npos);
+    assert(fetchOut.find("f1_status=200") != std::string::npos);
+    assert(fetchOut.find("f1_method=POST") != std::string::npos);
+    assert(fetchOut.find("f2_ok=han") != std::string::npos);
+    assert(fetchOut.find("f2_url=mock://items?q=chai") != std::string::npos);
+    assert(fetchOut.find("f3_method=POST") != std::string::npos);
+    assert(fetchOut.find("f4_method=DELETE") != std::string::npos);
+    assert(fetchOut.find("status_err_caught=NetworkLafda") != std::string::npos);
+
+    // 3. Async / Await and Vaada (Promise)
+    std::string asyncCode = R"raw(
+        async kaam taskA(x) {
+            ye_le x * 3;
+        }
+
+        async def taskB(x) {
+            ye_le x + 10;
+        }
+
+        pakad a = sabar taskA(5);
+        pakad b = sabar taskB(a);
+        dikha "async_res=" + b;
+
+        pakad pResolved = Vaada.de("instant_value");
+        pakad resolvedVal = sabar pResolved;
+        dikha "resolved=" + resolvedVal;
+
+        pakad p1 = taskA(2);
+        pakad p2 = taskA(3);
+        pakad allResults = sabar Promise.all([p1, p2]);
+        dikha "all=" + allResults;
+    )raw";
+    std::string asyncOut = runAndCapture(asyncCode);
+    assert(asyncOut.find("async_res=25") != std::string::npos);
+    assert(asyncOut.find("resolved=instant_value") != std::string::npos);
+    assert(asyncOut.find("all=[6, 9]") != std::string::npos);
+
+    // 4. Threads (dhaga), Channels (naali), Mutex (tala), and Multiprocessing (kaamgar / mp)
+    std::string threadCode = R"raw(
+        // Thread spawn and join
+        pakad t = dhaga.chala((x, y) => x + y, 15, 25);
+        pakad sum = sabar t;
+        dikha "thread_sum=" + sum;
+
+        // Mutex lock
+        pakad lock = dhaga.tala();
+        pakad count = 0;
+        lock.surakshit(() => {
+            count = count + 42;
+        });
+        dikha "mutex_count=" + count;
+
+        // Channel send & recv
+        pakad ch = dhaga.naali(5);
+        dhaga.chala(() => {
+            ch.bhej("packet_chai");
+        });
+        pakad msg = ch.le();
+        dikha "channel_msg=" + msg;
+
+        // Parallel mp.map / kaamgar.sab_pe
+        pakad nums = [1, 2, 3, 4, 5];
+        pakad squares = mp.map(x => x * x, nums);
+        dikha "squares=" + squares;
+
+        // Subprocess
+        pakad p = mp.spawn("echo 'process_alive'");
+        pakad code = p.ruk();
+        pakad stdout = p.out();
+        dikha "process_code=" + code;
+    )raw";
+    std::string threadOut = runAndCapture(threadCode);
+    assert(threadOut.find("thread_sum=40") != std::string::npos);
+    assert(threadOut.find("mutex_count=42") != std::string::npos);
+    assert(threadOut.find("channel_msg=packet_chai") != std::string::npos);
+    assert(threadOut.find("squares=[1, 4, 9, 16, 25]") != std::string::npos);
+    assert(threadOut.find("process_code=0") != std::string::npos);
+
+    // 5. File System (file / fs) & Path (rasta / path)
+    std::string fsCode = R"raw(
+        pakad testFile = "test_artifact_123.txt";
+        fs.write(testFile, "Line One\nLine Two");
+        dikha "fs_exists=" + fs.exists(testFile);
+
+        pakad content = fs.read(testFile);
+        dikha "fs_len=" + content.lambai();
+
+        pakad lines = fs.read_lines(testFile);
+        dikha "lines_count=" + lines.lambai();
+        dikha "l0=" + lines[0];
+
+        // CSV Read / Write
+        pakad csvFile = "test_staff_123.csv";
+        pakad csvData = [
+            {"id": "1", "name": "Raju", "role": "Dev"},
+            {"id": "2", "name": "Baburao", "role": "Manager"}
+        ];
+        file.likh_csv(csvFile, csvData);
+        pakad readCsv = file.padh_csv(csvFile);
+        dikha "csv_rows=" + readCsv.lambai();
+        dikha "r0_name=" + readCsv[0]["name"];
+        dikha "r1_role=" + readCsv[1]["role"];
+
+        // Stat
+        pakad info = fs.stat(testFile);
+        dikha "stat_is_file=" + info["is_file"];
+
+        // Cleanup
+        fs.remove(testFile);
+        file.mita(csvFile);
+        dikha "clean_exists=" + fs.exists(testFile);
+
+        // Path utils
+        pakad pJoined = path.join("home", "user", "project", "code.meme");
+        dikha "p_base=" + path.basename(pJoined);
+        dikha "p_stem=" + path.stem(pJoined);
+        dikha "p_ext=" + path.ext(pJoined);
+    )raw";
+    std::string fsOut = runAndCapture(fsCode);
+    assert(fsOut.find("fs_exists=han") != std::string::npos);
+    assert(fsOut.find("lines_count=2") != std::string::npos);
+    assert(fsOut.find("l0=Line One") != std::string::npos);
+    assert(fsOut.find("csv_rows=2") != std::string::npos);
+    assert(fsOut.find("r0_name=Raju") != std::string::npos);
+    assert(fsOut.find("r1_role=Manager") != std::string::npos);
+    assert(fsOut.find("stat_is_file=han") != std::string::npos);
+    assert(fsOut.find("clean_exists=nhi") != std::string::npos);
+    assert(fsOut.find("p_base=code.meme") != std::string::npos);
+    assert(fsOut.find("p_stem=code") != std::string::npos);
+    assert(fsOut.find("p_ext=.meme") != std::string::npos);
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -1627,6 +1837,7 @@ int main()
     testStatefulReactHooksEventsContextAndRouter();
     testProjectWorkspaceVenvScriptsAndTestRunner();
     testMultiplatformTodoAppErgonomicsAndStress();
+    testAsyncFetchThreadsMultiprocessingAndFs();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";
