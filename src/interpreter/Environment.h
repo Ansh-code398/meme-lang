@@ -219,14 +219,76 @@ inline bool Value::operator==(const Value &other) const
 {
     Value a = this->deref();
     Value b = other.deref();
+
+    // Fast path: numeric comparison across any numeric types (int, long long, uint8_t, double, float, char)
+    if (a.isNumeric() && b.isNumeric())
+    {
+        if (a.isInteger() && b.isInteger())
+        {
+            return a.asInt() == b.asInt();
+        }
+        return a.asDouble() == b.asDouble();
+    }
+
+    // String / Char equality
+    if (std::holds_alternative<std::string>(a.data) && std::holds_alternative<std::string>(b.data))
+    {
+        return std::get<std::string>(a.data) == std::get<std::string>(b.data);
+    }
+    if (std::holds_alternative<char>(a.data) && std::holds_alternative<std::string>(b.data))
+    {
+        const auto &s = std::get<std::string>(b.data);
+        return s.size() == 1 && s[0] == std::get<char>(a.data);
+    }
+    if (std::holds_alternative<std::string>(a.data) && std::holds_alternative<char>(b.data))
+    {
+        const auto &s = std::get<std::string>(a.data);
+        return s.size() == 1 && s[0] == std::get<char>(b.data);
+    }
+
+    // Bytes comparison
+    if (a.isBytes() && b.isBytes())
+    {
+        auto ba = a.getBytes();
+        auto bb = b.getBytes();
+        if (ba == bb) return true;
+        if (!ba || !bb) return false;
+        return ba->data == bb->data;
+    }
+
+    // Set comparison
+    if (a.isSet() && b.isSet())
+    {
+        auto sa = a.getSet();
+        auto sb = b.getSet();
+        if (sa == sb) return true;
+        if (!sa || !sb) return false;
+        if (sa->elements.size() != sb->elements.size()) return false;
+        for (const auto &elem : sa->elements)
+        {
+            if (!sb->contains(elem)) return false;
+        }
+        return true;
+    }
+
+    // Tuple comparison
+    if (a.isTuple() && b.isTuple())
+    {
+        auto ta = a.getTuple();
+        auto tb = b.getTuple();
+        if (ta == tb) return true;
+        if (!ta || !tb) return false;
+        if (ta->elements.size() != tb->elements.size()) return false;
+        for (size_t i = 0; i < ta->elements.size(); ++i)
+        {
+            if (ta->elements[i] != tb->elements[i]) return false;
+        }
+        return true;
+    }
+
     return std::visit(
         overload{
             [](std::monostate, std::monostate) -> bool { return true; },
-            [](long long lhs, long long rhs) -> bool { return lhs == rhs; },
-            [](double lhs, double rhs) -> bool { return lhs == rhs; },
-            [](long long lhs, double rhs) -> bool { return static_cast<double>(lhs) == rhs; },
-            [](double lhs, long long rhs) -> bool { return lhs == static_cast<double>(rhs); },
-            [](const std::string &lhs, const std::string &rhs) -> bool { return lhs == rhs; },
             [](bool lhs, bool rhs) -> bool { return lhs == rhs; },
             [](const std::shared_ptr<Callable> &lhs, const std::shared_ptr<Callable> &rhs) -> bool {
                 return lhs == rhs;

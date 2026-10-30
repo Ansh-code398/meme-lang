@@ -121,12 +121,20 @@ public:
         return std::visit(
             overload{
                 [](long long v) -> Value { return Value(v); },
+                [](int v) -> Value { return Value(static_cast<long long>(v)); },
+                [](uint8_t v) -> Value { return Value(static_cast<long long>(v)); },
                 [](double v) -> Value { return Value(static_cast<long long>(v)); },
+                [](float v) -> Value { return Value(static_cast<long long>(v)); },
+                [](char v) -> Value { return Value(static_cast<long long>(static_cast<unsigned char>(v))); },
                 [](bool v) -> Value { return Value(v ? 1LL : 0LL); },
                 [](const std::string &v) -> Value
                 {
                     try
                     {
+                        if (v.rfind("0x", 0) == 0 || v.rfind("0X", 0) == 0)
+                            return Value(std::stoll(v, nullptr, 16));
+                        if (v.rfind("0b", 0) == 0 || v.rfind("0B", 0) == 0)
+                            return Value(std::stoll(v.substr(2), nullptr, 2));
                         return Value(std::stoll(v));
                     }
                     catch (...)
@@ -155,7 +163,11 @@ public:
         return std::visit(
             overload{
                 [](double v) -> Value { return Value(v); },
+                [](float v) -> Value { return Value(static_cast<double>(v)); },
                 [](long long v) -> Value { return Value(static_cast<double>(v)); },
+                [](int v) -> Value { return Value(static_cast<double>(v)); },
+                [](uint8_t v) -> Value { return Value(static_cast<double>(v)); },
+                [](char v) -> Value { return Value(static_cast<double>(static_cast<unsigned char>(v))); },
                 [](bool v) -> Value { return Value(v ? 1.0 : 0.0); },
                 [](const std::string &v) -> Value
                 {

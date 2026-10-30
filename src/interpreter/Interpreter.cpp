@@ -30,20 +30,16 @@ thread_local std::unordered_set<const void *> activePrintPointers;
 static double toDouble(const Value &val)
 {
     Value v = val.deref();
-    if (std::holds_alternative<long long>(v.data))
-        return static_cast<double>(std::get<long long>(v.data));
-    if (std::holds_alternative<double>(v.data))
-        return std::get<double>(v.data);
+    if (v.isNumeric())
+        return v.asDouble();
     throw std::runtime_error("Number chahiye tha par mila: " + v.typeName());
 }
 
 static long long toLongLong(const Value &val)
 {
     Value v = val.deref();
-    if (std::holds_alternative<long long>(v.data))
-        return std::get<long long>(v.data);
-    if (std::holds_alternative<double>(v.data))
-        return static_cast<long long>(std::get<double>(v.data));
+    if (v.isNumeric())
+        return v.asInt();
     throw std::runtime_error("Number chahiye tha par mila: " + v.typeName());
 }
 
@@ -238,12 +234,21 @@ namespace MemeJson
         return std::visit(overload{
             [](std::monostate) -> std::string { return "null"; },
             [](long long n) -> std::string { return std::to_string(n); },
+            [](int n) -> std::string { return std::to_string(n); },
+            [](uint8_t u) -> std::string { return std::to_string(static_cast<int>(u)); },
             [](double d) -> std::string {
                 std::string s = std::to_string(d);
                 s.erase(s.find_last_not_of('0') + 1, std::string::npos);
                 if (s.back() == '.') s += "0";
                 return s;
             },
+            [](float f) -> std::string {
+                std::string s = std::to_string(f);
+                s.erase(s.find_last_not_of('0') + 1, std::string::npos);
+                if (s.back() == '.') s += "0";
+                return s;
+            },
+            [](char c) -> std::string { return std::string("\"") + c + "\""; },
             [](bool b) -> std::string { return b ? "true" : "false"; },
             [](const std::string &str) -> std::string {
                 std::string out = "\"";
@@ -259,6 +264,39 @@ namespace MemeJson
                     else out += c;
                 }
                 out += "\"";
+                return out;
+            },
+            [](const std::shared_ptr<MemeBytes> &bytes) -> std::string {
+                if (!bytes) return "[]";
+                std::string out = "[";
+                for (size_t i = 0; i < bytes->data.size(); ++i)
+                {
+                    if (i > 0) out += ", ";
+                    out += std::to_string(static_cast<int>(bytes->data[i]));
+                }
+                out += "]";
+                return out;
+            },
+            [](const std::shared_ptr<MemeSet> &set) -> std::string {
+                if (!set) return "[]";
+                std::string out = "[";
+                for (size_t i = 0; i < set->elements.size(); ++i)
+                {
+                    if (i > 0) out += ", ";
+                    out += stringify(set->elements[i]);
+                }
+                out += "]";
+                return out;
+            },
+            [](const std::shared_ptr<MemeTuple> &tup) -> std::string {
+                if (!tup) return "[]";
+                std::string out = "[";
+                for (size_t i = 0; i < tup->elements.size(); ++i)
+                {
+                    if (i > 0) out += ", ";
+                    out += stringify(tup->elements[i]);
+                }
+                out += "]";
                 return out;
             },
             [](const std::shared_ptr<MemeList> &list) -> std::string {
@@ -522,6 +560,71 @@ std::string mapToString(const std::shared_ptr<MemeMap> &map)
         }
     }
     result += "}";
+    activePrintPointers.erase(ptr);
+    return result;
+}
+
+std::string bytesToString(const std::shared_ptr<MemeBytes> &bytes)
+{
+    if (!bytes) return "b\"\"";
+    std::string result = "b\"";
+    for (uint8_t b : bytes->data)
+    {
+        if (b == '\\') result += "\\\\";
+        else if (b == '"') result += "\\\"";
+        else if (b == '\n') result += "\\n";
+        else if (b == '\r') result += "\\r";
+        else if (b == '\t') result += "\\t";
+        else if (b >= 32 && b <= 126) result += static_cast<char>(b);
+        else {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "\\x%02x", b);
+            result += buf;
+        }
+    }
+    result += "\"";
+    return result;
+}
+
+std::string setToString(const std::shared_ptr<MemeSet> &set)
+{
+    if (!set || set->elements.empty()) return "set()";
+    const void *ptr = static_cast<const void *>(set.get());
+    if (activePrintPointers.find(ptr) != activePrintPointers.end()) return "{...}";
+    activePrintPointers.insert(ptr);
+    std::string result = "{";
+    for (size_t i = 0; i < set->elements.size(); ++i)
+    {
+        if (i > 0) result += ", ";
+        Value el = set->elements[i].deref();
+        if (std::holds_alternative<std::string>(el.data))
+            result += "\"" + std::get<std::string>(el.data) + "\"";
+        else
+            result += el.toString();
+    }
+    result += "}";
+    activePrintPointers.erase(ptr);
+    return result;
+}
+
+std::string tupleToString(const std::shared_ptr<MemeTuple> &tuple)
+{
+    if (!tuple || tuple->elements.empty()) return "()";
+    const void *ptr = static_cast<const void *>(tuple.get());
+    if (activePrintPointers.find(ptr) != activePrintPointers.end()) return "(...)";
+    activePrintPointers.insert(ptr);
+    std::string result = "(";
+    for (size_t i = 0; i < tuple->elements.size(); ++i)
+    {
+        if (i > 0) result += ", ";
+        Value el = tuple->elements[i].deref();
+        if (std::holds_alternative<std::string>(el.data))
+            result += "\"" + std::get<std::string>(el.data) + "\"";
+        else
+            result += el.toString();
+    }
+    if (tuple->elements.size() == 1) result += ",";
+    result += ")";
     activePrintPointers.erase(ptr);
     return result;
 }
@@ -907,6 +1010,78 @@ static std::shared_ptr<MemeMap> createFileModule()
     };
     m->set("jod", Value(std::make_shared<NativeMethodCallable>("jod", 2, appendFn)));
     m->set("append", m->entries["jod"]);
+
+    // padh_bytes / read_bytes
+    auto readBytesFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string path = args[0].deref().toString();
+        std::ifstream f(path, std::ios::binary | std::ios::ate);
+        if (!f.is_open())
+        {
+            throw std::runtime_error("File gayab ho gayi! Path: '" + path + "'");
+        }
+        std::streamsize size = f.tellg();
+        f.seekg(0, std::ios::beg);
+        auto bytes = std::make_shared<MemeBytes>();
+        if (size > 0)
+        {
+            bytes->data.resize(static_cast<size_t>(size));
+            if (!f.read(reinterpret_cast<char*>(bytes->data.data()), size))
+            {
+                throw std::runtime_error("Binary file padhne mein lafda! Path: '" + path + "'");
+            }
+        }
+        return Value(bytes);
+    };
+    m->set("padh_bytes", Value(std::make_shared<NativeMethodCallable>("padh_bytes", 1, readBytesFn)));
+    m->set("read_bytes", m->entries["padh_bytes"]);
+
+    // likh_bytes / write_bytes
+    auto writeBytesFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string path = args[0].deref().toString();
+        Value dataVal = args[1].deref();
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        if (!f.is_open())
+        {
+            throw std::runtime_error("File kholne mein lafda ho gaya! Path: '" + path + "'");
+        }
+        if (dataVal.isBytes())
+        {
+            auto b = dataVal.getBytes();
+            if (!b->data.empty())
+            {
+                f.write(reinterpret_cast<const char*>(b->data.data()), b->data.size());
+            }
+        }
+        else if (dataVal.isList())
+        {
+            auto l = dataVal.getList();
+            std::vector<uint8_t> buf;
+            buf.reserve(l->elements.size());
+            for (const auto &elem : l->elements)
+            {
+                buf.push_back(static_cast<uint8_t>(elem.deref().asInt()));
+            }
+            if (!buf.empty())
+            {
+                f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+            }
+        }
+        else if (std::holds_alternative<std::string>(dataVal.data))
+        {
+            const std::string &s = std::get<std::string>(dataVal.data);
+            if (!s.empty())
+            {
+                f.write(s.data(), s.size());
+            }
+        }
+        else
+        {
+            throw std::runtime_error("likh_bytes ko bytes ya list chahiye!");
+        }
+        return Value(true);
+    };
+    m->set("likh_bytes", Value(std::make_shared<NativeMethodCallable>("likh_bytes", 2, writeBytesFn)));
+    m->set("write_bytes", m->entries["likh_bytes"]);
 
     // hai_kya / exists
     auto existsFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
@@ -5644,6 +5819,284 @@ static Value getStringMethod(const std::string &str, const std::string &name)
     throw std::runtime_error("Khopdi tod saale ka! 'string' ke paas '" + name + "' naam ka koi method nahi hai!");
 }
 
+static Value getBytesMethod(const std::shared_ptr<MemeBytes> &bytes, const std::string &name)
+{
+    if (name == "length" || name == "size" || name == "lambai" || name == "lambaai" || name == "count")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [bytes](Interpreter &, const std::vector<Value> &) {
+            return Value(static_cast<long long>(bytes ? bytes->data.size() : 0));
+        }));
+    }
+    if (name == "to_string" || name == "string" || name == "decode" || name == "padh")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [bytes](Interpreter &, const std::vector<Value> &) {
+            if (!bytes || bytes->data.empty()) return Value("");
+            return Value(std::string(reinterpret_cast<const char*>(bytes->data.data()), bytes->data.size()));
+        }));
+    }
+    if (name == "to_hex" || name == "hex")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [bytes](Interpreter &, const std::vector<Value> &) {
+            if (!bytes || bytes->data.empty()) return Value("");
+            std::string out;
+            out.reserve(bytes->data.size() * 2);
+            char hexChars[] = "0123456789abcdef";
+            for (uint8_t b : bytes->data)
+            {
+                out.push_back(hexChars[(b >> 4) & 0x0F]);
+                out.push_back(hexChars[b & 0x0F]);
+            }
+            return Value(out);
+        }));
+    }
+    if (name == "kaat" || name == "slice" || name == "substring")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            auto out = std::make_shared<MemeBytes>();
+            if (!bytes || bytes->data.empty()) return Value(out);
+            long long sz = static_cast<long long>(bytes->data.size());
+            long long start = args[0].deref().asInt();
+            if (start < 0) start += sz;
+            if (start < 0) start = 0;
+            if (start > sz) start = sz;
+
+            long long end = sz;
+            if (args.size() > 1)
+            {
+                end = args[1].deref().asInt();
+                if (end < 0) end += sz;
+                if (end < 0) end = 0;
+                if (end > sz) end = sz;
+            }
+            if (start < end)
+            {
+                out->data.assign(bytes->data.begin() + start, bytes->data.begin() + end);
+            }
+            return Value(out);
+        }));
+    }
+    if (name == "jod" || name == "push" || name == "append")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) return Value(std::monostate{});
+            Value v = args[0].deref();
+            if (v.isBytes())
+            {
+                auto b = v.getBytes();
+                bytes->data.insert(bytes->data.end(), b->data.begin(), b->data.end());
+            }
+            else if (v.isNumeric())
+            {
+                bytes->data.push_back(static_cast<uint8_t>(v.asInt()));
+            }
+            else if (std::holds_alternative<std::string>(v.data))
+            {
+                const std::string &s = std::get<std::string>(v.data);
+                bytes->data.insert(bytes->data.end(), s.begin(), s.end());
+            }
+            return Value(bytes);
+        }));
+    }
+    if (name == "saaf" || name == "clear")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [bytes](Interpreter &, const std::vector<Value> &) {
+            if (bytes) bytes->data.clear();
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "hai_kya" || name == "has" || name == "contains")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) return Value(false);
+            Value v = args[0].deref();
+            if (v.isNumeric())
+            {
+                uint8_t target = static_cast<uint8_t>(v.asInt());
+                for (uint8_t b : bytes->data)
+                {
+                    if (b == target) return Value(true);
+                }
+            }
+            return Value(false);
+        }));
+    }
+    throw std::runtime_error("Khopdi tod saale ka! 'bytes' ke paas '" + name + "' naam ka koi method nahi hai!");
+}
+
+static Value getSetMethod(const std::shared_ptr<MemeSet> &set, const std::string &name)
+{
+    if (name == "length" || name == "size" || name == "lambai" || name == "lambaai" || name == "count")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [set](Interpreter &, const std::vector<Value> &) {
+            return Value(static_cast<long long>(set ? set->elements.size() : 0));
+        }));
+    }
+    if (name == "jod" || name == "add" || name == "insert")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            if (set) set->add(args[0].deref());
+            return Value(set);
+        }));
+    }
+    if (name == "hata" || name == "remove" || name == "delete")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            bool rem = set ? set->remove(args[0].deref()) : false;
+            return Value(rem);
+        }));
+    }
+    if (name == "hai_kya" || name == "has" || name == "contains" || name == "andar")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            bool found = set ? set->contains(args[0].deref()) : false;
+            return Value(found);
+        }));
+    }
+    if (name == "saaf" || name == "clear")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [set](Interpreter &, const std::vector<Value> &) {
+            if (set) set->clear();
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "to_list" || name == "list" || name == "elements")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [set](Interpreter &, const std::vector<Value> &) {
+            auto l = std::make_shared<MemeList>();
+            if (set) l->elements = set->elements;
+            return Value(l);
+        }));
+    }
+    if (name == "milap" || name == "union")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            auto out = std::make_shared<MemeSet>();
+            if (set)
+            {
+                for (const auto &el : set->elements) out->add(el);
+            }
+            Value v = args[0].deref();
+            if (v.isSet())
+            {
+                for (const auto &el : v.getSet()->elements) out->add(el);
+            }
+            else if (v.isList())
+            {
+                for (const auto &el : v.getList()->elements) out->add(el);
+            }
+            return Value(out);
+        }));
+    }
+    if (name == "antar" || name == "difference")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            auto out = std::make_shared<MemeSet>();
+            if (!set) return Value(out);
+            Value v = args[0].deref();
+            if (v.isSet())
+            {
+                auto other = v.getSet();
+                for (const auto &el : set->elements)
+                {
+                    if (!other->contains(el)) out->add(el);
+                }
+            }
+            else
+            {
+                for (const auto &el : set->elements) out->add(el);
+            }
+            return Value(out);
+        }));
+    }
+    if (name == "sajha" || name == "intersection")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [set](Interpreter &, const std::vector<Value> &args) {
+            auto out = std::make_shared<MemeSet>();
+            if (!set) return Value(out);
+            Value v = args[0].deref();
+            if (v.isSet())
+            {
+                auto other = v.getSet();
+                for (const auto &el : set->elements)
+                {
+                    if (other->contains(el)) out->add(el);
+                }
+            }
+            return Value(out);
+        }));
+    }
+    throw std::runtime_error("Khopdi tod saale ka! 'set' ke paas '" + name + "' naam ka koi method nahi hai!");
+}
+
+static Value getTupleMethod(const std::shared_ptr<MemeTuple> &tuple, const std::string &name)
+{
+    if (name == "length" || name == "size" || name == "lambai" || name == "lambaai" || name == "count")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [tuple](Interpreter &, const std::vector<Value> &) {
+            return Value(static_cast<long long>(tuple ? tuple->elements.size() : 0));
+        }));
+    }
+    if (name == "dhund" || name == "kahan" || name == "find" || name == "index_of" || name == "indexOf")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [tuple](Interpreter &, const std::vector<Value> &args) {
+            if (!tuple) return Value(-1LL);
+            Value target = args[0].deref();
+            for (size_t i = 0; i < tuple->elements.size(); ++i)
+            {
+                if (tuple->elements[i] == target) return Value(static_cast<long long>(i));
+            }
+            return Value(-1LL);
+        }));
+    }
+    if (name == "hai_kya" || name == "has" || name == "contains" || name == "andar")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [tuple](Interpreter &, const std::vector<Value> &args) {
+            if (!tuple) return Value(false);
+            Value target = args[0].deref();
+            for (size_t i = 0; i < tuple->elements.size(); ++i)
+            {
+                if (tuple->elements[i] == target) return Value(true);
+            }
+            return Value(false);
+        }));
+    }
+    if (name == "to_list" || name == "list")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [tuple](Interpreter &, const std::vector<Value> &) {
+            auto l = std::make_shared<MemeList>();
+            if (tuple) l->elements = tuple->elements;
+            return Value(l);
+        }));
+    }
+    if (name == "kaat" || name == "slice")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, 2, [tuple](Interpreter &, const std::vector<Value> &args) {
+            auto out = std::make_shared<MemeTuple>();
+            if (!tuple || tuple->elements.empty()) return Value(out);
+            long long sz = static_cast<long long>(tuple->elements.size());
+            long long start = args[0].deref().asInt();
+            if (start < 0) start += sz;
+            if (start < 0) start = 0;
+            if (start > sz) start = sz;
+
+            long long end = sz;
+            if (args.size() > 1)
+            {
+                end = args[1].deref().asInt();
+                if (end < 0) end += sz;
+                if (end < 0) end = 0;
+                if (end > sz) end = sz;
+            }
+            if (start < end)
+            {
+                out->elements.assign(tuple->elements.begin() + start, tuple->elements.begin() + end);
+            }
+            return Value(out);
+        }));
+    }
+    throw std::runtime_error("Khopdi tod saale ka! 'tuple' ke paas '" + name + "' naam ka koi method nahi hai!");
+}
+
 Value NakalBuiltin::call(Interpreter &interpreter, const std::vector<Value> &args)
 {
     return interpreter.cloneValue(args[0]);
@@ -5664,6 +6117,18 @@ Value LambaiBuiltin::call(Interpreter &interpreter, const std::vector<Value> &ar
     {
         return Value(static_cast<long long>(val.getMap()->entries.size()));
     }
+    if (val.isBytes())
+    {
+        return Value(static_cast<long long>(val.getBytes()->data.size()));
+    }
+    if (val.isSet())
+    {
+        return Value(static_cast<long long>(val.getSet()->elements.size()));
+    }
+    if (val.isTuple())
+    {
+        return Value(static_cast<long long>(val.getTuple()->elements.size()));
+    }
     if (val.isInstance())
     {
         auto inst = val.getInstance();
@@ -5679,7 +6144,7 @@ Value LambaiBuiltin::call(Interpreter &interpreter, const std::vector<Value> &ar
             }
         }
     }
-    throw std::runtime_error("'size()' sirf string, list ya khata naapta hai, '" + val.typeName() + "' pe fita mat lagao!");
+    throw std::runtime_error("'size()' sirf string, list, khata, bytes, set ya tuple naapta hai, '" + val.typeName() + "' pe fita mat lagao!");
 }
 
 Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> &args)
@@ -5831,6 +6296,128 @@ Value Interpreter::executeAsyncFunction(UserFunction *fn, const std::vector<Valu
     return Value(promiseMap);
 }
 
+class BytesConstructorCallable : public Callable
+{
+public:
+    size_t arity() const override { return 0; }
+    size_t minArity() const override { return 0; }
+    size_t maxArity() const override { return 1; }
+    bool checkArity(size_t) const override { return true; }
+    std::string toString() const override { return "<builtin bytes>"; }
+    Value call(Interpreter &, const std::vector<Value> &args) override
+    {
+        auto b = std::make_shared<MemeBytes>();
+        if (args.empty()) return Value(b);
+        Value v = args[0].deref();
+        if (v.isBytes())
+        {
+            b->data = v.getBytes()->data;
+        }
+        else if (v.isNumeric())
+        {
+            long long count = v.asInt();
+            if (count > 0) b->data.resize(static_cast<size_t>(count), 0);
+        }
+        else if (std::holds_alternative<std::string>(v.data))
+        {
+            const std::string &s = std::get<std::string>(v.data);
+            b->data.assign(s.begin(), s.end());
+        }
+        else if (v.isList())
+        {
+            auto l = v.getList();
+            b->data.reserve(l->elements.size());
+            for (const auto &el : l->elements)
+            {
+                b->data.push_back(static_cast<uint8_t>(el.deref().asInt()));
+            }
+        }
+        return Value(b);
+    }
+};
+
+class SetConstructorCallable : public Callable
+{
+public:
+    size_t arity() const override { return 0; }
+    size_t minArity() const override { return 0; }
+    size_t maxArity() const override { return 1; }
+    bool checkArity(size_t) const override { return true; }
+    std::string toString() const override { return "<builtin set>"; }
+    Value call(Interpreter &, const std::vector<Value> &args) override
+    {
+        auto s = std::make_shared<MemeSet>();
+        if (args.empty()) return Value(s);
+        Value v = args[0].deref();
+        if (v.isList())
+        {
+            for (const auto &el : v.getList()->elements) s->add(el.deref());
+        }
+        else if (v.isSet())
+        {
+            for (const auto &el : v.getSet()->elements) s->add(el);
+        }
+        else if (v.isTuple())
+        {
+            for (const auto &el : v.getTuple()->elements) s->add(el.deref());
+        }
+        else if (std::holds_alternative<std::string>(v.data))
+        {
+            for (char ch : std::get<std::string>(v.data)) s->add(Value(std::string(1, ch)));
+        }
+        else if (v.isBytes())
+        {
+            for (uint8_t b : v.getBytes()->data) s->add(Value(b));
+        }
+        else
+        {
+            s->add(v);
+        }
+        return Value(s);
+    }
+};
+
+class TupleConstructorCallable : public Callable
+{
+public:
+    size_t arity() const override { return 0; }
+    size_t minArity() const override { return 0; }
+    size_t maxArity() const override { return 1; }
+    bool checkArity(size_t) const override { return true; }
+    std::string toString() const override { return "<builtin tuple>"; }
+    Value call(Interpreter &, const std::vector<Value> &args) override
+    {
+        auto t = std::make_shared<MemeTuple>();
+        if (args.empty()) return Value(t);
+        Value v = args[0].deref();
+        if (v.isList())
+        {
+            t->elements = v.getList()->elements;
+        }
+        else if (v.isTuple())
+        {
+            t->elements = v.getTuple()->elements;
+        }
+        else if (v.isSet())
+        {
+            t->elements = v.getSet()->elements;
+        }
+        else if (std::holds_alternative<std::string>(v.data))
+        {
+            for (char ch : std::get<std::string>(v.data)) t->elements.push_back(Value(std::string(1, ch)));
+        }
+        else if (v.isBytes())
+        {
+            for (uint8_t b : v.getBytes()->data) t->elements.push_back(Value(b));
+        }
+        else
+        {
+            t->elements.push_back(v);
+        }
+        return Value(t);
+    }
+};
+
 Interpreter::Interpreter(std::ostream &out, std::istream &in)
     : globals(std::make_shared<Environment>(nullptr, 0)), environment(globals), out(out), in(in)
 {
@@ -5853,12 +6440,124 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("bina_point", intFunc);
     globals->define("pura_num", intFunc);
     globals->define("ank", intFunc);
+    globals->define("int", intFunc);
+    globals->define("long", intFunc);
+    globals->define("bada_ank", intFunc);
+    globals->define("i64", intFunc);
 
     // Decimal float conversion
     auto floatFunc = Value(std::make_shared<DashamlavBuiltin>());
     globals->define("point_wala", floatFunc);
     globals->define("float_bana", floatFunc);
     globals->define("dashamlav", floatFunc);
+    globals->define("double", floatFunc);
+    globals->define("f64", floatFunc);
+    globals->define("point", floatFunc);
+
+    // Byte (uint8) constructor
+    auto byteFunc = Value(std::make_shared<NativeMethodCallable>("byte", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value val = args[0].deref();
+        if (val.isNumeric()) return Value(static_cast<uint8_t>(val.asInt()));
+        if (std::holds_alternative<std::string>(val.data))
+        {
+            const std::string &s = std::get<std::string>(val.data);
+            try {
+                if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0)
+                    return Value(static_cast<uint8_t>(std::stoul(s, nullptr, 16)));
+                if (s.rfind("0b", 0) == 0 || s.rfind("0B", 0) == 0)
+                    return Value(static_cast<uint8_t>(std::stoul(s.substr(2), nullptr, 2)));
+                return Value(static_cast<uint8_t>(std::stoul(s)));
+            } catch (...) {
+                throw std::runtime_error("Utha le re baba! '" + s + "' ko byte mein kaise badlun?");
+            }
+        }
+        throw std::runtime_error("Utha le re baba! Is type ko byte mein convert nahi kar sakte!");
+    }));
+    globals->define("byte", byteFunc);
+    globals->define("chota_ank", byteFunc);
+    globals->define("u8", byteFunc);
+
+    // Int32 constructor
+    auto int32Func = Value(std::make_shared<NativeMethodCallable>("int32", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value val = args[0].deref();
+        if (val.isNumeric()) return Value(val.asInt32());
+        if (std::holds_alternative<std::string>(val.data))
+        {
+            const std::string &s = std::get<std::string>(val.data);
+            try {
+                if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0)
+                    return Value(static_cast<int>(std::stol(s, nullptr, 16)));
+                if (s.rfind("0b", 0) == 0 || s.rfind("0B", 0) == 0)
+                    return Value(static_cast<int>(std::stol(s.substr(2), nullptr, 2)));
+                return Value(static_cast<int>(std::stol(s)));
+            } catch (...) {
+                throw std::runtime_error("Utha le re baba! '" + s + "' ko int32 mein kaise badlun?");
+            }
+        }
+        throw std::runtime_error("Utha le re baba! Is type ko int32 mein convert nahi kar sakte!");
+    }));
+    globals->define("int32", int32Func);
+    globals->define("ank32", int32Func);
+    globals->define("i32", int32Func);
+
+    // Float32 constructor
+    auto float32Func = Value(std::make_shared<NativeMethodCallable>("float32", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value val = args[0].deref();
+        if (val.isNumeric()) return Value(val.asFloat());
+        if (std::holds_alternative<std::string>(val.data))
+        {
+            try {
+                return Value(std::stof(std::get<std::string>(val.data)));
+            } catch (...) {
+                throw std::runtime_error("Daya, kuch toh gadbad hai! '" + std::get<std::string>(val.data) + "' ko float32 mein convert nahi kar sakte!");
+            }
+        }
+        throw std::runtime_error("Daya, kuch toh gadbad hai! Is type ko float32 mein convert nahi kar sakte!");
+    }));
+    globals->define("float32", float32Func);
+    globals->define("f32", float32Func);
+    globals->define("float", float32Func);
+
+    // Char constructor
+    auto charFunc = Value(std::make_shared<NativeMethodCallable>("char", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value val = args[0].deref();
+        if (val.isChar()) return val;
+        if (val.isNumeric()) return Value(static_cast<char>(val.asInt()));
+        if (std::holds_alternative<std::string>(val.data))
+        {
+            const std::string &s = std::get<std::string>(val.data);
+            return Value(s.empty() ? '\0' : s[0]);
+        }
+        throw std::runtime_error("Utha le re baba! Is type ko char mein convert nahi kar sakte!");
+    }));
+    globals->define("char", charFunc);
+    globals->define("akshar", charFunc);
+
+    // String constructor
+    auto strFunc = Value(std::make_shared<NativeMethodCallable>("string", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value(args[0].deref().toString());
+    }));
+    globals->define("string", strFunc);
+    globals->define("str", strFunc);
+    globals->define("shabd", strFunc);
+    globals->define("bol", strFunc);
+
+    // Bytes constructor
+    auto bytesFunc = Value(std::make_shared<BytesConstructorCallable>());
+    globals->define("bytes", bytesFunc);
+    globals->define("kaccha_data", bytesFunc);
+    globals->define("bytearray", bytesFunc);
+
+    // Set constructor
+    auto setFunc = Value(std::make_shared<SetConstructorCallable>());
+    globals->define("set", setFunc);
+    globals->define("jhund", setFunc);
+    globals->define("mandali", setFunc);
+
+    // Tuple constructor
+    auto tupleFunc = Value(std::make_shared<TupleConstructorCallable>());
+    globals->define("tuple", tupleFunc);
+    globals->define("jodi", tupleFunc);
 
     // Explicit cloning (nakal / clone / copy)
     auto nakalFunc = Value(std::make_shared<NakalBuiltin>());
@@ -6544,6 +7243,38 @@ Value Interpreter::cloneValue(const Value &val)
             }
         }
         return Value(newMap);
+    }
+    if (v.isBytes())
+    {
+        auto bytes = v.getBytes();
+        return Value(std::make_shared<MemeBytes>(bytes ? bytes->data : std::vector<uint8_t>{}));
+    }
+    if (v.isSet())
+    {
+        auto set = v.getSet();
+        auto newSet = std::make_shared<MemeSet>();
+        if (set)
+        {
+            for (const auto &elem : set->elements)
+            {
+                newSet->add(cloneValue(elem));
+            }
+        }
+        return Value(newSet);
+    }
+    if (v.isTuple())
+    {
+        auto tup = v.getTuple();
+        auto newTup = std::make_shared<MemeTuple>();
+        if (tup)
+        {
+            newTup->elements.reserve(tup->elements.size());
+            for (const auto &elem : tup->elements)
+            {
+                newTup->elements.push_back(cloneValue(elem));
+            }
+        }
+        return Value(newTup);
     }
     return v;
 }
@@ -7380,7 +8111,91 @@ void Interpreter::execute(const Stmt *stmt)
             return;
         }
 
-        throw std::runtime_error("Ghumaane ke liye list, khata ya string chahiye! '" + colVal.typeName() + "' ko kaise ghumaoge?");
+        if (colVal.isBytes())
+        {
+            auto bytes = colVal.getBytes();
+            for (uint8_t b : bytes->data)
+            {
+                auto loopEnv = std::make_shared<Environment>(environment, currentScopeDepth + 1);
+                loopEnv->define(gm->varName, Value(b));
+                auto prev = environment;
+                environment = loopEnv;
+                try
+                {
+                    execute(gm->body.get());
+                }
+                catch (const BreakSignal &)
+                {
+                    environment = prev;
+                    break;
+                }
+                catch (const ContinueSignal &)
+                {
+                    environment = prev;
+                    continue;
+                }
+                environment = prev;
+            }
+            return;
+        }
+
+        if (colVal.isSet())
+        {
+            auto set = colVal.getSet();
+            for (const auto &elem : set->elements)
+            {
+                auto loopEnv = std::make_shared<Environment>(environment, currentScopeDepth + 1);
+                loopEnv->define(gm->varName, elem);
+                auto prev = environment;
+                environment = loopEnv;
+                try
+                {
+                    execute(gm->body.get());
+                }
+                catch (const BreakSignal &)
+                {
+                    environment = prev;
+                    break;
+                }
+                catch (const ContinueSignal &)
+                {
+                    environment = prev;
+                    continue;
+                }
+                environment = prev;
+            }
+            return;
+        }
+
+        if (colVal.isTuple())
+        {
+            auto tup = colVal.getTuple();
+            for (const auto &elem : tup->elements)
+            {
+                auto loopEnv = std::make_shared<Environment>(environment, currentScopeDepth + 1);
+                loopEnv->define(gm->varName, elem);
+                auto prev = environment;
+                environment = loopEnv;
+                try
+                {
+                    execute(gm->body.get());
+                }
+                catch (const BreakSignal &)
+                {
+                    environment = prev;
+                    break;
+                }
+                catch (const ContinueSignal &)
+                {
+                    environment = prev;
+                    continue;
+                }
+                environment = prev;
+            }
+            return;
+        }
+
+        throw std::runtime_error("Ghumaane ke liye list, khata, string, bytes, set ya tuple chahiye! '" + colVal.typeName() + "' ko kaise ghumaoge?");
     }
 
     // 8. Return statement: `ye_le expr;` or `ye_le;`
@@ -7734,7 +8549,16 @@ Value Interpreter::evaluate(const Expr *expr)
         return Value(e->value);
 
     if (auto *e = dynamic_cast<const FloatExpr *>(expr))
+    {
+        if (e->isFloat32) return Value(static_cast<float>(e->value));
         return Value(e->value);
+    }
+
+    if (auto *e = dynamic_cast<const ByteExpr *>(expr))
+        return Value(e->value);
+
+    if (auto *e = dynamic_cast<const BytesExpr *>(expr))
+        return Value(std::make_shared<MemeBytes>(e->value));
 
     if (auto *e = dynamic_cast<const StringExpr *>(expr))
         return Value(e->value);
@@ -8402,6 +9226,56 @@ Value Interpreter::evaluate(const Expr *expr)
             return getStringMethod(strVal, g->name);
         }
 
+        if (objVal.isBytes())
+        {
+            if (g->name == "length" || g->name == "lambaai" || g->name == "lambai" || g->name == "size" || g->name == "count")
+            {
+                return Value(static_cast<long long>(objVal.getBytes()->data.size()));
+            }
+            return getBytesMethod(objVal.getBytes(), g->name);
+        }
+
+        if (objVal.isSet())
+        {
+            if (g->name == "length" || g->name == "lambaai" || g->name == "lambai" || g->name == "size" || g->name == "count")
+            {
+                return Value(static_cast<long long>(objVal.getSet()->elements.size()));
+            }
+            return getSetMethod(objVal.getSet(), g->name);
+        }
+
+        if (objVal.isTuple())
+        {
+            if (g->name == "length" || g->name == "lambaai" || g->name == "lambai" || g->name == "size" || g->name == "count")
+            {
+                return Value(static_cast<long long>(objVal.getTuple()->elements.size()));
+            }
+            return getTupleMethod(objVal.getTuple(), g->name);
+        }
+
+        if (std::holds_alternative<std::shared_ptr<Callable>>(objVal.data))
+        {
+            auto callable = std::get<std::shared_ptr<Callable>>(objVal.data);
+            if (callable && callable->toString() == "<builtin bytes>" && (g->name == "from_hex" || g->name == "hex_se"))
+            {
+                return Value(std::make_shared<NativeMethodCallable>("from_hex", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+                    std::string hexStr = args[0].deref().toString();
+                    auto b = std::make_shared<MemeBytes>();
+                    std::string clean;
+                    for (char c : hexStr) {
+                        if (std::isxdigit(static_cast<unsigned char>(c))) clean += c;
+                    }
+                    if (clean.size() % 2 != 0) clean = "0" + clean;
+                    for (size_t i = 0; i < clean.size(); i += 2) {
+                        std::string byteStr = clean.substr(i, 2);
+                        uint8_t byteVal = static_cast<uint8_t>(std::strtoul(byteStr.c_str(), nullptr, 16));
+                        b->data.push_back(byteVal);
+                    }
+                    return Value(b);
+                }));
+            }
+        }
+
         throw std::runtime_error(
             "Aura -10000! '" + objVal.toString() + "' (" + objVal.typeName() +
             ") koi object, list ya khata thodi hai jo uski property nikaal rahe ho!");
@@ -8488,6 +9362,29 @@ Value Interpreter::evaluate(const Expr *expr)
             }
         }
         return Value(map);
+    }
+
+    // Tuple literal: `(a, b, c)` or `(a,)`
+    if (auto *tl = dynamic_cast<const TupleExpr *>(expr))
+    {
+        std::vector<Value> elems;
+        elems.reserve(tl->elements.size());
+        for (const auto &elemExpr : tl->elements)
+        {
+            elems.push_back(evaluate(elemExpr.get()));
+        }
+        return Value(std::make_shared<MemeTuple>(std::move(elems)));
+    }
+
+    // Set literal: `{ a, b, c }`
+    if (auto *sl = dynamic_cast<const SetLiteralExpr *>(expr))
+    {
+        auto set = std::make_shared<MemeSet>();
+        for (const auto &elemExpr : sl->elements)
+        {
+            set->add(evaluate(elemExpr.get()));
+        }
+        return Value(set);
     }
 
     // JSX Element: `<tag prop="val">...</tag>` or `<Component ... />`
@@ -8762,6 +9659,42 @@ Value Interpreter::evaluate(const Expr *expr)
             return Value(std::monostate{}); // returns nalla if key missing
         }
 
+        if (target.isBytes())
+        {
+            auto bytes = target.getBytes();
+            long long sz = bytes ? static_cast<long long>(bytes->data.size()) : 0;
+            if (!idxVal.isNumeric())
+                throw std::runtime_error("Bytes index number hona chahiye, ye kya diya: " + idxVal.typeName());
+            long long idx = idxVal.asInt();
+            long long origIdx = idx;
+            if (idx < 0) idx += sz;
+            if (idx < 0 || idx >= sz)
+            {
+                throw std::runtime_error(
+                    "Aukaat ke bahar! Index " + std::to_string(origIdx) +
+                    " maang rahe ho par bytes length sirf " + std::to_string(sz) + " hai!");
+            }
+            return Value(bytes->data[idx]);
+        }
+
+        if (target.isTuple())
+        {
+            auto tup = target.getTuple();
+            long long sz = tup ? static_cast<long long>(tup->elements.size()) : 0;
+            if (!idxVal.isNumeric())
+                throw std::runtime_error("Tuple index number hona chahiye, ye kya diya: " + idxVal.typeName());
+            long long idx = idxVal.asInt();
+            long long origIdx = idx;
+            if (idx < 0) idx += sz;
+            if (idx < 0 || idx >= sz)
+            {
+                throw std::runtime_error(
+                    "Aukaat ke bahar! Index " + std::to_string(origIdx) +
+                    " maang rahe ho par tuple length sirf " + std::to_string(sz) + " hai!");
+            }
+            return tup->elements[idx];
+        }
+
         throw std::runtime_error(
             "Ye kya bawasir hai? '" + target.typeName() + "' ke andar '[]' laga ke kya dhund rahe ho?");
     }
@@ -8832,6 +9765,36 @@ Value Interpreter::evaluate(const Expr *expr)
                 map->set(key, val);
             }
             return val;
+        }
+
+        if (target.isBytes())
+        {
+            auto bytes = target.getBytes();
+            long long sz = bytes ? static_cast<long long>(bytes->data.size()) : 0;
+            if (!idxVal.isNumeric())
+                throw std::runtime_error("Bytes index number hona chahiye, ye kya diya: " + idxVal.typeName());
+            long long idx = idxVal.asInt();
+            long long origIdx = idx;
+            if (idx < 0) idx += sz;
+            if (idx < 0 || idx >= sz)
+            {
+                throw std::runtime_error(
+                    "Aukaat ke bahar! Index " + std::to_string(origIdx) +
+                    " pe assign karna chahte ho par bytes length sirf " + std::to_string(sz) + " hai!");
+            }
+            if (!val.isNumeric())
+                throw std::runtime_error("Byte value number honi chahiye (0-255)!");
+            long long byteNum = val.asInt();
+            if (byteNum < 0 || byteNum > 255)
+                throw std::runtime_error("Byte value 0 se 255 ke beech honi chahiye!");
+            bytes->data[idx] = static_cast<uint8_t>(byteNum);
+            return val;
+        }
+
+        if (target.isTuple())
+        {
+            throw std::runtime_error(
+                "Gaddari korbe! Tuple immutable (aparivartansheel) hota hai, uski value badli nahi ja sakti!");
         }
 
         if (std::holds_alternative<std::string>(target.data))

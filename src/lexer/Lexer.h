@@ -87,6 +87,8 @@ enum class TokenType
     QUESTION,
     // Literals
     INT_LITERAL,
+    BYTE_LITERAL,
+    BYTES_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,
     FSTRING_LITERAL,
@@ -446,6 +448,101 @@ public:
             }
 
             // --------------------------------
+            // Bytes literals (b"..." or b'...' or B"..." or B'...')
+            // --------------------------------
+            if ((currentChar == 'b' || currentChar == 'B') &&
+                (peekNext() == '"' || peekNext() == '\''))
+            {
+                advance(); // consume 'b' or 'B'
+                char quote = advance(); // consume opening quote
+
+                std::string value;
+                bool terminated = false;
+
+                while (!isAtEnd())
+                {
+                    char c = peek();
+
+                    if (c == quote)
+                    {
+                        advance();
+                        terminated = true;
+                        break;
+                    }
+
+                    if (c == '\\')
+                    {
+                        advance();
+
+                        if (isAtEnd())
+                            break;
+
+                        char escaped = advance();
+
+                        switch (escaped)
+                        {
+                        case 'n':
+                            value += '\n';
+                            break;
+                        case 't':
+                            value += '\t';
+                            break;
+                        case 'r':
+                            value += '\r';
+                            break;
+                        case '0':
+                            value += '\0';
+                            break;
+                        case '"':
+                            value += '"';
+                            break;
+                        case '\'':
+                            value += '\'';
+                            break;
+                        case '\\':
+                            value += '\\';
+                            break;
+                        case 'x':
+                        case 'X':
+                        {
+                            if (!isAtEnd() && std::isxdigit(peek()) && peekNext() != quote && std::isxdigit(peekNext()))
+                            {
+                                char h1 = advance();
+                                char h2 = advance();
+                                std::string hexStr = {h1, h2};
+                                char byteVal = static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                                value += byteVal;
+                            }
+                            else
+                            {
+                                value += escaped;
+                            }
+                            break;
+                        }
+                        default:
+                            value += escaped;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        value += advance();
+                    }
+                }
+
+                if (!terminated)
+                {
+                    tokens.push_back({TokenType::ERROR, "Bytes literal khol ke chhod diya... band tera baap karega?", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    tokens.push_back({TokenType::BYTES_LITERAL, value, tokenLine, tokenColumn});
+                }
+
+                continue;
+            }
+
+            // --------------------------------
             // Identifiers / Keywords
             // --------------------------------
             if (std::isalpha(currentChar) || currentChar == '_')
@@ -481,6 +578,53 @@ public:
             // --------------------------------
             // Number literals
             // --------------------------------
+            // Hex numbers: 0x... / 0X...
+            if (currentChar == '0' && (peekNext() == 'x' || peekNext() == 'X'))
+            {
+                std::string value;
+                value += advance(); // '0'
+                value += advance(); // 'x' or 'X'
+                while (!isAtEnd() && std::isxdigit(peek()))
+                {
+                    value += advance();
+                }
+                if (!isAtEnd() && (peek() == 'b' || peek() == 'B') &&
+                    (position + 1 >= source.size() || (!std::isalnum(peekNext()) && peekNext() != '_')))
+                {
+                    advance(); // consume 'b'
+                    tokens.push_back({TokenType::BYTE_LITERAL, value, tokenLine, tokenColumn});
+                }
+                else
+                {
+                    tokens.push_back({TokenType::INT_LITERAL, value, tokenLine, tokenColumn});
+                }
+                continue;
+            }
+
+            // Binary numbers: 0b0101...
+            if (currentChar == '0' && (peekNext() == 'b' || peekNext() == 'B') &&
+                (position + 2 < source.size() && (source[position + 2] == '0' || source[position + 2] == '1')))
+            {
+                std::string value;
+                value += advance(); // '0'
+                value += advance(); // 'b' or 'B'
+                while (!isAtEnd() && (peek() == '0' || peek() == '1'))
+                {
+                    value += advance();
+                }
+                if (!isAtEnd() && (peek() == 'b' || peek() == 'B') &&
+                    (position + 1 >= source.size() || (!std::isalnum(peekNext()) && peekNext() != '_')))
+                {
+                    advance(); // consume 'b'
+                    tokens.push_back({TokenType::BYTE_LITERAL, value, tokenLine, tokenColumn});
+                }
+                else
+                {
+                    tokens.push_back({TokenType::INT_LITERAL, value, tokenLine, tokenColumn});
+                }
+                continue;
+            }
+
             if (std::isdigit(currentChar))
             {
                 std::string value;
@@ -502,6 +646,22 @@ public:
                     {
                         value += advance();
                     }
+                }
+
+                // Suffixes: 'b' for byte, 'f' for float
+                if (!isFloat && (peek() == 'b' || peek() == 'B') &&
+                    (position + 1 >= source.size() || (!std::isalnum(peekNext()) && peekNext() != '_')))
+                {
+                    advance(); // consume 'b'
+                    tokens.push_back({TokenType::BYTE_LITERAL, value, tokenLine, tokenColumn});
+                    continue;
+                }
+                if ((peek() == 'f' || peek() == 'F') &&
+                    (position + 1 >= source.size() || (!std::isalnum(peekNext()) && peekNext() != '_')))
+                {
+                    value += advance(); // consume 'f' and retain suffix in token value
+                    tokens.push_back({TokenType::FLOAT_LITERAL, value, tokenLine, tokenColumn});
+                    continue;
                 }
 
                 tokens.push_back({isFloat ? TokenType::FLOAT_LITERAL
@@ -900,6 +1060,10 @@ public:
             return "IDENTIFIER";
         case TokenType::INT_LITERAL:
             return "INT_LITERAL";
+        case TokenType::BYTE_LITERAL:
+            return "BYTE_LITERAL";
+        case TokenType::BYTES_LITERAL:
+            return "BYTES_LITERAL";
         case TokenType::FLOAT_LITERAL:
             return "FLOAT_LITERAL";
         case TokenType::STRING_LITERAL:

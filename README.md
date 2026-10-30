@@ -5,7 +5,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 [![WebAssembly](https://img.shields.io/badge/WASM-Ready-purple.svg)](https://webassembly.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-22%2F22%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-23%2F23%20passing-brightgreen.svg)]()
 
 ---
 
@@ -216,7 +216,55 @@ dikha f"Extension: {path.ext(full)}";      // .meme
 
 ---
 
-### 6. Zero-WebView Native Desktop GUI
+### 6. Extended Primitives & Optimized Memory Layout
+
+MEMElang features a high-performance 32-byte unified `Value` variant (24 bytes in WebAssembly) with fast numeric ALU execution paths, bitwise operations, and first-class compound collections:
+
+| Datatype | Hindi / Alias | Literal Syntax | Description |
+| :--- | :--- | :--- | :--- |
+| `byte` | `chota_ank` / `u8` | `255b`, `0xffb`, `0b1010b` | 8-bit unsigned integer with bitwise operators |
+| `int32` | `ank32` / `i32` | `int32(42)` | 32-bit signed integer with auto-promotion on overflow |
+| `int` / `long` | `ank` / `bada_ank` / `i64` | `42`, `-100`, `0xFF`, `0b101` | 64-bit signed integer (`int64_t`) |
+| `float32` | `f32` / `float` | `3.14f`, `-0.5f` | 32-bit single-precision IEEE 754 float |
+| `double` | `f64` / `point` | `3.14`, `-0.5`, `1e-4` | 64-bit double-precision IEEE 754 float |
+| `char` | `akshar` | `char("A")`, `'A'` | Single character primitive |
+| `bytes` | `kaccha_data` / `bytearray` | `b"Hello\x00World"` | Mutable raw binary buffer, hex encoding & binary file I/O |
+| `set` | `jhund` / `mandali` | `{1, 2, 3}`, `{"a", "b"}` | Order-preserving O(1) hash set with union `+` and difference `-` |
+| `tuple` | `jodi` | `(1, "two", 3.0)`, `(1,)` | Fixed-size immutable sequence with indexing and slicing |
+
+```meme
+// 1. Raw Byte Buffers, Mutation & Binary File I/O
+pakad buf = b"Hello";
+buf[0] = 104;                                  // Mutable byte assignment ('h')
+dikha buf.to_string();                         // "hello"
+dikha buf.to_hex();                            // "68656c6c6f"
+
+pakad decoded = bytes.from_hex("43686169");   // Decodes hex -> "Chai"
+fs.write_bytes("drink.bin", decoded);          // Direct binary write
+pakad readData = fs.read_bytes("drink.bin");   // Direct binary read
+
+// 2. Hash Sets & Algebraic Set Operations
+pakad s = {1, 2, 2, 3};                        // Auto-deduplicates: {1, 2, 3}
+s.add(10);
+s.remove(1);
+dikha s.has(2);                                // han
+
+pakad unionSet = s + {4, 5};                   // Set union
+pakad diffSet = unionSet - {2};                // Set difference
+
+// 3. Immutable Tuples
+pakad tup = (10, "chai", 3.14f);
+dikha tup[0];                                  // 10
+panga {
+    tup[0] = 99;                               // Error: tuples are strictly immutable!
+} lafda (err) {
+    dikha "Tuples cannot be mutated!";
+}
+```
+
+---
+
+### 7. Zero-WebView Native Desktop GUI
 
 MEMElang powers real 60 FPS native desktop applications using declarative JSX components and a custom Tailwind CSS engine:
 

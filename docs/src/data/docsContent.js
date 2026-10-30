@@ -205,9 +205,18 @@ dikha "Outside block:", x;`
         type: 'table',
         headers: ['Type', 'Literal Example', 'Truthy / Falsy', 'Notes'],
         rows: [
-          ['int', '42, -100', '0 is falsy, others truthy', '64-bit signed integer (`long long`)'],
-          ['float', '3.14, -0.5', '0.0 is falsy, others truthy', 'IEEE 754 double precision (`double`)'],
+          ['byte', '255b, 0xffb, 0b1010b', '0 is falsy, others truthy', '8-bit unsigned integer (`uint8_t`) with literal suffixes'],
+          ['int32', 'int32(42), ank32(100)', '0 is falsy, others truthy', '32-bit fast integer ALU path with auto-promotion on overflow'],
+          ['int / long', '42, -100, 0x1F, 0b101', '0 is falsy, others truthy', '64-bit signed integer (`long long`)'],
+          ['float32', '3.14f, -0.5f', '0.0 is falsy, others truthy', '32-bit single-precision IEEE 754 float (`float`)'],
+          ['float / double', '3.14, -0.5, 1e-4', '0.0 is falsy, others truthy', '64-bit double-precision IEEE 754 float (`double`)'],
+          ['char', 'char("Namaste"), \'A\'', 'Empty or \'\\0\' is falsy', 'Single character primitive (`char`)'],
           ['string', '"namaste", \'bro\'', 'Empty "" is falsy', 'Supports string multiplication `"ha" * 3`'],
+          ['bytes', 'b"Hello\\x00World"', 'Empty buffer is falsy', 'Raw binary buffer with hex decode, mutation & binary I/O'],
+          ['set', '{1, 2, 3}, { "a", "b" }', 'Empty set() is falsy', 'Order-preserving O(1) hash set with union `+` & diff `-`'],
+          ['tuple', '(1, "two", 3.0), (1,)', 'Empty () is falsy', 'Fixed-size immutable sequence with indexing and slicing'],
+          ['list', '[1, 2, 3], ["a", "b"]', 'Empty [] is falsy', 'Dynamic growable list with spread, push, and pop'],
+          ['map', '{"key": "value"}', 'Empty {} is falsy', 'Key-value hash map with destructuring and spread'],
           ['bool', 'real / han, cap / nhi', 'real is truthy, cap is falsy', 'Gen-Z: `real`/`cap`, Desi: `han`/`nhi`'],
           ['nalla', 'nalla / kuch_nhi', 'Always falsy', 'Null value ("unemployed / empty")'],
           ['function', 'jugaad add(a, b) { ... }', 'Always truthy', 'First-class callable entity'],
@@ -217,16 +226,58 @@ dikha "Outside block:", x;`
       {
         type: 'heading',
         level: 2,
+        text: 'Extended Primitives: bytes, set & tuple'
+      },
+      {
+        type: 'code',
+        title: 'extended_primitives.meme',
+        code: `// 1. Raw Bytes Buffer
+pakad buf = b"Hello";
+buf[0] = 104; // mutable: 'h'
+dikha buf.to_string(); // "hello"
+dikha buf.to_hex();    // "68656c6c6f"
+
+// Static hex parsing & binary I/O
+pakad decoded = bytes.from_hex("43686169"); // "Chai"
+fs.write_bytes("drink.bin", decoded);
+pakad readBack = fs.read_bytes("drink.bin");
+
+// 2. Set with Deduplication & Algebraic Operations
+pakad s = {1, 2, 2, 3}; // size: 3
+s.add(4);
+dikha s.has(2); // han
+pakad unionSet = s + {4, 5, 6};
+pakad diffSet = unionSet - {1, 2};
+
+// 3. Tuples (Immutable Sequences)
+pakad coords = (10, 20, 30);
+dikha coords[0]; // 10
+panga {
+    coords[0] = 99; // Throws error: tuples are immutable!
+} lafda (err) {
+    dikha "Tuple cannot be modified!";
+}`
+      },
+      {
+        type: 'heading',
+        level: 2,
         text: 'Interactive Type Inspection with kya_hai()'
       },
       {
         type: 'code',
         title: 'types.meme',
-        code: `dikha kya_hai(100);
-dikha kya_hai(3.14);
-dikha kya_hai("Sholay");
-dikha kya_hai(real);
-dikha kya_hai(nalla);`
+        code: `dikha kya_hai(255b);     // byte
+dikha kya_hai(int32(42)); // int32
+dikha kya_hai(100);       // int
+dikha kya_hai(3.14f);     // float32
+dikha kya_hai(3.14);      // float
+dikha kya_hai(char("A")); // char
+dikha kya_hai(b"Data");   // bytes
+dikha kya_hai({1, 2, 3}); // set
+dikha kya_hai((1, 2, 3)); // tuple
+dikha kya_hai("Sholay");  // string
+dikha kya_hai(real);      // bool
+dikha kya_hai(nalla);     // nalla`
       }
     ]
   },

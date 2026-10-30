@@ -72,10 +72,31 @@ void TypeChecker::initGlobals()
     // Conversion built-ins
     globals->define("ank", Type::Function({Type::Any()}, Type::Ank()), true);
     globals->define("sankhya", Type::Function({Type::Any()}, Type::Ank()), true);
+    globals->define("int", Type::Function({Type::Any()}, Type::Ank()), true);
+    globals->define("int32", Type::Function({Type::Any()}, Type::Int32()), true);
+    globals->define("ank32", Type::Function({Type::Any()}, Type::Int32()), true);
+    globals->define("byte", Type::Function({Type::Any()}, Type::Byte()), true);
+    globals->define("chota_ank", Type::Function({Type::Any()}, Type::Byte()), true);
+    globals->define("u8", Type::Function({Type::Any()}, Type::Byte()), true);
+    globals->define("long", Type::Function({Type::Any()}, Type::Ank()), true);
+    globals->define("bada_ank", Type::Function({Type::Any()}, Type::Ank()), true);
     globals->define("point", Type::Function({Type::Any()}, Type::Point()), true);
     globals->define("dashamlav", Type::Function({Type::Any()}, Type::Point()), true);
+    globals->define("float", Type::Function({Type::Any()}, Type::Point()), true);
+    globals->define("float32", Type::Function({Type::Any()}, Type::Float32()), true);
+    globals->define("double", Type::Function({Type::Any()}, Type::Point()), true);
+    globals->define("char", Type::Function({Type::Any()}, Type::Char()), true);
+    globals->define("akshar", Type::Function({Type::Any()}, Type::Char()), true);
+    globals->define("bytes", Type::Function({Type::Any()}, Type::Bytes()), true);
+    globals->define("kaccha_data", Type::Function({Type::Any()}, Type::Bytes()), true);
+    globals->define("set", Type::Function({Type::Any()}, Type::Set(Type::Any())), true);
+    globals->define("jhund", Type::Function({Type::Any()}, Type::Set(Type::Any())), true);
+    globals->define("tuple", Type::Function({Type::Any()}, Type::Tuple()), true);
+    globals->define("jodi", Type::Function({Type::Any()}, Type::Tuple()), true);
     globals->define("bol", Type::Function({Type::Any()}, Type::Bol()), true);
     globals->define("shabd", Type::Function({Type::Any()}, Type::Bol()), true);
+    globals->define("string", Type::Function({Type::Any()}, Type::Bol()), true);
+    globals->define("str", Type::Function({Type::Any()}, Type::Bol()), true);
     globals->define("sach", Type::Function({Type::Any()}, Type::Sach()), true);
     globals->define("faisla", Type::Function({Type::Any()}, Type::Sach()), true);
     globals->define("type", Type::Function({Type::Any()}, Type::Bol()), true);
@@ -394,6 +415,16 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
         return Type::Ank();
     }
 
+    if (dynamic_cast<const ByteExpr *>(expr))
+    {
+        return Type::Byte();
+    }
+
+    if (dynamic_cast<const BytesExpr *>(expr))
+    {
+        return Type::Bytes();
+    }
+
     if (dynamic_cast<const FloatExpr *>(expr))
     {
         return Type::Point();
@@ -664,6 +695,42 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
             }
         }
         return Type::List(commonType);
+    }
+
+    if (auto *tup = dynamic_cast<const TupleExpr *>(expr))
+    {
+        std::vector<std::shared_ptr<Type>> elemTypes;
+        for (const auto &el : tup->elements)
+        {
+            elemTypes.push_back(checkExpr(el.get(), env));
+        }
+        return Type::Tuple(std::move(elemTypes));
+    }
+
+    if (auto *st = dynamic_cast<const SetLiteralExpr *>(expr))
+    {
+        if (st->elements.empty())
+        {
+            return Type::Set(Type::Any());
+        }
+        std::shared_ptr<Type> commonType = checkExpr(st->elements[0].get(), env);
+        for (size_t i = 1; i < st->elements.size(); ++i)
+        {
+            auto t = checkExpr(st->elements[i].get(), env);
+            if (!t->isAssignableTo(*commonType))
+            {
+                if (commonType->isAssignableTo(*t))
+                {
+                    commonType = t;
+                }
+                else
+                {
+                    commonType = Type::Any();
+                    break;
+                }
+            }
+        }
+        return Type::Set(commonType);
     }
 
     if (auto *t = dynamic_cast<const TernaryExpr *>(expr))

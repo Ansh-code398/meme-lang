@@ -33,14 +33,38 @@ public:
     }
 };
 
+class ByteExpr : public Expr
+{
+public:
+    uint8_t value;
+    ByteExpr(uint8_t value, int line = 0) : Expr(line), value(value) {}
+    std::string toString() const override
+    {
+        return std::to_string(static_cast<int>(value)) + "b";
+    }
+};
+
+class BytesExpr : public Expr
+{
+public:
+    std::vector<uint8_t> value;
+    BytesExpr(std::vector<uint8_t> value, int line = 0) : Expr(line), value(std::move(value)) {}
+    std::string toString() const override
+    {
+        return "b\"...\"";
+    }
+};
+
 class FloatExpr : public Expr
 {
 public:
     double value;
-    FloatExpr(double value, int line = 0) : Expr(line), value(value) {}
+    bool isFloat32 = false;
+    FloatExpr(double value, int line = 0, bool isFloat32 = false)
+        : Expr(line), value(value), isFloat32(isFloat32) {}
     std::string toString() const override
     {
-        return std::to_string(value);
+        return std::to_string(value) + (isFloat32 ? "f" : "");
     }
 };
 
@@ -287,6 +311,49 @@ public:
         {
             if (i > 0) res += ", ";
             res += entries[i].first->toString() + ": " + entries[i].second->toString();
+        }
+        res += "}";
+        return res;
+    }
+};
+
+class TupleExpr : public Expr
+{
+public:
+    std::vector<std::unique_ptr<Expr>> elements;
+
+    TupleExpr(std::vector<std::unique_ptr<Expr>> elements, int line = 0)
+        : Expr(line), elements(std::move(elements)) {}
+
+    std::string toString() const override
+    {
+        std::string res = "(";
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+            if (i > 0) res += ", ";
+            res += elements[i]->toString();
+        }
+        if (elements.size() == 1) res += ",";
+        res += ")";
+        return res;
+    }
+};
+
+class SetLiteralExpr : public Expr
+{
+public:
+    std::vector<std::unique_ptr<Expr>> elements;
+
+    SetLiteralExpr(std::vector<std::unique_ptr<Expr>> elements, int line = 0)
+        : Expr(line), elements(std::move(elements)) {}
+
+    std::string toString() const override
+    {
+        std::string res = "{";
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+            if (i > 0) res += ", ";
+            res += elements[i]->toString();
         }
         res += "}";
         return res;
@@ -1217,13 +1284,76 @@ public:
         std::string name = token.value;
         current++; // consume identifier
 
-        if (name == "ank" || name == "bina_point" || name == "sankhya" || name == "int")
+        if (name == "byte" || name == "chota_ank" || name == "u8")
+        {
+            return Type::Byte();
+        }
+        if (name == "int32" || name == "ank32" || name == "i32")
+        {
+            return Type::Int32();
+        }
+        if (name == "ank" || name == "bina_point" || name == "sankhya" || name == "int" || name == "long" || name == "i64" || name == "bada_ank")
         {
             return Type::Ank();
         }
-        if (name == "point" || name == "point_wala" || name == "dashamlav" || name == "float" || name == "double")
+        if (name == "float32" || name == "f32")
+        {
+            return Type::Float32();
+        }
+        if (name == "point" || name == "point_wala" || name == "dashamlav" || name == "float" || name == "double" || name == "f64")
         {
             return Type::Point();
+        }
+        if (name == "char" || name == "akshar")
+        {
+            return Type::Char();
+        }
+        if (name == "bytes" || name == "kaccha_data" || name == "bytearray")
+        {
+            return Type::Bytes();
+        }
+        if (name == "set" || name == "jhund" || name == "mandali")
+        {
+            checkNotError();
+            if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+            {
+                current++; // consume '['
+                auto elemType = parseTypeExpression();
+                checkNotError();
+                if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                {
+                    errorAt(peek(), "Set type mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume ']'
+                return Type::Set(elemType);
+            }
+            return Type::Set(Type::Any());
+        }
+        if (name == "tuple" || name == "jodi")
+        {
+            checkNotError();
+            if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+            {
+                current++; // consume '['
+                std::vector<std::shared_ptr<Type>> elemTypes;
+                while (peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::END_OF_FILE)
+                {
+                    elemTypes.push_back(parseTypeExpression());
+                    checkNotError();
+                    if (peek().type == TokenType::COMMA)
+                    {
+                        current++;
+                    }
+                    else break;
+                }
+                if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                {
+                    errorAt(peek(), "Tuple type mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume ']'
+                return Type::Tuple(std::move(elemTypes));
+            }
+            return Type::Tuple();
         }
         if (name == "bol" || name == "shabd" || name == "vakya" || name == "baat" || name == "string" || name == "str")
         {
@@ -2782,9 +2912,21 @@ public:
         {
             try
             {
-                auto expr = std::make_unique<IntExpr>(
-                    std::stoll(token.value), token.line);
-
+                long long val = 0;
+                std::string v = token.value;
+                if (v.rfind("0x", 0) == 0 || v.rfind("0X", 0) == 0)
+                {
+                    val = std::stoll(v, nullptr, 16);
+                }
+                else if (v.rfind("0b", 0) == 0 || v.rfind("0B", 0) == 0)
+                {
+                    val = std::stoll(v.substr(2), nullptr, 2);
+                }
+                else
+                {
+                    val = std::stoll(v);
+                }
+                auto expr = std::make_unique<IntExpr>(val, token.line);
                 current++;
                 return expr;
             }
@@ -2802,12 +2944,55 @@ public:
             }
         }
 
+        case TokenType::BYTE_LITERAL:
+        {
+            try
+            {
+                std::string v = token.value;
+                uint8_t byteVal = 0;
+                if (v.rfind("0x", 0) == 0 || v.rfind("0X", 0) == 0)
+                {
+                    byteVal = static_cast<uint8_t>(std::stoul(v, nullptr, 16) & 0xFF);
+                }
+                else if (v.rfind("0b", 0) == 0 || v.rfind("0B", 0) == 0)
+                {
+                    byteVal = static_cast<uint8_t>(std::stoul(v.substr(2), nullptr, 2) & 0xFF);
+                }
+                else
+                {
+                    byteVal = static_cast<uint8_t>(std::stoul(v) & 0xFF);
+                }
+                auto expr = std::make_unique<ByteExpr>(byteVal, token.line);
+                current++;
+                return expr;
+            }
+            catch (...)
+            {
+                errorAt(token, "Aayein? Byte literal valid nahi hai: " + token.value);
+            }
+        }
+
+        case TokenType::BYTES_LITERAL:
+        {
+            std::vector<uint8_t> data(token.value.begin(), token.value.end());
+            auto expr = std::make_unique<BytesExpr>(std::move(data), token.line);
+            current++;
+            return expr;
+        }
+
         case TokenType::FLOAT_LITERAL:
         {
             try
             {
+                std::string v = token.value;
+                bool isF32 = false;
+                if (!v.empty() && (v.back() == 'f' || v.back() == 'F'))
+                {
+                    isF32 = true;
+                    v.pop_back();
+                }
                 auto expr = std::make_unique<FloatExpr>(
-                    std::stod(token.value), token.line);
+                    std::stod(v), token.line, isF32);
 
                 current++;
                 return expr;
@@ -3196,10 +3381,18 @@ public:
         {
             int mapLine = token.line;
             current++; // consume '{'
-            std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
             checkNotError();
-            if (peek().type != TokenType::CLOSE_BRACE)
+            if (peek().type == TokenType::CLOSE_BRACE)
             {
+                current++; // consume '}'
+                return std::make_unique<MapLiteralExpr>(
+                    std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>>{}, mapLine);
+            }
+
+            // If begins with an identifier followed directly by ':', it's an unquoted-key map: { foo: 1 }
+            if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::COLON)
+            {
+                std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
                 while (true)
                 {
                     if (peek().type == TokenType::ELLIPSIS)
@@ -3246,13 +3439,152 @@ public:
                         break;
                     }
                 }
+                if (peek().type != TokenType::CLOSE_BRACE)
+                {
+                    errorAt(peek(), "Khata (map) band karne ke liye '}' chahiye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume '}'
+                return std::make_unique<MapLiteralExpr>(std::move(entries), mapLine);
             }
-            if (peek().type != TokenType::CLOSE_BRACE)
+
+            // If begins with ellipsis, it's a map spread
+            if (peek().type == TokenType::ELLIPSIS)
             {
-                errorAt(peek(), "Khata (map) band karne ke liye '}' chahiye! Mila: '" + peek().value + "'");
+                std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+                while (true)
+                {
+                    if (peek().type == TokenType::ELLIPSIS)
+                    {
+                        Token elToken = peek();
+                        current++; // consume '...'
+                        std::unique_ptr<Expr> spreadTarget = parseAssignment();
+                        auto spExpr = std::make_unique<SpreadExpr>(std::move(spreadTarget), elToken.line);
+                        entries.emplace_back(std::move(spExpr), nullptr);
+                    }
+                    else
+                    {
+                        std::unique_ptr<Expr> key;
+                        if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::COLON)
+                        {
+                            key = std::make_unique<StringExpr>(peek().value, peek().line);
+                            current++;
+                        }
+                        else
+                        {
+                            key = parseAssignment();
+                        }
+                        checkNotError();
+                        if (peek().type != TokenType::COLON)
+                        {
+                            errorAt(peek(), "Khata (map) mein key aur value ke beech ':' lagana zaroori hai! Mila: '" + peek().value + "'");
+                        }
+                        current++; // consume ':'
+                        std::unique_ptr<Expr> val = parseAssignment();
+                        entries.emplace_back(std::move(key), std::move(val));
+                    }
+                    checkNotError();
+                    if (peek().type == TokenType::COMMA)
+                    {
+                        current++; // consume ','
+                        checkNotError();
+                        if (peek().type == TokenType::CLOSE_BRACE)
+                        {
+                            break; // trailing comma
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                if (peek().type != TokenType::CLOSE_BRACE)
+                {
+                    errorAt(peek(), "Khata (map) band karne ke liye '}' chahiye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume '}'
+                return std::make_unique<MapLiteralExpr>(std::move(entries), mapLine);
             }
-            current++; // consume '}'
-            return std::make_unique<MapLiteralExpr>(std::move(entries), mapLine);
+
+            // Parse first element to distinguish map vs set
+            auto firstExpr = parseAssignment();
+            checkNotError();
+
+            if (peek().type == TokenType::COLON)
+            {
+                // It's a map! { key: val, ... }
+                current++; // consume ':'
+                std::unique_ptr<Expr> firstVal = parseAssignment();
+                std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+                entries.emplace_back(std::move(firstExpr), std::move(firstVal));
+                while (peek().type == TokenType::COMMA)
+                {
+                    current++; // consume ','
+                    checkNotError();
+                    if (peek().type == TokenType::CLOSE_BRACE)
+                    {
+                        break; // trailing comma
+                    }
+                    if (peek().type == TokenType::ELLIPSIS)
+                    {
+                        Token elToken = peek();
+                        current++; // consume '...'
+                        std::unique_ptr<Expr> spreadTarget = parseAssignment();
+                        auto spExpr = std::make_unique<SpreadExpr>(std::move(spreadTarget), elToken.line);
+                        entries.emplace_back(std::move(spExpr), nullptr);
+                    }
+                    else
+                    {
+                        std::unique_ptr<Expr> key;
+                        if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::COLON)
+                        {
+                            key = std::make_unique<StringExpr>(peek().value, peek().line);
+                            current++;
+                        }
+                        else
+                        {
+                            key = parseAssignment();
+                        }
+                        checkNotError();
+                        if (peek().type != TokenType::COLON)
+                        {
+                            errorAt(peek(), "Khata (map) mein key aur value ke beech ':' lagana zaroori hai! Mila: '" + peek().value + "'");
+                        }
+                        current++; // consume ':'
+                        std::unique_ptr<Expr> val = parseAssignment();
+                        entries.emplace_back(std::move(key), std::move(val));
+                    }
+                    checkNotError();
+                }
+                if (peek().type != TokenType::CLOSE_BRACE)
+                {
+                    errorAt(peek(), "Khata (map) band karne ke liye '}' chahiye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume '}'
+                return std::make_unique<MapLiteralExpr>(std::move(entries), mapLine);
+            }
+            else
+            {
+                // It's a set! { elem1, elem2, ... }
+                std::vector<std::unique_ptr<Expr>> elements;
+                elements.push_back(std::move(firstExpr));
+                while (peek().type == TokenType::COMMA)
+                {
+                    current++; // consume ','
+                    checkNotError();
+                    if (peek().type == TokenType::CLOSE_BRACE)
+                    {
+                        break; // trailing comma
+                    }
+                    elements.push_back(parseAssignment());
+                    checkNotError();
+                }
+                if (peek().type != TokenType::CLOSE_BRACE)
+                {
+                    errorAt(peek(), "Set (jhund) band karne ke liye '}' chahiye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume '}'
+                return std::make_unique<SetLiteralExpr>(std::move(elements), mapLine);
+            }
         }
 
         case TokenType::OPEN_PAREN:
@@ -3299,7 +3631,15 @@ public:
                 return std::make_unique<LambdaExpr>(decl, arrowLine);
             }
 
+            int parenLine = token.line;
             current++; // consume '('
+
+            // Check for empty tuple: ()
+            if (peek().type == TokenType::CLOSE_PAREN)
+            {
+                current++; // consume ')'
+                return std::make_unique<TupleExpr>(std::vector<std::unique_ptr<Expr>>{}, parenLine);
+            }
 
             std::unique_ptr<Expr> expr = parseTernary();
 
@@ -3308,9 +3648,21 @@ public:
 
             if (peek().type == TokenType::COMMA)
             {
-                errorAt(peek(),
-                    "Bracket '(' ke andar ',' allowed nahi hai! "
-                    "Grouping bracket mein sirf ek expression aa sakta hai.");
+                std::vector<std::unique_ptr<Expr>> elements;
+                elements.push_back(std::move(expr));
+                while (peek().type == TokenType::COMMA)
+                {
+                    current++; // consume ','
+                    checkNotError();
+                    if (peek().type == TokenType::CLOSE_PAREN)
+                    {
+                        break; // trailing comma, e.g. (a,)
+                    }
+                    elements.push_back(parseTernary());
+                    checkNotError();
+                }
+                consumeCloseParen("tuple bracket ')'");
+                return std::make_unique<TupleExpr>(std::move(elements), parenLine);
             }
 
             consumeCloseParen("bracket '('");

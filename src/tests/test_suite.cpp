@@ -1810,6 +1810,157 @@ void testAsyncFetchThreadsMultiprocessingAndFs()
     std::cout << "PASSED\n";
 }
 
+void testOptimizedDatatypesAndExtendedPrimitives()
+{
+    std::cout << "[TEST] Optimized Datatypes & Extended Primitives (byte, int32, float32, char, bytes, set, tuple)... " << std::flush;
+
+    // 1. Byte literals, type, and arithmetic
+    std::string byteCode = R"raw(
+        pakad b1 = 200b;
+        pakad b2 = 50b;
+        dikha "b1_type=" + kya_hai(b1);
+        dikha "b_sum=" + string(b1 + b2);
+        pakad bHex = byte(0xff);
+        dikha "b_hex=" + string(bHex);
+        pakad bBin = 0b1010b;
+        dikha "b_bin=" + string(bBin);
+        pakad bCasted = byte(258);
+        dikha "b_cast=" + string(bCasted);
+    )raw";
+    std::string byteOut = runAndCapture(byteCode);
+    assert(byteOut.find("b1_type=byte") != std::string::npos);
+    assert(byteOut.find("b_sum=250") != std::string::npos);
+    assert(byteOut.find("b_hex=255") != std::string::npos);
+    assert(byteOut.find("b_bin=10") != std::string::npos);
+    assert(byteOut.find("b_cast=2") != std::string::npos);
+
+    // 2. Fast Int32, Float32 and Char
+    std::string numCode = R"raw(
+        pakad i = int32(42);
+        dikha "i_type=" + kya_hai(i);
+        dikha "i_val=" + string(i + 8);
+
+        pakad f = 3.14f;
+        dikha "f_type=" + kya_hai(f);
+        pakad fSum = f + 1.0f;
+        dikha "f_sum=" + string(fSum > 4.0);
+
+        pakad c = char("Namaste");
+        dikha "c_type=" + kya_hai(c);
+        dikha "c_val=" + string(c);
+    )raw";
+    std::string numOut = runAndCapture(numCode);
+    assert(numOut.find("i_type=int32") != std::string::npos);
+    assert(numOut.find("i_val=50") != std::string::npos);
+    assert(numOut.find("f_type=float32") != std::string::npos);
+    assert(numOut.find("f_sum=han") != std::string::npos);
+    assert(numOut.find("c_type=char") != std::string::npos);
+    assert(numOut.find("c_val=N") != std::string::npos);
+
+    // 3. Bytes buffer, hex parsing, mutation, and binary I/O
+    std::string bytesCode = R"raw(
+        pakad buf = b"Hello";
+        dikha "buf_type=" + kya_hai(buf);
+        dikha "buf_len=" + string(buf.length);
+        dikha "buf_b0=" + string(buf[0]);
+        buf[0] = 104; // 'h'
+        dikha "buf_str=" + buf.to_string();
+        dikha "buf_hex=" + buf.to_hex();
+
+        pakad parsed = bytes.from_hex("43686169"); // "Chai"
+        dikha "parsed_str=" + parsed.to_string();
+
+        // Binary file test
+        file.likh_bytes("test_buffer.bin", parsed);
+        pakad readBuf = file.padh_bytes("test_buffer.bin");
+        dikha "bin_file_str=" + readBuf.to_string();
+        file.mita("test_buffer.bin");
+    )raw";
+    std::string bytesOut = runAndCapture(bytesCode);
+    assert(bytesOut.find("buf_type=bytes") != std::string::npos);
+    assert(bytesOut.find("buf_len=5") != std::string::npos);
+    assert(bytesOut.find("buf_b0=72") != std::string::npos);
+    assert(bytesOut.find("buf_str=hello") != std::string::npos);
+    assert(bytesOut.find("buf_hex=68656c6c6f") != std::string::npos);
+    assert(bytesOut.find("parsed_str=Chai") != std::string::npos);
+    assert(bytesOut.find("bin_file_str=Chai") != std::string::npos);
+
+    // 4. Sets: literal, deduplication, operations, iteration
+    std::string setCode = R"raw(
+        pakad s = {1, 2, 2, 3, 3, 3};
+        dikha "s_type=" + kya_hai(s);
+        dikha "s_len=" + string(s.size);
+        dikha "s_has_2=" + string(s.has(2));
+        dikha "s_has_99=" + string(s.has(99));
+
+        s.add(10);
+        dikha "s_len_after_add=" + string(s.size);
+        s.remove(1);
+        dikha "s_has_1_after_rem=" + string(s.has(1));
+
+        pakad sA = {1, 2};
+        pakad sB = {2, 3};
+        pakad sUnion = sA + sB;
+        dikha "union_len=" + string(sUnion.size);
+        pakad sDiff = sA - sB;
+        dikha "diff_len=" + string(sDiff.size);
+        dikha "diff_has_1=" + string(sDiff.has(1));
+
+        pakad sumVals = 0;
+        ghuma val mein sA {
+            sumVals = sumVals + val;
+        }
+        dikha "set_iter_sum=" + string(sumVals);
+    )raw";
+    std::string setOut = runAndCapture(setCode);
+    assert(setOut.find("s_type=set") != std::string::npos);
+    assert(setOut.find("s_len=3") != std::string::npos);
+    assert(setOut.find("s_has_2=han") != std::string::npos);
+    assert(setOut.find("s_has_99=nhi") != std::string::npos);
+    assert(setOut.find("s_len_after_add=4") != std::string::npos);
+    assert(setOut.find("s_has_1_after_rem=nhi") != std::string::npos);
+    assert(setOut.find("union_len=3") != std::string::npos);
+    assert(setOut.find("diff_len=1") != std::string::npos);
+    assert(setOut.find("diff_has_1=han") != std::string::npos);
+    assert(setOut.find("set_iter_sum=3") != std::string::npos);
+
+    // 5. Tuples: literal, indexing, immutability, iteration
+    std::string tupleCode = R"raw(
+        pakad tup = (10, "chai", 3.5);
+        dikha "tup_type=" + kya_hai(tup);
+        dikha "tup_len=" + string(tup.size);
+        dikha "tup_0=" + string(tup[0]);
+        dikha "tup_1=" + string(tup[1]);
+
+        pakad singleTup = (42,);
+        dikha "single_type=" + kya_hai(singleTup);
+        dikha "single_len=" + string(singleTup.size);
+
+        panga {
+            tup[0] = 99;
+        } lafda (err) {
+            dikha "tup_immutable=han";
+        }
+
+        pakad strIter = "";
+        ghuma item mein tup {
+            strIter = strIter + string(item) + "-";
+        }
+        dikha "tup_iter=" + strIter;
+    )raw";
+    std::string tupleOut = runAndCapture(tupleCode);
+    assert(tupleOut.find("tup_type=tuple") != std::string::npos);
+    assert(tupleOut.find("tup_len=3") != std::string::npos);
+    assert(tupleOut.find("tup_0=10") != std::string::npos);
+    assert(tupleOut.find("tup_1=chai") != std::string::npos);
+    assert(tupleOut.find("single_type=tuple") != std::string::npos);
+    assert(tupleOut.find("single_len=1") != std::string::npos);
+    assert(tupleOut.find("tup_immutable=han") != std::string::npos);
+    assert(tupleOut.find("tup_iter=10-chai-3.5-") != std::string::npos);
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -1838,6 +1989,7 @@ int main()
     testProjectWorkspaceVenvScriptsAndTestRunner();
     testMultiplatformTodoAppErgonomicsAndStress();
     testAsyncFetchThreadsMultiprocessingAndFs();
+    testOptimizedDatatypesAndExtendedPrimitives();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";
