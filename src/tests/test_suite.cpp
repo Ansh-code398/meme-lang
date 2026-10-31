@@ -1961,6 +1961,384 @@ void testOptimizedDatatypesAndExtendedPrimitives()
     std::cout << "PASSED\n";
 }
 
+static void testStandardLibraries()
+{
+    std::cout << "[TEST] Preinstalled Standard Libraries (math, random, stats, crypto, regex, datetime, itertools, collections, csv, test)... " << std::flush;
+
+    // 1. Math / Hisab & Destructured Import
+    std::string mathCode = R"raw(
+        import "math" as { sqrt, pi, gcd, factorial, comb, perm, hypot, clamp };
+        dikha "math_sqrt=" + string(sqrt(49));
+        dikha "math_pi_gt3=" + string(pi > 3.14);
+        dikha "math_gcd=" + string(gcd(48, 18));
+        dikha "math_fact=" + string(factorial(6));
+        dikha "math_comb=" + string(comb(5, 2));
+        dikha "math_perm=" + string(perm(5, 2));
+        dikha "math_hypot=" + string(hypot(3, 4));
+        dikha "math_clamp=" + string(clamp(15, 0, 10));
+    )raw";
+    std::string mathOut = runAndCapture(mathCode);
+    assert(mathOut.find("math_sqrt=7.0") != std::string::npos);
+    assert(mathOut.find("math_pi_gt3=han") != std::string::npos);
+    assert(mathOut.find("math_gcd=6") != std::string::npos);
+    assert(mathOut.find("math_fact=720") != std::string::npos);
+    assert(mathOut.find("math_comb=10") != std::string::npos);
+    assert(mathOut.find("math_perm=20") != std::string::npos);
+    assert(mathOut.find("math_hypot=5.0") != std::string::npos);
+    assert(mathOut.find("math_clamp=10.0") != std::string::npos);
+
+    // 2. Random / Tukka
+    std::string randCode = R"raw(
+        random.seed(42);
+        pakad r1 = random.randint(10, 20);
+        dikha "rand_range=" + string(r1 >= 10 aur r1 <= 20);
+        pakad choice = random.choice(["chai", "chai"]);
+        dikha "rand_choice=" + choice;
+        pakad sample = random.sample([1, 2, 3, 4, 5], 3);
+        dikha "rand_sample_len=" + string(sample.size);
+    )raw";
+    std::string randOut = runAndCapture(randCode);
+    assert(randOut.find("rand_range=han") != std::string::npos);
+    assert(randOut.find("rand_choice=chai") != std::string::npos);
+    assert(randOut.find("rand_sample_len=3") != std::string::npos);
+
+    // 3. Statistics / Aankde
+    std::string statsCode = R"raw(
+        pakad nums = [10, 20, 30, 40, 50];
+        dikha "stats_mean=" + string(stats.mean(nums));
+        dikha "stats_median=" + string(stats.median(nums));
+        dikha "stats_mode=" + string(stats.mode([1, 2, 2, 3]));
+        dikha "stats_min=" + string(stats.min(nums));
+        dikha "stats_max=" + string(stats.max(nums));
+        dikha "stats_sum=" + string(stats.sum(nums));
+    )raw";
+    std::string statsOut = runAndCapture(statsCode);
+    assert(statsOut.find("stats_mean=30.0") != std::string::npos);
+    assert(statsOut.find("stats_median=30.0") != std::string::npos);
+    assert(statsOut.find("stats_mode=2") != std::string::npos);
+    assert(statsOut.find("stats_min=10") != std::string::npos);
+    assert(statsOut.find("stats_max=50") != std::string::npos);
+    assert(statsOut.find("stats_sum=150") != std::string::npos);
+
+    // 4. Cryptography & Hashes
+    std::string cryptoCode = R"raw(
+        dikha "md5_hello=" + crypto.md5("hello");
+        dikha "sha1_hello=" + crypto.sha1("hello");
+        dikha "sha256_len=" + string(crypto.sha256("hello").size);
+        pakad b64 = crypto.base64_encode("hello world");
+        dikha "b64_enc=" + b64;
+        dikha "b64_dec=" + crypto.base64_decode(b64);
+        dikha "uuid_len=" + string(crypto.uuid().size);
+    )raw";
+    std::string cryptoOut = runAndCapture(cryptoCode);
+    assert(cryptoOut.find("md5_hello=5d41402abc4b2a76b9719d911017c592") != std::string::npos);
+    assert(cryptoOut.find("sha1_hello=aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d") != std::string::npos);
+    assert(cryptoOut.find("sha256_len=64") != std::string::npos);
+    assert(cryptoOut.find("b64_enc=aGVsbG8gd29ybGQ=") != std::string::npos);
+    assert(cryptoOut.find("b64_dec=hello world") != std::string::npos);
+    assert(cryptoOut.find("uuid_len=36") != std::string::npos);
+
+    // 5. Regular Expressions (regex / re)
+    std::string regexCode = R"raw(
+        dikha "re_test=" + string(re.test("^[a-z]+$", "memelang"));
+        pakad s = re.search("([a-z]+)@([a-z.]+)", "contact user@domain.com now");
+        dikha "re_search_match=" + s.match;
+        dikha "re_group0=" + s.groups[0];
+        dikha "re_group1=" + s.groups[1];
+        pakad allNums = re.find_all("[0-9]+", "apples: 100, bananas: 250");
+        dikha "re_all_len=" + string(allNums.size);
+        dikha "re_replace=" + re.replace("chai", "coffee", "garam chai");
+        pakad parts = re.split(",", "red,green,blue");
+        dikha "re_split_len=" + string(parts.size);
+    )raw";
+    std::string regexOut = runAndCapture(regexCode);
+    assert(regexOut.find("re_test=han") != std::string::npos);
+    assert(regexOut.find("re_search_match=user@domain.com") != std::string::npos);
+    assert(regexOut.find("re_group0=user") != std::string::npos);
+    assert(regexOut.find("re_group1=domain.com") != std::string::npos);
+    assert(regexOut.find("re_all_len=2") != std::string::npos);
+    assert(regexOut.find("re_replace=garam coffee") != std::string::npos);
+    assert(regexOut.find("re_split_len=3") != std::string::npos);
+
+    // 6. Datetime / Waqt
+    std::string dtCode = R"raw(
+        pakad yr = datetime.year();
+        dikha "dt_year_valid=" + string(yr >= 2026);
+        pakad isoStr = datetime.iso();
+        dikha "dt_iso_has_T=" + string(isoStr.kahan("T") != -1);
+    )raw";
+    std::string dtOut = runAndCapture(dtCode);
+    assert(dtOut.find("dt_year_valid=han") != std::string::npos);
+    assert(dtOut.find("dt_iso_has_T=han") != std::string::npos);
+
+    // 7. Itertools (range, zip, enumerate, chunk, flatten, repeat)
+    std::string iterCode = R"raw(
+        pakad r = range(5);
+        dikha "range_len=" + string(r.size);
+        dikha "range_last=" + string(r[4]);
+        pakad z = zip([1, 2], ["a", "b"]);
+        dikha "zip_first_0=" + string(z[0][0]);
+        dikha "zip_first_1=" + z[0][1];
+        pakad en = enumerate(["x", "y"]);
+        dikha "enum_0=" + string(en[0][0]) + ":" + en[0][1];
+        pakad chunks = itertools.chunk([1, 2, 3, 4, 5], 2);
+        dikha "chunks_count=" + string(chunks.size);
+        pakad flat = itertools.flatten([[1, 2], [3, 4]]);
+        dikha "flat_len=" + string(flat.size);
+        pakad rep = itertools.repeat("ok", 3);
+        dikha "rep_len=" + string(rep.size);
+    )raw";
+    std::string iterOut = runAndCapture(iterCode);
+    assert(iterOut.find("range_len=5") != std::string::npos);
+    assert(iterOut.find("range_last=4") != std::string::npos);
+    assert(iterOut.find("zip_first_0=1") != std::string::npos);
+    assert(iterOut.find("zip_first_1=a") != std::string::npos);
+    assert(iterOut.find("enum_0=0:x") != std::string::npos);
+    assert(iterOut.find("chunks_count=3") != std::string::npos);
+    assert(iterOut.find("flat_len=4") != std::string::npos);
+    assert(iterOut.find("rep_len=3") != std::string::npos);
+
+    // 8. Collections (Counter & Deque)
+    std::string collCode = R"raw(
+        pakad c = collections.Counter("banana");
+        dikha "counter_a=" + string(c.a);
+        dikha "counter_n=" + string(c.n);
+        pakad dq = collections.deque();
+        dq.push_back(10);
+        dq.push_front(5);
+        dikha "dq_size=" + string(dq.size());
+        dikha "dq_pop_back=" + string(dq.pop_back());
+        dikha "dq_pop_front=" + string(dq.pop_front());
+    )raw";
+    std::string collOut = runAndCapture(collCode);
+    assert(collOut.find("counter_a=3") != std::string::npos);
+    assert(collOut.find("counter_n=2") != std::string::npos);
+    assert(collOut.find("dq_size=2") != std::string::npos);
+    assert(collOut.find("dq_pop_back=10") != std::string::npos);
+    assert(collOut.find("dq_pop_front=5") != std::string::npos);
+
+    // 9. CSV Parsing & Stringifying
+    std::string csvCode = R"raw(
+        pakad csvStr = "name,score\nRaju,95\nBaburao,80";
+        pakad rows = csv.parse(csvStr);
+        dikha "csv_rows=" + string(rows.size);
+        dikha "row0_name=" + rows[0].name;
+        pakad generated = csv.stringify(rows);
+        dikha "csv_has_Baburao=" + string(generated.kahan("Baburao") != -1);
+    )raw";
+    std::string csvOut = runAndCapture(csvCode);
+    assert(csvOut.find("csv_rows=2") != std::string::npos);
+    assert(csvOut.find("row0_name=Raju") != std::string::npos);
+    assert(csvOut.find("csv_has_Baburao=han") != std::string::npos);
+
+    // 10. Assertions & Testing
+    std::string testCode = R"raw(
+        assert(10 > 5, "Ten should be greater than five");
+        assert_eq(2 + 2, 4);
+        assert_ne(1, 2);
+        assert_throws(() => {
+            chillao "kaboom";
+        });
+        dikha "assertions_all_passed=han";
+    )raw";
+    std::string testOut = runAndCapture(testCode);
+    assert(testOut.find("assertions_all_passed=han") != std::string::npos);
+
+    std::cout << "PASSED\n";
+}
+
+static void testFastHttpServersExpressAndElysiaTypeSafety()
+{
+    std::cout << "[TEST] Fast HTTP Servers, Express Parity & Elysia Type Safety... " << std::flush;
+
+    // 1. Elysia TypeBox Schema System (`t`) Standalone Validation & Coercion
+    std::string schemaCode = R"raw(
+        pakad schema = t.Object({
+            "name": t.String({ "minLength": 3 }),
+            "age": t.Integer({ "min": 18 }),
+            "email": t.Optional(t.String({ "format": "email" })),
+            "tags": t.Array(t.String(), { "minItems": 1 }),
+            "role": t.Union([t.Literal("admin"), t.Literal("member")])
+        });
+
+        pakad validRes = schema.validate({
+            "name": "Raju",
+            "age": "21",
+            "email": "raju@memelang.org",
+            "tags": ["chai", "code"],
+            "role": "admin"
+        });
+        dikha "schema_valid=" + string(validRes.success);
+        dikha "schema_coerced_age=" + string(validRes.data.age);
+        dikha "schema_age_type=" + kya_hai(validRes.data.age);
+
+        pakad invalidRes = schema.validate({
+            "name": "Bo",
+            "age": 15,
+            "tags": [],
+            "role": "guest"
+        });
+        dikha "schema_invalid=" + string(invalidRes.success);
+        dikha "schema_err_count=" + string(invalidRes.errors.size);
+    )raw";
+    std::string schemaOut = runAndCapture(schemaCode);
+    assert(schemaOut.find("schema_valid=han") != std::string::npos);
+    assert(schemaOut.find("schema_coerced_age=21") != std::string::npos);
+    assert(schemaOut.find("schema_age_type=int") != std::string::npos);
+    assert(schemaOut.find("schema_invalid=nhi") != std::string::npos);
+    assert(schemaOut.find("schema_err_count=4") != std::string::npos);
+
+    // 2. Express Server (Middlewares, Sub-Routers, Req/Res, Headers)
+    std::string expressCode = R"raw(
+        pakad app = express();
+
+        // Global middleware setting custom header
+        app.use((req, res, next) => {
+            res.set("X-Custom-Server", "MEMElang-Express");
+            next();
+        });
+
+        // Route-specific auth middleware
+        pakad authMw = (req, res, next) => {
+            dekh req.get("authorization") == "Bearer secret123" {
+                next();
+            } warna {
+                res.status(401).json({ "error": "Unauthorized" });
+            }
+        };
+
+        app.get("/public", (req, res) => {
+            res.status(200).json({ "message": "Public area" });
+        });
+
+        app.get("/private", authMw, (req, res) => {
+            res.status(200).json({ "message": "Secret vault" });
+        });
+
+        // Sub-router mounted at /api/v1
+        pakad v1Router = express.Router();
+        v1Router.get("/users/:id", (req, res) => {
+            res.status(200).json({ "userId": req.params.id, "query_tab": req.query.tab });
+        });
+        app.use("/api/v1", v1Router);
+
+        // Requests test
+        pakad r1 = app.request("GET", "/public");
+        dikha "exp_pub_status=" + string(r1.status);
+        dikha "exp_pub_hdr=" + r1.headers["X-Custom-Server"];
+
+        pakad r2 = app.request("GET", "/private");
+        dikha "exp_priv_unauth=" + string(r2.status);
+
+        pakad r3 = app.request("GET", "/private", na, { "authorization": "Bearer secret123" });
+        dikha "exp_priv_auth=" + string(r3.status);
+        dikha "exp_priv_msg=" + r3.body.message;
+
+        pakad r4 = app.request("GET", "/api/v1/users/99?tab=profile");
+        dikha "exp_sub_status=" + string(r4.status);
+        dikha "exp_sub_uid=" + r4.body.userId;
+        dikha "exp_sub_tab=" + r4.body.query_tab;
+    )raw";
+    std::string expressOut = runAndCapture(expressCode);
+    assert(expressOut.find("exp_pub_status=200") != std::string::npos);
+    assert(expressOut.find("exp_pub_hdr=MEMElang-Express") != std::string::npos);
+    assert(expressOut.find("exp_priv_unauth=401") != std::string::npos);
+    assert(expressOut.find("exp_priv_auth=200") != std::string::npos);
+    assert(expressOut.find("exp_priv_msg=Secret vault") != std::string::npos);
+    assert(expressOut.find("exp_sub_status=200") != std::string::npos);
+    assert(expressOut.find("exp_sub_uid=99") != std::string::npos);
+    assert(expressOut.find("exp_sub_tab=profile") != std::string::npos);
+
+    // 3. Elysia Full Typesafety (Schema Routes, Derivations, State & Direct Returns)
+    std::string elysiaCode = R"raw(
+        pakad app = elysia();
+
+        app.state("counter", 100);
+        app.decorate("appVersion", () => "2.1.0");
+        app.derive((ctx) => {
+            ye_le { "userRole": "admin" };
+        });
+
+        // Type-safe POST with params, query, and body schema
+        app.post("/products/:id", {
+            params: t.Object({ "id": t.Integer() }),
+            query: t.Object({ "tag": t.Optional(t.String()) }),
+            body: t.Object({
+                "title": t.String({ "minLength": 2 }),
+                "price": t.Number({ "min": 0 })
+            })
+        }, (ctx) => {
+            ctx.store.counter = ctx.store.counter + 1;
+            ye_le {
+                "id": ctx.params.id,
+                "title": ctx.body.title,
+                "price": ctx.body.price,
+                "tag": ctx.query.tag,
+                "role": ctx.userRole,
+                "version": ctx.appVersion(),
+                "visits": ctx.store.counter
+            };
+        });
+
+        // Test 1: Valid POST with string coercion
+        pakad res1 = app.request("POST", "/products/500?tag=tech", { "title": "Monitor", "price": "199.99" });
+        dikha "elysia_res1_status=" + string(res1.status);
+        dikha "elysia_res1_id=" + string(res1.body.id);
+        dikha "elysia_res1_id_type=" + kya_hai(res1.body.id);
+        dikha "elysia_res1_price=" + string(res1.body.price);
+        dikha "elysia_res1_role=" + res1.body.role;
+        dikha "elysia_res1_visits=" + string(res1.body.visits);
+
+        // Test 2: Invalid Body (400 ValidationError)
+        pakad res2 = app.request("POST", "/products/500", { "title": "A", "price": -10 });
+        dikha "elysia_res2_status=" + string(res2.status);
+        dikha "elysia_res2_err=" + res2.body.error;
+
+        // Test 3: Invalid Param (400 ValidationError)
+        pakad res3 = app.request("POST", "/products/invalid-id", { "title": "Valid", "price": 50 });
+        dikha "elysia_res3_status=" + string(res3.status);
+        dikha "elysia_res3_err=" + res3.body.error;
+    )raw";
+    std::string elysiaOut = runAndCapture(elysiaCode);
+    assert(elysiaOut.find("elysia_res1_status=200") != std::string::npos);
+    assert(elysiaOut.find("elysia_res1_id=500") != std::string::npos);
+    assert(elysiaOut.find("elysia_res1_id_type=int") != std::string::npos);
+    assert(elysiaOut.find("elysia_res1_price=199.99") != std::string::npos);
+    assert(elysiaOut.find("elysia_res1_role=admin") != std::string::npos);
+    assert(elysiaOut.find("elysia_res1_visits=101") != std::string::npos);
+    assert(elysiaOut.find("elysia_res2_status=400") != std::string::npos);
+    assert(elysiaOut.find("elysia_res2_err=ValidationError") != std::string::npos);
+    assert(elysiaOut.find("elysia_res3_status=400") != std::string::npos);
+    assert(elysiaOut.find("elysia_res3_err=ValidationError") != std::string::npos);
+
+    // 4. Live Multi-threaded Native TCP Server & Real Loopback Network Fetch
+    std::string liveServerCode = R"raw(
+        pakad app = express();
+        app.get("/health", (req, res) => {
+            res.status(200).json({ "status": "healthy", "uptime_ms": 100 });
+        });
+
+        app.listen(18765, () => {
+            dikha "live_server_online=han";
+        });
+
+        pakad response = sabar fetch("http://localhost:18765/health");
+        dikha "live_fetch_status=" + string(response.status);
+        pakad data = response.json();
+        dikha "live_health=" + data.status;
+
+        app.stop();
+        dikha "live_server_closed=han";
+    )raw";
+    std::string liveOut = runAndCapture(liveServerCode);
+    assert(liveOut.find("live_server_online=han") != std::string::npos);
+    assert(liveOut.find("live_fetch_status=200") != std::string::npos);
+    assert(liveOut.find("live_health=healthy") != std::string::npos);
+    assert(liveOut.find("live_server_closed=han") != std::string::npos);
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -1990,6 +2368,8 @@ int main()
     testMultiplatformTodoAppErgonomicsAndStress();
     testAsyncFetchThreadsMultiprocessingAndFs();
     testOptimizedDatatypesAndExtendedPrimitives();
+    testStandardLibraries();
+    testFastHttpServersExpressAndElysiaTypeSafety();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

@@ -9,8 +9,13 @@
 #include <map>
 #include <cctype>
 #include <cmath>
+#include <numeric>
 #include <random>
 #include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <regex>
+#include <deque>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -23,6 +28,15 @@
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <unistd.h>
 #include <termios.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#endif
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #endif
 
 thread_local std::unordered_set<const void *> activePrintPointers;
@@ -695,63 +709,247 @@ static std::shared_ptr<MemeMap> createHisabModule()
 {
     auto m = std::make_shared<MemeMap>();
     m->isModule = true;
+
+    // Constants
     m->set("pi", Value(3.14159265358979323846));
     m->set("e", Value(2.71828182845904523536));
+    m->set("tau", Value(6.28318530717958647692));
+    m->set("inf", Value(std::numeric_limits<double>::infinity()));
+    m->set("nan", Value(std::numeric_limits<double>::quiet_NaN()));
 
-    m->set("gol", Value(std::make_shared<NativeMethodCallable>("gol", 1, [](Interpreter &, const std::vector<Value> &args) {
-        return Value(static_cast<long long>(std::round(toDouble(args[0]))));
+    // Basic & Rounding
+    m->set("abs", Value(std::make_shared<NativeMethodCallable>("abs", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value v = args[0].deref();
+        if (v.isInteger()) return Value(std::abs(v.asInt()));
+        return Value(std::abs(v.asDouble()));
     })));
+    m->set("positive", m->entries["abs"]);
 
-    m->set("niche", Value(std::make_shared<NativeMethodCallable>("niche", 1, [](Interpreter &, const std::vector<Value> &args) {
-        return Value(static_cast<long long>(std::floor(toDouble(args[0]))));
-    })));
-
-    m->set("upar", Value(std::make_shared<NativeMethodCallable>("upar", 1, [](Interpreter &, const std::vector<Value> &args) {
-        return Value(static_cast<long long>(std::ceil(toDouble(args[0]))));
-    })));
-
-    m->set("jadd", Value(std::make_shared<NativeMethodCallable>("jadd", 1, [](Interpreter &, const std::vector<Value> &args) {
-        double d = toDouble(args[0]);
-        if (d < 0.0)
-        {
-            throw std::runtime_error("Negative number ka square root nikaaloge? Math fail ho gaya!");
+    m->set("round", Value(std::make_shared<NativeMethodCallable>("round", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        double d = args[0].deref().asDouble();
+        if (args.size() > 1) {
+            int digits = static_cast<int>(args[1].deref().asInt());
+            double factor = std::pow(10.0, digits);
+            return Value(std::round(d * factor) / factor);
         }
+        return Value(static_cast<long long>(std::round(d)));
+    })));
+    m->set("gol", m->entries["round"]);
+
+    m->set("floor", Value(std::make_shared<NativeMethodCallable>("floor", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(std::floor(args[0].deref().asDouble())));
+    })));
+    m->set("niche", m->entries["floor"]);
+
+    m->set("ceil", Value(std::make_shared<NativeMethodCallable>("ceil", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(std::ceil(args[0].deref().asDouble())));
+    })));
+    m->set("upar", m->entries["ceil"]);
+
+    m->set("trunc", Value(std::make_shared<NativeMethodCallable>("trunc", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(std::trunc(args[0].deref().asDouble())));
+    })));
+    m->set("kaat", m->entries["trunc"]);
+
+    // Powers & Roots
+    m->set("sqrt", Value(std::make_shared<NativeMethodCallable>("sqrt", 1, [](Interpreter &, const std::vector<Value> &args) {
+        double d = args[0].deref().asDouble();
+        if (d < 0.0) throw std::runtime_error("Negative number ka square root nikaaloge? Math fail ho gaya!");
         return Value(std::sqrt(d));
     })));
+    m->set("jadd", m->entries["sqrt"]);
 
-    m->set("taqat", Value(std::make_shared<NativeMethodCallable>("taqat", 2, [](Interpreter &, const std::vector<Value> &args) {
-        return Value(std::pow(toDouble(args[0]), toDouble(args[1])));
+    m->set("cbrt", Value(std::make_shared<NativeMethodCallable>("cbrt", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::cbrt(args[0].deref().asDouble()));
     })));
 
-    m->set("halka", Value(std::make_shared<NativeMethodCallable>("halka", 2, [](Interpreter &, const std::vector<Value> &args) {
-        double a = toDouble(args[0]);
-        double b = toDouble(args[1]);
-        if (std::holds_alternative<long long>(args[0].deref().data) && std::holds_alternative<long long>(args[1].deref().data))
-        {
-            return Value(std::min(std::get<long long>(args[0].deref().data), std::get<long long>(args[1].deref().data)));
+    m->set("pow", Value(std::make_shared<NativeMethodCallable>("pow", 2, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::pow(args[0].deref().asDouble(), args[1].deref().asDouble()));
+    })));
+    m->set("taqat", m->entries["pow"]);
+
+    m->set("exp", Value(std::make_shared<NativeMethodCallable>("exp", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::exp(args[0].deref().asDouble()));
+    })));
+
+    m->set("log", Value(std::make_shared<NativeMethodCallable>("log", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        double x = args[0].deref().asDouble();
+        if (x <= 0.0) throw std::runtime_error("log sirf positive numbers ka nikalta hai!");
+        if (args.size() > 1) {
+            double base = args[1].deref().asDouble();
+            if (base <= 0.0 || base == 1.0) throw std::runtime_error("Invalid log base!");
+            return Value(std::log(x) / std::log(base));
         }
-        return Value(std::min(a, b));
+        return Value(std::log(x));
+    })));
+    m->set("ln", m->entries["log"]);
+
+    m->set("log2", Value(std::make_shared<NativeMethodCallable>("log2", 1, [](Interpreter &, const std::vector<Value> &args) {
+        double x = args[0].deref().asDouble();
+        if (x <= 0.0) throw std::runtime_error("log2 sirf positive numbers ka nikalta hai!");
+        return Value(std::log2(x));
     })));
 
-    m->set("bhaari", Value(std::make_shared<NativeMethodCallable>("bhaari", 2, [](Interpreter &, const std::vector<Value> &args) {
-        double a = toDouble(args[0]);
-        double b = toDouble(args[1]);
-        if (std::holds_alternative<long long>(args[0].deref().data) && std::holds_alternative<long long>(args[1].deref().data))
-        {
-            return Value(std::max(std::get<long long>(args[0].deref().data), std::get<long long>(args[1].deref().data)));
+    m->set("log10", Value(std::make_shared<NativeMethodCallable>("log10", 1, [](Interpreter &, const std::vector<Value> &args) {
+        double x = args[0].deref().asDouble();
+        if (x <= 0.0) throw std::runtime_error("log10 sirf positive numbers ka nikalta hai!");
+        return Value(std::log10(x));
+    })));
+
+    // Trigonometry
+    m->set("sin", Value(std::make_shared<NativeMethodCallable>("sin", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::sin(args[0].deref().asDouble()));
+    })));
+    m->set("cos", Value(std::make_shared<NativeMethodCallable>("cos", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::cos(args[0].deref().asDouble()));
+    })));
+    m->set("tan", Value(std::make_shared<NativeMethodCallable>("tan", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::tan(args[0].deref().asDouble()));
+    })));
+    m->set("asin", Value(std::make_shared<NativeMethodCallable>("asin", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::asin(args[0].deref().asDouble()));
+    })));
+    m->set("acos", Value(std::make_shared<NativeMethodCallable>("acos", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::acos(args[0].deref().asDouble()));
+    })));
+    m->set("atan", Value(std::make_shared<NativeMethodCallable>("atan", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::atan(args[0].deref().asDouble()));
+    })));
+    m->set("atan2", Value(std::make_shared<NativeMethodCallable>("atan2", 2, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::atan2(args[0].deref().asDouble(), args[1].deref().asDouble()));
+    })));
+
+    // Hyperbolic
+    m->set("sinh", Value(std::make_shared<NativeMethodCallable>("sinh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::sinh(args[0].deref().asDouble()));
+    })));
+    m->set("cosh", Value(std::make_shared<NativeMethodCallable>("cosh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::cosh(args[0].deref().asDouble()));
+    })));
+    m->set("tanh", Value(std::make_shared<NativeMethodCallable>("tanh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::tanh(args[0].deref().asDouble()));
+    })));
+    m->set("asinh", Value(std::make_shared<NativeMethodCallable>("asinh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::asinh(args[0].deref().asDouble()));
+    })));
+    m->set("acosh", Value(std::make_shared<NativeMethodCallable>("acosh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::acosh(args[0].deref().asDouble()));
+    })));
+    m->set("atanh", Value(std::make_shared<NativeMethodCallable>("atanh", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::atanh(args[0].deref().asDouble()));
+    })));
+
+    // Angular conversions
+    m->set("degrees", Value(std::make_shared<NativeMethodCallable>("degrees", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(args[0].deref().asDouble() * (180.0 / 3.14159265358979323846));
+    })));
+    m->set("degree_bana", m->entries["degrees"]);
+
+    m->set("radians", Value(std::make_shared<NativeMethodCallable>("radians", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(args[0].deref().asDouble() * (3.14159265358979323846 / 180.0));
+    })));
+    m->set("radian_bana", m->entries["radians"]);
+
+    // Geometry & distance
+    m->set("hypot", Value(std::make_shared<NativeMethodCallable>("hypot", 2, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::hypot(args[0].deref().asDouble(), args[1].deref().asDouble()));
+    })));
+    m->set("dist", Value(std::make_shared<NativeMethodCallable>("dist", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value p1 = args[0].deref();
+        Value p2 = args[1].deref();
+        std::vector<double> v1, v2;
+        if (p1.isList()) { for (const auto &e : p1.getList()->elements) v1.push_back(e.deref().asDouble()); }
+        else if (p1.isTuple()) { for (const auto &e : p1.getTuple()->elements) v1.push_back(e.deref().asDouble()); }
+        if (p2.isList()) { for (const auto &e : p2.getList()->elements) v2.push_back(e.deref().asDouble()); }
+        else if (p2.isTuple()) { for (const auto &e : p2.getTuple()->elements) v2.push_back(e.deref().asDouble()); }
+        if (v1.size() != v2.size() || v1.empty()) throw std::runtime_error("dist requires two lists/tuples of equal dimensions!");
+        double sum = 0.0;
+        for (size_t i = 0; i < v1.size(); ++i) { double d = v1[i] - v2[i]; sum += d * d; }
+        return Value(std::sqrt(sum));
+    })));
+
+    // Min / Max / Clamp
+    m->set("min", Value(std::make_shared<NativeMethodCallable>("min", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (a.isInteger() && b.isInteger()) return Value(std::min(a.asInt(), b.asInt()));
+        return Value(std::min(a.asDouble(), b.asDouble()));
+    })));
+    m->set("halka", m->entries["min"]);
+
+    m->set("max", Value(std::make_shared<NativeMethodCallable>("max", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (a.isInteger() && b.isInteger()) return Value(std::max(a.asInt(), b.asInt()));
+        return Value(std::max(a.asDouble(), b.asDouble()));
+    })));
+    m->set("bhaari", m->entries["max"]);
+
+    m->set("clamp", Value(std::make_shared<NativeMethodCallable>("clamp", 3, [](Interpreter &, const std::vector<Value> &args) {
+        double v = args[0].deref().asDouble();
+        double mn = args[1].deref().asDouble();
+        double mx = args[2].deref().asDouble();
+        return Value(std::clamp(v, mn, mx));
+    })));
+
+    // Number Theory
+    m->set("gcd", Value(std::make_shared<NativeMethodCallable>("gcd", 2, [](Interpreter &, const std::vector<Value> &args) {
+        long long a = args[0].deref().asInt();
+        long long b = args[1].deref().asInt();
+        return Value(std::gcd(a, b));
+    })));
+    m->set("mahatam", m->entries["gcd"]);
+
+    m->set("lcm", Value(std::make_shared<NativeMethodCallable>("lcm", 2, [](Interpreter &, const std::vector<Value> &args) {
+        long long a = args[0].deref().asInt();
+        long long b = args[1].deref().asInt();
+        return Value(std::lcm(a, b));
+    })));
+    m->set("laghutam", m->entries["lcm"]);
+
+    m->set("factorial", Value(std::make_shared<NativeMethodCallable>("factorial", 1, [](Interpreter &, const std::vector<Value> &args) {
+        long long n = args[0].deref().asInt();
+        if (n < 0) throw std::runtime_error("Negative number ka factorial nahi hota!");
+        if (n > 20) throw std::runtime_error("Factorial overflow! (n <= 20)");
+        long long res = 1;
+        for (long long i = 2; i <= n; ++i) res *= i;
+        return Value(res);
+    })));
+    m->set("kramgunan", m->entries["factorial"]);
+
+    m->set("comb", Value(std::make_shared<NativeMethodCallable>("comb", 2, [](Interpreter &, const std::vector<Value> &args) {
+        long long n = args[0].deref().asInt();
+        long long k = args[1].deref().asInt();
+        if (k < 0 || k > n) return Value(0LL);
+        if (k == 0 || k == n) return Value(1LL);
+        if (k > n / 2) k = n - k;
+        long long res = 1;
+        for (long long i = 1; i <= k; ++i) {
+            res = res * (n - i + 1) / i;
         }
-        return Value(std::max(a, b));
+        return Value(res);
     })));
 
-    m->set("positive", Value(std::make_shared<NativeMethodCallable>("positive", 1, [](Interpreter &, const std::vector<Value> &args) {
-        Value v = args[0].deref();
-        if (std::holds_alternative<long long>(v.data))
-        {
-            return Value(std::abs(std::get<long long>(v.data)));
-        }
-        return Value(std::abs(toDouble(v)));
+    m->set("perm", Value(std::make_shared<NativeMethodCallable>("perm", 2, [](Interpreter &, const std::vector<Value> &args) {
+        long long n = args[0].deref().asInt();
+        long long k = args[1].deref().asInt();
+        if (k < 0 || k > n) return Value(0LL);
+        long long res = 1;
+        for (long long i = 0; i < k; ++i) res *= (n - i);
+        return Value(res);
     })));
 
+    m->set("is_nan", Value(std::make_shared<NativeMethodCallable>("is_nan", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::isnan(args[0].deref().asDouble()));
+    })));
+    m->set("is_inf", Value(std::make_shared<NativeMethodCallable>("is_inf", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::isinf(args[0].deref().asDouble()));
+    })));
+    m->set("is_finite", Value(std::make_shared<NativeMethodCallable>("is_finite", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(std::isfinite(args[0].deref().asDouble()));
+    })));
+
+    // Backward compatibility: tukka and tukka_num
     m->set("tukka", Value(std::make_shared<NativeMethodCallable>("tukka", 0, [](Interpreter &, const std::vector<Value> &) {
         static std::mt19937 gen(std::random_device{}());
         static std::uniform_real_distribution<double> dist(0.0, 1.0);
@@ -770,15 +968,504 @@ static std::shared_ptr<MemeMap> createHisabModule()
     return m;
 }
 
+static std::shared_ptr<MemeMap> createRandomModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    m->set("random", Value(std::make_shared<NativeMethodCallable>("random", 0, [](Interpreter &, const std::vector<Value> &) {
+        static std::mt19937 gen(std::random_device{}());
+        static std::uniform_real_distribution<double> dist(0.0, 1.0);
+        return Value(dist(gen));
+    })));
+    m->set("tukka", m->entries["random"]);
+
+    m->set("randint", Value(std::make_shared<NativeMethodCallable>("randint", 2, [](Interpreter &, const std::vector<Value> &args) {
+        long long mn = args[0].deref().asInt();
+        long long mx = args[1].deref().asInt();
+        if (mn > mx) std::swap(mn, mx);
+        static std::mt19937 gen(std::random_device{}());
+        std::uniform_int_distribution<long long> dist(mn, mx);
+        return Value(dist(gen));
+    })));
+    m->set("tukka_num", m->entries["randint"]);
+
+    m->set("uniform", Value(std::make_shared<NativeMethodCallable>("uniform", 2, [](Interpreter &, const std::vector<Value> &args) {
+        double mn = args[0].deref().asDouble();
+        double mx = args[1].deref().asDouble();
+        if (mn > mx) std::swap(mn, mx);
+        static std::mt19937 gen(std::random_device{}());
+        std::uniform_real_distribution<double> dist(mn, mx);
+        return Value(dist(gen));
+    })));
+
+    m->set("choice", Value(std::make_shared<NativeMethodCallable>("choice", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value v = args[0].deref();
+        static std::mt19937 gen(std::random_device{}());
+        if (v.isList()) {
+            auto l = v.getList();
+            if (l->elements.empty()) throw std::runtime_error("choice() cannot pick from an empty list!");
+            std::uniform_int_distribution<size_t> dist(0, l->elements.size() - 1);
+            return l->elements[dist(gen)];
+        }
+        if (v.isTuple()) {
+            auto t = v.getTuple();
+            if (t->elements.empty()) throw std::runtime_error("choice() cannot pick from an empty tuple!");
+            std::uniform_int_distribution<size_t> dist(0, t->elements.size() - 1);
+            return t->elements[dist(gen)];
+        }
+        if (std::holds_alternative<std::string>(v.data)) {
+            const auto &s = std::get<std::string>(v.data);
+            if (s.empty()) throw std::runtime_error("choice() cannot pick from an empty string!");
+            std::uniform_int_distribution<size_t> dist(0, s.size() - 1);
+            return Value(std::string(1, s[dist(gen)]));
+        }
+        throw std::runtime_error("choice() requires a list, tuple, or string!");
+    })));
+    m->set("chun", m->entries["choice"]);
+
+    m->set("shuffle", Value(std::make_shared<NativeMethodCallable>("shuffle", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value v = args[0].deref();
+        if (!v.isList()) throw std::runtime_error("shuffle() requires a list!");
+        auto l = v.getList();
+        static std::mt19937 gen(std::random_device{}());
+        std::shuffle(l->elements.begin(), l->elements.end(), gen);
+        return v;
+    })));
+    m->set("phent", m->entries["shuffle"]);
+
+    m->set("sample", Value(std::make_shared<NativeMethodCallable>("sample", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value v = args[0].deref();
+        long long k = args[1].deref().asInt();
+        if (k < 0) throw std::runtime_error("sample count cannot be negative!");
+        std::vector<Value> pool;
+        if (v.isList()) pool = v.getList()->elements;
+        else if (v.isTuple()) pool = v.getTuple()->elements;
+        else if (v.isSet()) pool = v.getSet()->elements;
+        else throw std::runtime_error("sample() requires a list, tuple, or set!");
+        if (static_cast<size_t>(k) > pool.size()) throw std::runtime_error("sample larger than population!");
+        static std::mt19937 gen(std::random_device{}());
+        std::shuffle(pool.begin(), pool.end(), gen);
+        pool.resize(static_cast<size_t>(k));
+        return Value(std::make_shared<MemeList>(std::move(pool)));
+    })));
+    m->set("namoona", m->entries["sample"]);
+
+    m->set("seed", Value(std::make_shared<NativeMethodCallable>("seed", 1, [](Interpreter &, const std::vector<Value> &args) {
+        long long s = args[0].deref().asInt();
+        std::srand(static_cast<unsigned int>(s));
+        return Value(std::monostate{});
+    })));
+    m->set("beej", m->entries["seed"]);
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createStatisticsModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto getNumbers = [](const Value &v) -> std::vector<double> {
+        std::vector<double> nums;
+        Value d = v.deref();
+        if (d.isList()) {
+            for (const auto &e : d.getList()->elements) nums.push_back(e.deref().asDouble());
+        } else if (d.isTuple()) {
+            for (const auto &e : d.getTuple()->elements) nums.push_back(e.deref().asDouble());
+        } else if (d.isSet()) {
+            for (const auto &e : d.getSet()->elements) nums.push_back(e.deref().asDouble());
+        } else {
+            throw std::runtime_error("Statistics function requires a list, tuple, or set!");
+        }
+        if (nums.empty()) throw std::runtime_error("Cannot calculate statistics on empty data!");
+        return nums;
+    };
+
+    m->set("mean", Value(std::make_shared<NativeMethodCallable>("mean", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        double sum = 0.0;
+        for (double n : nums) sum += n;
+        return Value(sum / nums.size());
+    })));
+    m->set("ausat", m->entries["mean"]);
+
+    m->set("median", Value(std::make_shared<NativeMethodCallable>("median", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        std::sort(nums.begin(), nums.end());
+        size_t n = nums.size();
+        if (n % 2 == 1) return Value(nums[n / 2]);
+        return Value((nums[n / 2 - 1] + nums[n / 2]) / 2.0);
+    })));
+    m->set("beech_ka", m->entries["median"]);
+
+    m->set("mode", Value(std::make_shared<NativeMethodCallable>("mode", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value d = args[0].deref();
+        std::unordered_map<std::string, size_t> counts;
+        std::unordered_map<std::string, Value> valMap;
+        std::vector<Value> items;
+        if (d.isList()) items = d.getList()->elements;
+        else if (d.isTuple()) items = d.getTuple()->elements;
+        else throw std::runtime_error("mode() requires a list or tuple!");
+        if (items.empty()) throw std::runtime_error("mode() requires non-empty data!");
+        size_t maxCount = 0;
+        std::string modeKey;
+        for (const auto &item : items) {
+            std::string k = item.deref().toString();
+            counts[k]++;
+            valMap[k] = item;
+            if (counts[k] > maxCount) {
+                maxCount = counts[k];
+                modeKey = k;
+            }
+        }
+        return valMap[modeKey];
+    })));
+
+    m->set("variance", Value(std::make_shared<NativeMethodCallable>("variance", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        if (nums.size() < 2) throw std::runtime_error("Variance requires at least 2 data points!");
+        double meanVal = 0.0;
+        for (double n : nums) meanVal += n;
+        meanVal /= nums.size();
+        double sumSq = 0.0;
+        for (double n : nums) { double diff = n - meanVal; sumSq += diff * diff; }
+        return Value(sumSq / (nums.size() - 1));
+    })));
+    m->set("bhatkao", m->entries["variance"]);
+
+    m->set("stdev", Value(std::make_shared<NativeMethodCallable>("stdev", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        if (nums.size() < 2) throw std::runtime_error("Standard deviation requires at least 2 data points!");
+        double meanVal = 0.0;
+        for (double n : nums) meanVal += n;
+        meanVal /= nums.size();
+        double sumSq = 0.0;
+        for (double n : nums) { double diff = n - meanVal; sumSq += diff * diff; }
+        return Value(std::sqrt(sumSq / (nums.size() - 1)));
+    })));
+    m->set("sthitik", m->entries["stdev"]);
+
+    m->set("min", Value(std::make_shared<NativeMethodCallable>("min", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        double mVal = nums[0];
+        for (double n : nums) if (n < mVal) mVal = n;
+        return Value(mVal);
+    })));
+    m->set("chota", m->entries["min"]);
+
+    m->set("max", Value(std::make_shared<NativeMethodCallable>("max", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        double mVal = nums[0];
+        for (double n : nums) if (n > mVal) mVal = n;
+        return Value(mVal);
+    })));
+    m->set("bada", m->entries["max"]);
+
+    m->set("sum", Value(std::make_shared<NativeMethodCallable>("sum", 1, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        double s = 0.0;
+        for (double n : nums) s += n;
+        return Value(s);
+    })));
+    m->set("jod", m->entries["sum"]);
+
+    m->set("quantiles", Value(std::make_shared<NativeMethodCallable>("quantiles", 1, 2, [getNumbers](Interpreter &, const std::vector<Value> &args) {
+        auto nums = getNumbers(args[0]);
+        long long n = (args.size() > 1) ? args[1].deref().asInt() : 4;
+        if (n < 2) throw std::runtime_error("n must be at least 2!");
+        std::sort(nums.begin(), nums.end());
+        auto list = std::make_shared<MemeList>();
+        for (long long i = 1; i < n; ++i) {
+            double idx = (static_cast<double>(i) * (nums.size() - 1)) / n;
+            size_t low = static_cast<size_t>(std::floor(idx));
+            size_t high = static_cast<size_t>(std::ceil(idx));
+            double weight = idx - low;
+            double val = nums[low] * (1.0 - weight) + nums[high] * weight;
+            list->elements.push_back(Value(val));
+        }
+        return Value(list);
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createCryptoModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto toStr = [](const Value &v) -> std::string {
+        Value d = v.deref();
+        if (d.isBytes()) {
+            auto b = d.getBytes();
+            return std::string(reinterpret_cast<const char*>(b->data.data()), b->data.size());
+        }
+        return d.toString();
+    };
+
+    m->set("sha256", Value(std::make_shared<NativeMethodCallable>("sha256", 1, [toStr](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::sha256(toStr(args[0])));
+    })));
+
+    m->set("hmac_sha256", Value(std::make_shared<NativeMethodCallable>("hmac_sha256", 2, [toStr](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::hmacSha256(toStr(args[0]), toStr(args[1])));
+    })));
+    m->set("hmac", m->entries["hmac_sha256"]);
+
+    m->set("md5", Value(std::make_shared<NativeMethodCallable>("md5", 1, [toStr](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::md5(toStr(args[0])));
+    })));
+
+    m->set("sha1", Value(std::make_shared<NativeMethodCallable>("sha1", 1, [toStr](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::sha1(toStr(args[0])));
+    })));
+
+    m->set("base64_encode", Value(std::make_shared<NativeMethodCallable>("base64_encode", 1, [toStr](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::base64Encode(toStr(args[0])));
+    })));
+    m->set("b64encode", m->entries["base64_encode"]);
+
+    m->set("base64_decode", Value(std::make_shared<NativeMethodCallable>("base64_decode", 1, [](Interpreter &, const std::vector<Value> &args) {
+        return Value(EcosystemBridge::Crypto::base64Decode(args[0].deref().toString()));
+    })));
+    m->set("b64decode", m->entries["base64_decode"]);
+
+    m->set("uuid", Value(std::make_shared<NativeMethodCallable>("uuid", 0, [](Interpreter &, const std::vector<Value> &) {
+        return Value(EcosystemBridge::Crypto::uuid());
+    })));
+    m->set("uuid4", m->entries["uuid"]);
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createRegexModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    m->set("test", Value(std::make_shared<NativeMethodCallable>("test", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string text = args[1].deref().toString();
+        try {
+            std::regex re(pattern);
+            return Value(std::regex_search(text, re));
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+    m->set("milta_hai", m->entries["test"]);
+
+    m->set("search", Value(std::make_shared<NativeMethodCallable>("search", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string text = args[1].deref().toString();
+        try {
+            std::regex re(pattern);
+            std::smatch match;
+            if (std::regex_search(text, match, re)) {
+                auto res = std::make_shared<MemeMap>();
+                res->set("match", Value(match.str()));
+                res->set("start", Value(static_cast<long long>(match.position())));
+                res->set("end", Value(static_cast<long long>(match.position() + match.length())));
+                auto groups = std::make_shared<MemeList>();
+                for (size_t i = 1; i < match.size(); ++i) {
+                    groups->elements.push_back(Value(match[i].str()));
+                }
+                res->set("groups", Value(groups));
+                return Value(res);
+            }
+            return Value(std::monostate{});
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+    m->set("dhund", m->entries["search"]);
+
+    m->set("match", Value(std::make_shared<NativeMethodCallable>("match", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string text = args[1].deref().toString();
+        try {
+            std::regex re(pattern);
+            std::smatch match;
+            if (std::regex_search(text, match, re) && match.position() == 0) {
+                auto res = std::make_shared<MemeMap>();
+                res->set("match", Value(match.str()));
+                res->set("start", Value(0LL));
+                res->set("end", Value(static_cast<long long>(match.length())));
+                auto groups = std::make_shared<MemeList>();
+                for (size_t i = 1; i < match.size(); ++i) {
+                    groups->elements.push_back(Value(match[i].str()));
+                }
+                res->set("groups", Value(groups));
+                return Value(res);
+            }
+            return Value(std::monostate{});
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+
+    m->set("find_all", Value(std::make_shared<NativeMethodCallable>("find_all", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string text = args[1].deref().toString();
+        try {
+            std::regex re(pattern);
+            auto list = std::make_shared<MemeList>();
+            auto it = std::sregex_iterator(text.begin(), text.end(), re);
+            auto end = std::sregex_iterator();
+            for (; it != end; ++it) {
+                list->elements.push_back(Value(it->str()));
+            }
+            return Value(list);
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+    m->set("sab_dhund", m->entries["find_all"]);
+
+    m->set("replace", Value(std::make_shared<NativeMethodCallable>("replace", 3, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string repl = args[1].deref().toString();
+        std::string text = args[2].deref().toString();
+        try {
+            std::regex re(pattern);
+            return Value(std::regex_replace(text, re, repl));
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+    m->set("badal", m->entries["replace"]);
+
+    m->set("split", Value(std::make_shared<NativeMethodCallable>("split", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string pattern = args[0].deref().toString();
+        std::string text = args[1].deref().toString();
+        try {
+            std::regex re(pattern);
+            auto list = std::make_shared<MemeList>();
+            std::sregex_token_iterator it(text.begin(), text.end(), re, -1);
+            std::sregex_token_iterator end;
+            for (; it != end; ++it) {
+                list->elements.push_back(Value(std::string(*it)));
+            }
+            return Value(list);
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Regex error: ") + e.what());
+        }
+    })));
+    m->set("baant", m->entries["split"]);
+
+    return m;
+}
+
 static std::shared_ptr<MemeMap> createWaqtModule()
 {
     auto m = std::make_shared<MemeMap>();
     m->isModule = true;
 
-    m->set("ab", Value(std::make_shared<NativeMethodCallable>("ab", 0, [](Interpreter &, const std::vector<Value> &) {
+    // now / ab (seconds as double)
+    m->set("now", Value(std::make_shared<NativeMethodCallable>("now", 0, [](Interpreter &, const std::vector<Value> &) {
         auto now = std::chrono::system_clock::now();
         double sec = std::chrono::duration<double>(now.time_since_epoch()).count();
         return Value(sec);
+    })));
+    m->set("ab", m->entries["now"]);
+
+    // now_ms (milliseconds as long long)
+    m->set("now_ms", Value(std::make_shared<NativeMethodCallable>("now_ms", 0, [](Interpreter &, const std::vector<Value> &) {
+        auto now = std::chrono::system_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        return Value(static_cast<long long>(ms));
+    })));
+
+    // iso([ts])
+    m->set("iso", Value(std::make_shared<NativeMethodCallable>("iso", 0, 1, [](Interpreter &, const std::vector<Value> &args) {
+        std::time_t t;
+        if (args.empty()) {
+            t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        } else {
+            t = static_cast<std::time_t>(args[0].deref().asDouble());
+        }
+        std::tm tmBuf;
+#if defined(_WIN32)
+        gmtime_s(&tmBuf, &t);
+#else
+        gmtime_r(&t, &tmBuf);
+#endif
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tmBuf);
+        return Value(std::string(buf));
+    })));
+
+    // format([ts], fmt) / strftime
+    m->set("format", Value(std::make_shared<NativeMethodCallable>("format", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::time_t t;
+        std::string fmt;
+        if (args.size() == 1) {
+            t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            fmt = args[0].deref().toString();
+        } else {
+            t = static_cast<std::time_t>(args[0].deref().asDouble());
+            fmt = args[1].deref().toString();
+        }
+        std::tm tmBuf;
+#if defined(_WIN32)
+        localtime_s(&tmBuf, &t);
+#else
+        localtime_r(&t, &tmBuf);
+#endif
+        char buf[128];
+        std::strftime(buf, sizeof(buf), fmt.c_str(), &tmBuf);
+        return Value(std::string(buf));
+    })));
+    m->set("strftime", m->entries["format"]);
+
+    // parse(str, fmt) / strptime
+    m->set("parse", Value(std::make_shared<NativeMethodCallable>("parse", 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string dateStr = args[0].deref().toString();
+        std::string fmt = args[1].deref().toString();
+        std::tm tmBuf = {};
+        std::istringstream ss(dateStr);
+        ss >> std::get_time(&tmBuf, fmt.c_str());
+        if (ss.fail()) throw std::runtime_error("Failed to parse date string: '" + dateStr + "' with format '" + fmt + "'");
+        std::time_t t = std::mktime(&tmBuf);
+        return Value(static_cast<double>(t));
+    })));
+    m->set("strptime", m->entries["parse"]);
+
+    // date parts: year, month, day, hour, minute, second, weekday
+    auto getTm = [](const std::vector<Value> &args) -> std::tm {
+        std::time_t t;
+        if (args.empty()) t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        else t = static_cast<std::time_t>(args[0].deref().asDouble());
+        std::tm tmBuf;
+#if defined(_WIN32)
+        localtime_s(&tmBuf, &t);
+#else
+        localtime_r(&t, &tmBuf);
+#endif
+        return tmBuf;
+    };
+
+    m->set("year", Value(std::make_shared<NativeMethodCallable>("year", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_year + 1900));
+    })));
+    m->set("month", Value(std::make_shared<NativeMethodCallable>("month", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_mon + 1));
+    })));
+    m->set("day", Value(std::make_shared<NativeMethodCallable>("day", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_mday));
+    })));
+    m->set("hour", Value(std::make_shared<NativeMethodCallable>("hour", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_hour));
+    })));
+    m->set("minute", Value(std::make_shared<NativeMethodCallable>("minute", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_min));
+    })));
+    m->set("second", Value(std::make_shared<NativeMethodCallable>("second", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_sec));
+    })));
+    m->set("weekday", Value(std::make_shared<NativeMethodCallable>("weekday", 0, 1, [getTm](Interpreter &, const std::vector<Value> &args) {
+        return Value(static_cast<long long>(getTm(args).tm_wday));
     })));
 
     auto sleepFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
@@ -791,9 +1478,288 @@ static std::shared_ptr<MemeMap> createWaqtModule()
         }
         return Value(std::monostate{});
     };
+    m->set("sleep", Value(std::make_shared<NativeMethodCallable>("sleep", 1, sleepFn)));
+    m->set("so_ja", m->entries["sleep"]);
+    m->set("ruk", m->entries["sleep"]);
 
-    m->set("so_ja", Value(std::make_shared<NativeMethodCallable>("so_ja", 1, sleepFn)));
-    m->set("ruk", Value(std::make_shared<NativeMethodCallable>("ruk", 1, sleepFn)));
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createItertoolsModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto rangeFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (args.empty()) throw std::runtime_error("range() requires at least 1 argument!");
+        long long start = 0;
+        long long stop = 0;
+        long long step = 1;
+        if (args.size() == 1) {
+            stop = args[0].deref().asInt();
+        } else if (args.size() == 2) {
+            start = args[0].deref().asInt();
+            stop = args[1].deref().asInt();
+        } else {
+            start = args[0].deref().asInt();
+            stop = args[1].deref().asInt();
+            step = args[2].deref().asInt();
+            if (step == 0) throw std::runtime_error("range() step cannot be zero!");
+        }
+        auto list = std::make_shared<MemeList>();
+        if (step > 0) {
+            for (long long i = start; i < stop; i += step) {
+                list->elements.push_back(Value(i));
+            }
+        } else {
+            for (long long i = start; i > stop; i += step) {
+                list->elements.push_back(Value(i));
+            }
+        }
+        return Value(list);
+    };
+    m->set("range", Value(std::make_shared<NativeMethodCallable>("range", 1, 3, rangeFn)));
+    m->set("ginti", m->entries["range"]);
+
+    auto zipFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (args.empty()) return Value(std::make_shared<MemeList>());
+        std::vector<std::vector<Value>> sequences;
+        size_t minLen = std::numeric_limits<size_t>::max();
+        for (const auto &arg : args) {
+            Value d = arg.deref();
+            std::vector<Value> items;
+            if (d.isList()) items = d.getList()->elements;
+            else if (d.isTuple()) items = d.getTuple()->elements;
+            else if (d.isSet()) items = d.getSet()->elements;
+            else if (std::holds_alternative<std::string>(d.data)) {
+                for (char c : std::get<std::string>(d.data)) items.push_back(Value(std::string(1, c)));
+            } else {
+                throw std::runtime_error("zip() requires sequences (list, tuple, string, or set)!");
+            }
+            if (items.size() < minLen) minLen = items.size();
+            sequences.push_back(std::move(items));
+        }
+        auto result = std::make_shared<MemeList>();
+        for (size_t i = 0; i < minLen; ++i) {
+            std::vector<Value> tupleItems;
+            for (const auto &seq : sequences) {
+                tupleItems.push_back(seq[i]);
+            }
+            result->elements.push_back(Value(std::make_shared<MemeTuple>(std::move(tupleItems))));
+        }
+        return Value(result);
+    };
+    m->set("zip", Value(std::make_shared<NativeMethodCallable>("zip", 1, -1, zipFn)));
+    m->set("jodi_bana", m->entries["zip"]);
+
+    auto enumFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value d = args[0].deref();
+        long long start = (args.size() > 1) ? args[1].deref().asInt() : 0;
+        std::vector<Value> items;
+        if (d.isList()) items = d.getList()->elements;
+        else if (d.isTuple()) items = d.getTuple()->elements;
+        else if (std::holds_alternative<std::string>(d.data)) {
+            for (char c : std::get<std::string>(d.data)) items.push_back(Value(std::string(1, c)));
+        } else {
+            throw std::runtime_error("enumerate() requires a list, tuple, or string!");
+        }
+        auto result = std::make_shared<MemeList>();
+        for (size_t i = 0; i < items.size(); ++i) {
+            std::vector<Value> tupleItems = { Value(start + static_cast<long long>(i)), items[i] };
+            result->elements.push_back(Value(std::make_shared<MemeTuple>(std::move(tupleItems))));
+        }
+        return Value(result);
+    };
+    m->set("enumerate", Value(std::make_shared<NativeMethodCallable>("enumerate", 1, 2, enumFn)));
+    m->set("ginti_kar", m->entries["enumerate"]);
+
+    m->set("chunk", Value(std::make_shared<NativeMethodCallable>("chunk", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value d = args[0].deref();
+        long long sz = args[1].deref().asInt();
+        if (sz <= 0) throw std::runtime_error("chunk size must be positive!");
+        std::vector<Value> items;
+        if (d.isList()) items = d.getList()->elements;
+        else if (d.isTuple()) items = d.getTuple()->elements;
+        else throw std::runtime_error("chunk() requires a list or tuple!");
+        auto result = std::make_shared<MemeList>();
+        for (size_t i = 0; i < items.size(); i += sz) {
+            size_t endIdx = std::min(items.size(), i + static_cast<size_t>(sz));
+            std::vector<Value> chunkItems(items.begin() + i, items.begin() + endIdx);
+            result->elements.push_back(Value(std::make_shared<MemeList>(std::move(chunkItems))));
+        }
+        return Value(result);
+    })));
+    m->set("tukde", m->entries["chunk"]);
+
+    m->set("flatten", Value(std::make_shared<NativeMethodCallable>("flatten", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value d = args[0].deref();
+        if (!d.isList()) throw std::runtime_error("flatten() requires a list!");
+        auto out = std::make_shared<MemeList>();
+        std::function<void(const Value&)> flat = [&](const Value &v) {
+            Value derefVal = v.deref();
+            if (derefVal.isList()) {
+                for (const auto &e : derefVal.getList()->elements) flat(e);
+            } else {
+                out->elements.push_back(derefVal);
+            }
+        };
+        flat(d);
+        return Value(out);
+    })));
+    m->set("seedha_kar", m->entries["flatten"]);
+
+    m->set("repeat", Value(std::make_shared<NativeMethodCallable>("repeat", 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value elem = args[0].deref();
+        long long times = args[1].deref().asInt();
+        if (times < 0) times = 0;
+        auto list = std::make_shared<MemeList>();
+        list->elements.resize(static_cast<size_t>(times), elem);
+        return Value(list);
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createCollectionsModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    // Counter(seq) -> returns map of counts
+    m->set("Counter", Value(std::make_shared<NativeMethodCallable>("Counter", 1, [](Interpreter &, const std::vector<Value> &args) {
+        Value d = args[0].deref();
+        auto map = std::make_shared<MemeMap>();
+        if (d.isList()) {
+            for (const auto &item : d.getList()->elements) {
+                std::string k = item.deref().toString();
+                long long cur = map->has(k) ? map->entries[k].deref().asInt() : 0LL;
+                map->set(k, Value(cur + 1LL));
+            }
+        } else if (d.isTuple()) {
+            for (const auto &item : d.getTuple()->elements) {
+                std::string k = item.deref().toString();
+                long long cur = map->has(k) ? map->entries[k].deref().asInt() : 0LL;
+                map->set(k, Value(cur + 1LL));
+            }
+        } else if (std::holds_alternative<std::string>(d.data)) {
+            for (char c : std::get<std::string>(d.data)) {
+                std::string k(1, c);
+                long long cur = map->has(k) ? map->entries[k].deref().asInt() : 0LL;
+                map->set(k, Value(cur + 1LL));
+            }
+        } else {
+            throw std::runtime_error("Counter() requires a list, tuple, or string!");
+        }
+        return Value(map);
+    })));
+    m->set("ginti", m->entries["Counter"]);
+
+    // deque([init]) -> double-ended queue object
+    m->set("deque", Value(std::make_shared<NativeMethodCallable>("deque", 0, 1, [](Interpreter &, const std::vector<Value> &args) {
+        auto dq = std::make_shared<std::deque<Value>>();
+        if (!args.empty()) {
+            Value d = args[0].deref();
+            if (d.isList()) {
+                for (const auto &e : d.getList()->elements) dq->push_back(e);
+            }
+        }
+        auto dqMap = std::make_shared<MemeMap>();
+        dqMap->set("push_back", Value(std::make_shared<NativeMethodCallable>("push_back", 1, [dq](Interpreter &, const std::vector<Value> &a) {
+            dq->push_back(a[0].deref());
+            return Value(std::monostate{});
+        })));
+        dqMap->set("push_right", dqMap->entries["push_back"]);
+        dqMap->set("push_front", Value(std::make_shared<NativeMethodCallable>("push_front", 1, [dq](Interpreter &, const std::vector<Value> &a) {
+            dq->push_front(a[0].deref());
+            return Value(std::monostate{});
+        })));
+        dqMap->set("push_left", dqMap->entries["push_front"]);
+
+        dqMap->set("pop_back", Value(std::make_shared<NativeMethodCallable>("pop_back", 0, [dq](Interpreter &, const std::vector<Value> &) {
+            if (dq->empty()) throw std::runtime_error("pop_back() on empty deque!");
+            Value v = dq->back();
+            dq->pop_back();
+            return v;
+        })));
+        dqMap->set("pop_right", dqMap->entries["pop_back"]);
+
+        dqMap->set("pop_front", Value(std::make_shared<NativeMethodCallable>("pop_front", 0, [dq](Interpreter &, const std::vector<Value> &) {
+            if (dq->empty()) throw std::runtime_error("pop_front() on empty deque!");
+            Value v = dq->front();
+            dq->pop_front();
+            return v;
+        })));
+        dqMap->set("pop_left", dqMap->entries["pop_front"]);
+
+        dqMap->set("size", Value(std::make_shared<NativeMethodCallable>("size", 0, [dq](Interpreter &, const std::vector<Value> &) {
+            return Value(static_cast<long long>(dq->size()));
+        })));
+        dqMap->set("length", dqMap->entries["size"]);
+
+        dqMap->set("to_list", Value(std::make_shared<NativeMethodCallable>("to_list", 0, [dq](Interpreter &, const std::vector<Value> &) {
+            auto l = std::make_shared<MemeList>();
+            for (const auto &item : *dq) l->elements.push_back(item);
+            return Value(l);
+        })));
+
+        return Value(dqMap);
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createTestModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    m->set("assert", Value(std::make_shared<NativeMethodCallable>("assert", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value cond = args[0].deref();
+        if (!cond.isTruthy()) {
+            std::string msg = (args.size() > 1) ? args[1].deref().toString() : "Assertion failed!";
+            throw std::runtime_error(msg);
+        }
+        return Value(true);
+    })));
+
+    m->set("assert_eq", Value(std::make_shared<NativeMethodCallable>("assert_eq", 2, 3, [](Interpreter &, const std::vector<Value> &args) {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (!(a == b)) {
+            std::string msg = (args.size() > 2) ? args[2].deref().toString() : "Assertion error";
+            throw std::runtime_error(msg + ": Expected '" + b.toString() + "' but got '" + a.toString() + "'");
+        }
+        return Value(true);
+    })));
+
+    m->set("assert_ne", Value(std::make_shared<NativeMethodCallable>("assert_ne", 2, 3, [](Interpreter &, const std::vector<Value> &args) {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (a == b) {
+            std::string msg = (args.size() > 2) ? args[2].deref().toString() : "Assertion error";
+            throw std::runtime_error(msg + ": Values should not be equal: '" + a.toString() + "'");
+        }
+        return Value(true);
+    })));
+
+    m->set("assert_throws", Value(std::make_shared<NativeMethodCallable>("assert_throws", 1, 2, [](Interpreter &interp, const std::vector<Value> &args) {
+        Value fnVal = args[0].deref();
+        if (!std::holds_alternative<std::shared_ptr<Callable>>(fnVal.data)) {
+            throw std::runtime_error("assert_throws requires a callable function!");
+        }
+        auto callable = std::get<std::shared_ptr<Callable>>(fnVal.data);
+        bool threw = false;
+        try {
+            callable->call(interp, {});
+        } catch (...) {
+            threw = true;
+        }
+        if (!threw) {
+            std::string msg = (args.size() > 1) ? args[1].deref().toString() : "Expected function to throw error, but it succeeded!";
+            throw std::runtime_error(msg);
+        }
+        return Value(true);
+    })));
 
     return m;
 }
@@ -1357,6 +2323,112 @@ static std::shared_ptr<MemeMap> createFileModule()
         return Value(std::filesystem::temp_directory_path().string());
     };
     m->set("temp_dir", Value(std::make_shared<NativeMethodCallable>("temp_dir", 0, tempDirFn)));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createCsvModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    // parse(text, has_header = true)
+    m->set("parse", Value(std::make_shared<NativeMethodCallable>("parse", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        std::string text = args[0].deref().toString();
+        bool hasHeader = (args.size() > 1) ? args[1].deref().isTruthy() : true;
+        std::stringstream ss(text);
+        std::string line;
+        auto list = std::make_shared<MemeList>();
+        std::vector<std::string> headers;
+        bool isFirst = true;
+
+        while (std::getline(ss, line))
+        {
+            if (line.empty()) continue;
+            auto row = parseCsvLine(line);
+            if (hasHeader && isFirst)
+            {
+                headers = row;
+                isFirst = false;
+                continue;
+            }
+            if (hasHeader)
+            {
+                auto rowMap = std::make_shared<MemeMap>();
+                for (size_t i = 0; i < headers.size() && i < row.size(); ++i)
+                {
+                    rowMap->set(headers[i], Value(row[i]));
+                }
+                list->elements.push_back(Value(rowMap));
+            }
+            else
+            {
+                auto rowList = std::make_shared<MemeList>();
+                for (const auto &cell : row) rowList->elements.push_back(Value(cell));
+                list->elements.push_back(Value(rowList));
+            }
+        }
+        return Value(list);
+    })));
+    m->set("padh", m->entries["parse"]);
+
+    // stringify(rows, [headers])
+    m->set("stringify", Value(std::make_shared<NativeMethodCallable>("stringify", 1, 2, [](Interpreter &, const std::vector<Value> &args) {
+        Value rowsVal = args[0].deref();
+        if (!rowsVal.isList()) throw std::runtime_error("csv.stringify ko list chahiye!");
+        auto list = rowsVal.getList();
+        std::ostringstream ss;
+        if (list->elements.empty()) return Value("");
+
+        std::vector<std::string> headers;
+        if (args.size() > 1 && args[1].deref().isList()) {
+            for (const auto &h : args[1].deref().getList()->elements) headers.push_back(h.deref().toString());
+        }
+
+        Value first = list->elements[0].deref();
+        if (first.isMap()) {
+            auto map0 = first.getMap();
+            if (headers.empty()) headers = map0->keyOrder;
+            for (size_t i = 0; i < headers.size(); ++i) {
+                if (i > 0) ss << ",";
+                ss << escapeCsvField(headers[i]);
+            }
+            ss << "\n";
+            for (const auto &rowElem : list->elements) {
+                Value rv = rowElem.deref();
+                if (rv.isMap()) {
+                    auto rm = rv.getMap();
+                    for (size_t i = 0; i < headers.size(); ++i) {
+                        if (i > 0) ss << ",";
+                        std::string cell = rm->has(headers[i]) ? rm->entries[headers[i]].deref().toString() : "";
+                        ss << escapeCsvField(cell);
+                    }
+                    ss << "\n";
+                }
+            }
+        } else if (first.isList()) {
+            if (!headers.empty()) {
+                for (size_t i = 0; i < headers.size(); ++i) {
+                    if (i > 0) ss << ",";
+                    ss << escapeCsvField(headers[i]);
+                }
+                ss << "\n";
+            }
+            for (const auto &rowElem : list->elements) {
+                Value rv = rowElem.deref();
+                if (rv.isList()) {
+                    auto rl = rv.getList();
+                    for (size_t i = 0; i < rl->elements.size(); ++i) {
+                        if (i > 0) ss << ",";
+                        ss << escapeCsvField(rl->elements[i].deref().toString());
+                    }
+                    ss << "\n";
+                }
+            }
+        }
+        return Value(ss.str());
+    })));
+    m->set("likh", m->entries["stringify"]);
 
     return m;
 }
@@ -3786,225 +4858,1820 @@ static std::shared_ptr<MemeMap> createTijoriModule(Interpreter &)
     return m;
 }
 
-struct DhabaRoute {
+static std::string urlDecode(const std::string &src)
+{
+    std::string ret;
+    for (size_t i = 0; i < src.length(); i++)
+    {
+        if (src[i] == '%')
+        {
+            if (i + 2 < src.length())
+            {
+                int val = 0;
+                if (sscanf(src.substr(i + 1, 2).c_str(), "%x", &val) == 1)
+                {
+                    ret += static_cast<char>(val);
+                    i += 2;
+                    continue;
+                }
+            }
+            ret += '%';
+        }
+        else if (src[i] == '+')
+        {
+            ret += ' ';
+        }
+        else
+        {
+            ret += src[i];
+        }
+    }
+    return ret;
+}
+
+static Value parseUrlEncoded(const std::string &body)
+{
+    auto map = std::make_shared<MemeMap>();
+    std::stringstream ss(body);
+    std::string pair;
+    while (std::getline(ss, pair, '&'))
+    {
+        if (pair.empty()) continue;
+        size_t eq = pair.find('=');
+        if (eq != std::string::npos)
+        {
+            std::string k = urlDecode(pair.substr(0, eq));
+            std::string v = urlDecode(pair.substr(eq + 1));
+            map->set(k, Value(v));
+        }
+        else
+        {
+            map->set(urlDecode(pair), Value(true));
+        }
+    }
+    return Value(map);
+}
+
+static std::shared_ptr<MemeMap> parseCookieHeader(const std::string &cookieHeader)
+{
+    auto map = std::make_shared<MemeMap>();
+    std::stringstream ss(cookieHeader);
+    std::string item;
+    while (std::getline(ss, item, ';'))
+    {
+        while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) item.erase(item.begin());
+        while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) item.pop_back();
+        if (item.empty()) continue;
+        size_t eq = item.find('=');
+        if (eq != std::string::npos)
+        {
+            map->set(item.substr(0, eq), Value(item.substr(eq + 1)));
+        }
+        else
+        {
+            map->set(item, Value(true));
+        }
+    }
+    return map;
+}
+
+static std::string getMimeType(const std::string &path)
+{
+    size_t dot = path.rfind('.');
+    if (dot == std::string::npos) return "application/octet-stream";
+    std::string ext = path.substr(dot);
+    for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext == ".html" || ext == ".htm") return "text/html; charset=utf-8";
+    if (ext == ".css") return "text/css; charset=utf-8";
+    if (ext == ".js" || ext == ".mjs") return "application/javascript; charset=utf-8";
+    if (ext == ".json") return "application/json; charset=utf-8";
+    if (ext == ".png") return "image/png";
+    if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".gif") return "image/gif";
+    if (ext == ".svg") return "image/svg+xml";
+    if (ext == ".ico") return "image/x-icon";
+    if (ext == ".webp") return "image/webp";
+    if (ext == ".txt") return "text/plain; charset=utf-8";
+    if (ext == ".pdf") return "application/pdf";
+    if (ext == ".wasm") return "application/wasm";
+    return "application/octet-stream";
+}
+
+// ---------------------------------------------------------------------------
+// Elysia / TypeBox-inspired Schema System (`t` / `schema` / `nirmaan`)
+// ---------------------------------------------------------------------------
+
+struct MemeSchema {
+    std::string kind; // "string", "number", "integer", "boolean", "array", "object", "optional", "union", "literal", "record", "any"
+    std::shared_ptr<MemeSchema> inner;
+    std::vector<std::shared_ptr<MemeSchema>> unionSchemas;
+    std::map<std::string, std::shared_ptr<MemeSchema>> properties;
+    Value literalVal;
+
+    bool hasMin = false;
+    double minVal = 0.0;
+    bool hasMax = false;
+    double maxVal = 0.0;
+
+    bool hasMinLength = false;
+    size_t minLength = 0;
+    bool hasMaxLength = false;
+    size_t maxLength = 0;
+
+    std::string pattern;
+    std::string format;
+    bool additionalProperties = true;
+
+    struct Result {
+        bool success = true;
+        Value data;
+        std::vector<std::string> errors;
+    };
+
+    Result validate(const Value &input, const std::string &path = "") const
+    {
+        Value d = input.deref();
+
+        if (kind == "optional")
+        {
+            if (d.isNull() || std::holds_alternative<std::monostate>(d.data))
+            {
+                return { true, Value(std::monostate{}), {} };
+            }
+            return inner ? inner->validate(d, path) : Result{ true, d, {} };
+        }
+
+        if (kind == "any")
+        {
+            return { true, d, {} };
+        }
+
+        if (kind == "literal")
+        {
+            if (d == literalVal)
+            {
+                return { true, d, {} };
+            }
+            std::string p = path.empty() ? "value" : path;
+            return { false, d, { p + ": Expected literal '" + literalVal.toString() + "', got '" + d.toString() + "'" } };
+        }
+
+        if (kind == "union")
+        {
+            for (const auto &s : unionSchemas)
+            {
+                auto r = s->validate(d, path);
+                if (r.success) return r;
+            }
+            std::string p = path.empty() ? "value" : path;
+            return { false, d, { p + ": Value does not match any union variant" } };
+        }
+
+        if (kind == "string")
+        {
+            std::string str;
+            if (std::holds_alternative<std::string>(d.data))
+            {
+                str = std::get<std::string>(d.data);
+            }
+            else
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected string, got " + d.typeName() } };
+            }
+            std::string p = path.empty() ? "string" : path;
+            if (hasMinLength && str.size() < minLength)
+            {
+                return { false, d, { p + ": Length " + std::to_string(str.size()) + " is less than minLength " + std::to_string(minLength) } };
+            }
+            if (hasMaxLength && str.size() > maxLength)
+            {
+                return { false, d, { p + ": Length " + std::to_string(str.size()) + " is greater than maxLength " + std::to_string(maxLength) } };
+            }
+            if (!pattern.empty())
+            {
+                try {
+                    std::regex re(pattern);
+                    if (!std::regex_search(str, re))
+                    {
+                        return { false, d, { p + ": Value does not match regex pattern " + pattern } };
+                    }
+                } catch (...) {}
+            }
+            if (format == "email")
+            {
+                size_t at = str.find('@');
+                size_t dot = str.rfind('.');
+                if (at == std::string::npos || dot == std::string::npos || dot < at)
+                {
+                    return { false, d, { p + ": Expected valid email address" } };
+                }
+            }
+            else if (format == "uuid")
+            {
+                if (str.size() != 36)
+                {
+                    return { false, d, { p + ": Expected 36-character UUID" } };
+                }
+            }
+            else if (format == "url")
+            {
+                if (str.rfind("http://", 0) != 0 && str.rfind("https://", 0) != 0)
+                {
+                    return { false, d, { p + ": Expected valid URL (http:// or https://)" } };
+                }
+            }
+            return { true, Value(str), {} };
+        }
+
+        if (kind == "number")
+        {
+            double num = 0.0;
+            if (d.isNumeric())
+            {
+                num = d.asDouble();
+            }
+            else if (std::holds_alternative<std::string>(d.data))
+            {
+                try {
+                    num = std::stod(std::get<std::string>(d.data));
+                } catch (...) {
+                    std::string p = path.empty() ? "value" : path;
+                    return { false, d, { p + ": Cannot parse string as number: '" + std::get<std::string>(d.data) + "'" } };
+                }
+            }
+            else
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected number, got " + d.typeName() } };
+            }
+            std::string p = path.empty() ? "number" : path;
+            if (hasMin && num < minVal)
+            {
+                return { false, d, { p + ": Value " + std::to_string(num) + " is less than minimum " + std::to_string(minVal) } };
+            }
+            if (hasMax && num > maxVal)
+            {
+                return { false, d, { p + ": Value " + std::to_string(num) + " is greater than maximum " + std::to_string(maxVal) } };
+            }
+            return { true, Value(num), {} };
+        }
+
+        if (kind == "integer")
+        {
+            long long iVal = 0;
+            if (d.isInteger())
+            {
+                iVal = d.asInt();
+            }
+            else if (d.isNumeric())
+            {
+                double fVal = d.asDouble();
+                if (std::floor(fVal) != fVal)
+                {
+                    std::string p = path.empty() ? "value" : path;
+                    return { false, d, { p + ": Expected integer, got floating point " + std::to_string(fVal) } };
+                }
+                iVal = static_cast<long long>(fVal);
+            }
+            else if (std::holds_alternative<std::string>(d.data))
+            {
+                try {
+                    iVal = std::stoll(std::get<std::string>(d.data));
+                } catch (...) {
+                    std::string p = path.empty() ? "value" : path;
+                    return { false, d, { p + ": Cannot parse string as integer: '" + std::get<std::string>(d.data) + "'" } };
+                }
+            }
+            else
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected integer, got " + d.typeName() } };
+            }
+            std::string p = path.empty() ? "integer" : path;
+            if (hasMin && iVal < static_cast<long long>(minVal))
+            {
+                return { false, d, { p + ": Value " + std::to_string(iVal) + " is less than minimum " + std::to_string(static_cast<long long>(minVal)) } };
+            }
+            if (hasMax && iVal > static_cast<long long>(maxVal))
+            {
+                return { false, d, { p + ": Value " + std::to_string(iVal) + " is greater than maximum " + std::to_string(static_cast<long long>(maxVal)) } };
+            }
+            return { true, Value(iVal), {} };
+        }
+
+        if (kind == "boolean")
+        {
+            if (std::holds_alternative<bool>(d.data))
+            {
+                return { true, d, {} };
+            }
+            if (std::holds_alternative<std::string>(d.data))
+            {
+                std::string s = std::get<std::string>(d.data);
+                for (char &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (s == "true" || s == "1" || s == "han" || s == "sach") return { true, Value(true), {} };
+                if (s == "false" || s == "0" || s == "nhi" || s == "jhooth") return { true, Value(false), {} };
+            }
+            std::string p = path.empty() ? "value" : path;
+            return { false, d, { p + ": Expected boolean, got " + d.typeName() } };
+        }
+
+        if (kind == "array")
+        {
+            if (!d.isList())
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected list, got " + d.typeName() } };
+            }
+            auto list = d.getList();
+            std::string p = path.empty() ? "array" : path;
+            if (hasMin && list->elements.size() < static_cast<size_t>(minVal))
+            {
+                return { false, d, { p + ": Array size " + std::to_string(list->elements.size()) + " is less than minItems " + std::to_string(static_cast<size_t>(minVal)) } };
+            }
+            if (hasMax && list->elements.size() > static_cast<size_t>(maxVal))
+            {
+                return { false, d, { p + ": Array size " + std::to_string(list->elements.size()) + " is greater than maxItems " + std::to_string(static_cast<size_t>(maxVal)) } };
+            }
+            auto outList = std::make_shared<MemeList>();
+            std::vector<std::string> errs;
+            for (size_t i = 0; i < list->elements.size(); ++i)
+            {
+                std::string elemPath = path + "[" + std::to_string(i) + "]";
+                if (inner)
+                {
+                    auto itemRes = inner->validate(list->elements[i], elemPath);
+                    if (!itemRes.success)
+                    {
+                        errs.insert(errs.end(), itemRes.errors.begin(), itemRes.errors.end());
+                    }
+                    else
+                    {
+                        outList->elements.push_back(itemRes.data);
+                    }
+                }
+                else
+                {
+                    outList->elements.push_back(list->elements[i]);
+                }
+            }
+            if (!errs.empty())
+            {
+                return { false, d, errs };
+            }
+            return { true, Value(outList), {} };
+        }
+
+        if (kind == "object")
+        {
+            if (!d.isMap())
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected object, got " + d.typeName() } };
+            }
+            auto map = d.getMap();
+            auto outMap = std::make_shared<MemeMap>();
+            std::vector<std::string> errs;
+
+            for (const auto &[propKey, propSchema] : properties)
+            {
+                std::string propPath = path.empty() ? propKey : path + "." + propKey;
+                if (!map->has(propKey))
+                {
+                    if (propSchema->kind == "optional")
+                    {
+                        continue;
+                    }
+                    errs.push_back(propPath + ": Missing required property");
+                    continue;
+                }
+                auto propRes = propSchema->validate(map->entries[propKey], propPath);
+                if (!propRes.success)
+                {
+                    errs.insert(errs.end(), propRes.errors.begin(), propRes.errors.end());
+                }
+                else
+                {
+                    outMap->set(propKey, propRes.data);
+                }
+            }
+
+            if (additionalProperties)
+            {
+                for (const auto &k : map->keyOrder)
+                {
+                    if (properties.find(k) == properties.end())
+                    {
+                        outMap->set(k, map->entries[k]);
+                    }
+                }
+            }
+
+            if (!errs.empty())
+            {
+                return { false, d, errs };
+            }
+            return { true, Value(outMap), {} };
+        }
+
+        if (kind == "record")
+        {
+            if (!d.isMap())
+            {
+                std::string p = path.empty() ? "value" : path;
+                return { false, d, { p + ": Expected object record, got " + d.typeName() } };
+            }
+            auto map = d.getMap();
+            auto outMap = std::make_shared<MemeMap>();
+            std::vector<std::string> errs;
+            for (const auto &k : map->keyOrder)
+            {
+                std::string propPath = path.empty() ? k : path + "." + k;
+                if (inner)
+                {
+                    auto itemRes = inner->validate(map->entries[k], propPath);
+                    if (!itemRes.success)
+                    {
+                        errs.insert(errs.end(), itemRes.errors.begin(), itemRes.errors.end());
+                    }
+                    else
+                    {
+                        outMap->set(k, itemRes.data);
+                    }
+                }
+                else
+                {
+                    outMap->set(k, map->entries[k]);
+                }
+            }
+            if (!errs.empty()) return { false, d, errs };
+            return { true, Value(outMap), {} };
+        }
+
+        return { true, d, {} };
+    }
+};
+
+static std::shared_ptr<MemeSchema> extractSchema(const Value &val);
+
+static std::shared_ptr<MemeMap> wrapSchema(const std::shared_ptr<MemeSchema> &s)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("__is_schema__", Value(true));
+    m->set("kind", Value(s->kind));
+
+    // validate(val) -> { success: bool, data: coerced, errors: list }
+    m->set("validate", Value(std::make_shared<NativeMethodCallable>("validate", 1, [s](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto res = s->validate(args[0]);
+        auto resMap = std::make_shared<MemeMap>();
+        resMap->set("success", Value(res.success));
+        resMap->set("data", res.data);
+        auto errList = std::make_shared<MemeList>();
+        for (const auto &err : res.errors) errList->elements.push_back(Value(err));
+        resMap->set("errors", Value(errList));
+        return Value(resMap);
+    })));
+
+    // check(val) -> bool
+    m->set("check", Value(std::make_shared<NativeMethodCallable>("check", 1, [s](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value(s->validate(args[0]).success);
+    })));
+
+    // parse(val) -> val or throw
+    m->set("parse", Value(std::make_shared<NativeMethodCallable>("parse", 1, [s](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto res = s->validate(args[0]);
+        if (!res.success) {
+            std::string combined = "Schema Validation Failed: ";
+            for (size_t i = 0; i < res.errors.size(); ++i) {
+                if (i > 0) combined += "; ";
+                combined += res.errors[i];
+            }
+            throw std::runtime_error(combined);
+        }
+        return res.data;
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeSchema> extractSchema(const Value &val)
+{
+    Value d = val.deref();
+    if (!d.isMap()) return nullptr;
+    auto map = d.getMap();
+    if (!map->has("__is_schema__")) return nullptr;
+
+    auto s = std::make_shared<MemeSchema>();
+    s->kind = map->has("kind") ? map->entries["kind"].deref().toString() : "any";
+
+    // Recover inner schemas or properties from map if preserved
+    if (map->has("__inner_schema__")) {
+        s->inner = extractSchema(map->entries["__inner_schema__"]);
+    }
+    if (map->has("__literal_val__")) {
+        s->literalVal = map->entries["__literal_val__"];
+    }
+    if (map->has("__properties__") && map->entries["__properties__"].deref().isMap()) {
+        auto pm = map->entries["__properties__"].deref().getMap();
+        for (const auto &k : pm->keyOrder) {
+            auto sub = extractSchema(pm->entries[k]);
+            if (sub) s->properties[k] = sub;
+        }
+    }
+    if (map->has("__unions__") && map->entries["__unions__"].deref().isList()) {
+        for (const auto &u : map->entries["__unions__"].deref().getList()->elements) {
+            auto sub = extractSchema(u);
+            if (sub) s->unionSchemas.push_back(sub);
+        }
+    }
+    if (map->has("hasMin") && map->entries["hasMin"].deref().isTruthy()) {
+        s->hasMin = true;
+        s->minVal = map->entries["minVal"].deref().asDouble();
+    }
+    if (map->has("hasMax") && map->entries["hasMax"].deref().isTruthy()) {
+        s->hasMax = true;
+        s->maxVal = map->entries["maxVal"].deref().asDouble();
+    }
+    if (map->has("hasMinLength") && map->entries["hasMinLength"].deref().isTruthy()) {
+        s->hasMinLength = true;
+        s->minLength = static_cast<size_t>(map->entries["minLength"].deref().asInt());
+    }
+    if (map->has("hasMaxLength") && map->entries["hasMaxLength"].deref().isTruthy()) {
+        s->hasMaxLength = true;
+        s->maxLength = static_cast<size_t>(map->entries["maxLength"].deref().asInt());
+    }
+    if (map->has("pattern")) s->pattern = map->entries["pattern"].deref().toString();
+    if (map->has("format")) s->format = map->entries["format"].deref().toString();
+    if (map->has("additionalProperties")) s->additionalProperties = map->entries["additionalProperties"].deref().isTruthy();
+
+    return s;
+}
+
+static std::shared_ptr<MemeMap> createSchemaModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    // String(options = {})
+    m->set("String", Value(std::make_shared<NativeMethodCallable>("String", 0, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "string";
+        auto wrapped = wrapSchema(s);
+        if (!args.empty() && args[0].deref().isMap()) {
+            auto opts = args[0].deref().getMap();
+            if (opts->has("minLength")) { s->hasMinLength = true; s->minLength = static_cast<size_t>(opts->entries["minLength"].deref().asInt()); wrapped->set("hasMinLength", Value(true)); wrapped->set("minLength", Value(static_cast<long long>(s->minLength))); }
+            if (opts->has("maxLength")) { s->hasMaxLength = true; s->maxLength = static_cast<size_t>(opts->entries["maxLength"].deref().asInt()); wrapped->set("hasMaxLength", Value(true)); wrapped->set("maxLength", Value(static_cast<long long>(s->maxLength))); }
+            if (opts->has("pattern")) { s->pattern = opts->entries["pattern"].deref().toString(); wrapped->set("pattern", Value(s->pattern)); }
+            if (opts->has("format")) { s->format = opts->entries["format"].deref().toString(); wrapped->set("format", Value(s->format)); }
+        }
+        return Value(wrapped);
+    })));
+    m->set("shabd", m->entries["String"]);
+    m->set("bol", m->entries["String"]);
+
+    // Number(options = {})
+    m->set("Number", Value(std::make_shared<NativeMethodCallable>("Number", 0, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "number";
+        auto wrapped = wrapSchema(s);
+        if (!args.empty() && args[0].deref().isMap()) {
+            auto opts = args[0].deref().getMap();
+            if (opts->has("minimum")) { s->hasMin = true; s->minVal = opts->entries["minimum"].deref().asDouble(); wrapped->set("hasMin", Value(true)); wrapped->set("minVal", Value(s->minVal)); }
+            else if (opts->has("min")) { s->hasMin = true; s->minVal = opts->entries["min"].deref().asDouble(); wrapped->set("hasMin", Value(true)); wrapped->set("minVal", Value(s->minVal)); }
+            if (opts->has("maximum")) { s->hasMax = true; s->maxVal = opts->entries["maximum"].deref().asDouble(); wrapped->set("hasMax", Value(true)); wrapped->set("maxVal", Value(s->maxVal)); }
+            else if (opts->has("max")) { s->hasMax = true; s->maxVal = opts->entries["max"].deref().asDouble(); wrapped->set("hasMax", Value(true)); wrapped->set("maxVal", Value(s->maxVal)); }
+        }
+        return Value(wrapped);
+    })));
+    m->set("ank", m->entries["Number"]);
+    m->set("sankhya", m->entries["Number"]);
+
+    // Integer(options = {}) / Int
+    m->set("Integer", Value(std::make_shared<NativeMethodCallable>("Integer", 0, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "integer";
+        auto wrapped = wrapSchema(s);
+        if (!args.empty() && args[0].deref().isMap()) {
+            auto opts = args[0].deref().getMap();
+            if (opts->has("minimum")) { s->hasMin = true; s->minVal = opts->entries["minimum"].deref().asDouble(); wrapped->set("hasMin", Value(true)); wrapped->set("minVal", Value(s->minVal)); }
+            else if (opts->has("min")) { s->hasMin = true; s->minVal = opts->entries["min"].deref().asDouble(); wrapped->set("hasMin", Value(true)); wrapped->set("minVal", Value(s->minVal)); }
+            if (opts->has("maximum")) { s->hasMax = true; s->maxVal = opts->entries["maximum"].deref().asDouble(); wrapped->set("hasMax", Value(true)); wrapped->set("maxVal", Value(s->maxVal)); }
+            else if (opts->has("max")) { s->hasMax = true; s->maxVal = opts->entries["max"].deref().asDouble(); wrapped->set("hasMax", Value(true)); wrapped->set("maxVal", Value(s->maxVal)); }
+        }
+        return Value(wrapped);
+    })));
+    m->set("Int", m->entries["Integer"]);
+    m->set("chota_ank", m->entries["Integer"]);
+
+    // Boolean()
+    m->set("Boolean", Value(std::make_shared<NativeMethodCallable>("Boolean", 0, 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "boolean";
+        return Value(wrapSchema(s));
+    })));
+    m->set("sach", m->entries["Boolean"]);
+    m->set("faisla", m->entries["Boolean"]);
+
+    // Array(itemSchema, options = {})
+    m->set("Array", Value(std::make_shared<NativeMethodCallable>("Array", 1, 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "array";
+        s->inner = extractSchema(args[0]);
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__inner_schema__", args[0]);
+        if (args.size() > 1 && args[1].deref().isMap()) {
+            auto opts = args[1].deref().getMap();
+            if (opts->has("minItems")) { s->hasMin = true; s->minVal = opts->entries["minItems"].deref().asDouble(); wrapped->set("hasMin", Value(true)); wrapped->set("minVal", Value(s->minVal)); }
+            if (opts->has("maxItems")) { s->hasMax = true; s->maxVal = opts->entries["maxItems"].deref().asDouble(); wrapped->set("hasMax", Value(true)); wrapped->set("maxVal", Value(s->maxVal)); }
+        }
+        return Value(wrapped);
+    })));
+    m->set("suchi", m->entries["Array"]);
+    m->set("list", m->entries["Array"]);
+
+    // Object(propsMap, options = {})
+    m->set("Object", Value(std::make_shared<NativeMethodCallable>("Object", 1, 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "object";
+        if (args[0].deref().isMap()) {
+            auto pm = args[0].deref().getMap();
+            for (const auto &k : pm->keyOrder) {
+                auto sub = extractSchema(pm->entries[k]);
+                if (sub) s->properties[k] = sub;
+            }
+        }
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__properties__", args[0]);
+        if (args.size() > 1 && args[1].deref().isMap()) {
+            auto opts = args[1].deref().getMap();
+            if (opts->has("additionalProperties")) {
+                s->additionalProperties = opts->entries["additionalProperties"].deref().isTruthy();
+                wrapped->set("additionalProperties", Value(s->additionalProperties));
+            }
+        }
+        return Value(wrapped);
+    })));
+    m->set("vastu", m->entries["Object"]);
+    m->set("dabba", m->entries["Object"]);
+
+    // Optional(innerSchema)
+    m->set("Optional", Value(std::make_shared<NativeMethodCallable>("Optional", 1, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "optional";
+        s->inner = extractSchema(args[0]);
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__inner_schema__", args[0]);
+        return Value(wrapped);
+    })));
+    m->set("marzi", m->entries["Optional"]);
+    m->set("aicchik", m->entries["Optional"]);
+
+    // Union(schemasList)
+    m->set("Union", Value(std::make_shared<NativeMethodCallable>("Union", 1, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "union";
+        if (args[0].deref().isList()) {
+            for (const auto &u : args[0].deref().getList()->elements) {
+                auto sub = extractSchema(u);
+                if (sub) s->unionSchemas.push_back(sub);
+            }
+        }
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__unions__", args[0]);
+        return Value(wrapped);
+    })));
+    m->set("jod", m->entries["Union"]);
+
+    // Literal(value)
+    m->set("Literal", Value(std::make_shared<NativeMethodCallable>("Literal", 1, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "literal";
+        s->literalVal = args[0].deref();
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__literal_val__", s->literalVal);
+        return Value(wrapped);
+    })));
+    m->set("asli", m->entries["Literal"]);
+
+    // Record(valSchema)
+    m->set("Record", Value(std::make_shared<NativeMethodCallable>("Record", 1, 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "record";
+        s->inner = extractSchema(args[0]);
+        auto wrapped = wrapSchema(s);
+        wrapped->set("__inner_schema__", args[0]);
+        return Value(wrapped);
+    })));
+
+    // Any()
+    m->set("Any", Value(std::make_shared<NativeMethodCallable>("Any", 0, 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto s = std::make_shared<MemeSchema>();
+        s->kind = "any";
+        return Value(wrapSchema(s));
+    })));
+
+    return m;
+}
+
+// ---------------------------------------------------------------------------
+// HTTP Server Architecture (Fast Multi-threaded Express + Elysia Engine)
+// ---------------------------------------------------------------------------
+
+struct HttpRoute {
     std::string method;
     std::string path;
+    std::vector<std::string> pathParts;
+    bool isWildcard = false;
+
+    std::shared_ptr<MemeSchema> bodySchema;
+    std::shared_ptr<MemeSchema> querySchema;
+    std::shared_ptr<MemeSchema> paramsSchema;
+    std::shared_ptr<MemeSchema> headersSchema;
+    std::shared_ptr<MemeSchema> responseSchema;
+
+    std::vector<Value> middlewares;
     Value handler;
 };
 
-struct DhabaServer {
-    std::vector<DhabaRoute> routes;
-    std::vector<Value> middlewares;
-    int port = 8080;
-    bool isRunning = false;
+class HttpServerState;
+
+struct HttpMiddleware {
+    std::string pathPrefix = "";
+    Value handler;
+    bool isRouter = false;
+    std::shared_ptr<HttpServerState> routerState = nullptr;
 };
 
-static Value dispatchDhabaRequest(Interpreter &interpreter, const std::shared_ptr<DhabaServer> &server,
-                                  const std::string &method, const std::string &rawPath,
-                                  const Value &bodyVal = Value(std::monostate{}),
-                                  const Value &headersVal = Value(std::monostate{}))
-{
-    std::string path = rawPath;
-    auto queryMap = std::make_shared<MemeMap>();
-    size_t qPos = path.find('?');
-    if (qPos != std::string::npos)
-    {
-        std::string qStr = path.substr(qPos + 1);
-        path = path.substr(0, qPos);
-        std::stringstream ss(qStr);
-        std::string pair;
-        while (std::getline(ss, pair, '&'))
-        {
-            size_t eq = pair.find('=');
-            if (eq != std::string::npos)
-            {
-                queryMap->set(pair.substr(0, eq), Value(pair.substr(eq + 1)));
-            }
-            else if (!pair.empty())
-            {
-                queryMap->set(pair, Value(true));
-            }
-        }
+class HttpServerState : public std::enable_shared_from_this<HttpServerState> {
+public:
+    std::vector<HttpRoute> routes;
+    std::vector<HttpMiddleware> middlewares;
+
+    std::vector<Value> onRequestHooks;
+    std::vector<Value> onBeforeHandleHooks;
+    std::vector<Value> onAfterHandleHooks;
+    std::vector<Value> onErrorHooks;
+    std::vector<Value> derivations;
+
+    std::shared_ptr<MemeMap> decorators;
+    std::shared_ptr<MemeMap> stateMap;
+
+    int port = 8080;
+    std::atomic<bool> isRunning{false};
+    int serverFd = -1;
+    std::thread acceptThread;
+    std::shared_ptr<Environment> globalsPtr;
+
+    HttpServerState() {
+        decorators = std::make_shared<MemeMap>();
+        stateMap = std::make_shared<MemeMap>();
     }
 
-    auto split = [](const std::string &s) {
+    ~HttpServerState() {
+        stop();
+    }
+
+    void stop() {
+        isRunning = false;
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        if (serverFd >= 0) {
+            close(serverFd);
+            serverFd = -1;
+        }
+        if (acceptThread.joinable()) {
+            acceptThread.join();
+        }
+#endif
+    }
+
+    static std::vector<std::string> splitPath(const std::string &p) {
         std::vector<std::string> parts;
-        std::stringstream ss(s);
+        std::stringstream ss(p);
         std::string item;
         while (std::getline(ss, item, '/')) {
             if (!item.empty()) parts.push_back(item);
         }
         return parts;
-    };
-    auto pathParts = split(path);
+    }
 
-    for (const auto &r : server->routes)
+    Value dispatchRequest(Interpreter &interpreter,
+                          const std::string &rawMethod,
+                          const std::string &rawPath,
+                          const Value &bodyVal = Value(std::monostate{}),
+                          const Value &headersVal = Value(std::monostate{}),
+                          const std::string &clientIp = "127.0.0.1")
     {
-        if (r.method != method && r.method != "ALL" && r.method != "*")
-            continue;
+        std::string method = rawMethod;
+        for (char &c : method) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-        auto paramsMap = std::make_shared<MemeMap>();
-        bool matched = false;
-
-        if (r.path == path || r.path == "*")
-        {
-            matched = true;
-        }
-        else
-        {
-            auto routeParts = split(r.path);
-            if (routeParts.size() == pathParts.size())
-            {
-                matched = true;
-                for (size_t i = 0; i < routeParts.size(); ++i)
-                {
-                    if (!routeParts[i].empty() && routeParts[i][0] == ':')
-                    {
-                        paramsMap->set(routeParts[i].substr(1), Value(pathParts[i]));
-                    }
-                    else if (routeParts[i] != pathParts[i])
-                    {
-                        matched = false;
-                        break;
-                    }
+        std::string path = rawPath;
+        auto queryMap = std::make_shared<MemeMap>();
+        size_t qPos = path.find('?');
+        if (qPos != std::string::npos) {
+            std::string qStr = path.substr(qPos + 1);
+            path = path.substr(0, qPos);
+            std::stringstream ss(qStr);
+            std::string pair;
+            while (std::getline(ss, pair, '&')) {
+                if (pair.empty()) continue;
+                size_t eq = pair.find('=');
+                if (eq != std::string::npos) {
+                    queryMap->set(urlDecode(pair.substr(0, eq)), Value(urlDecode(pair.substr(eq + 1))));
+                } else {
+                    queryMap->set(urlDecode(pair), Value(true));
                 }
             }
         }
 
-        if (matched)
-        {
-            auto req = std::make_shared<MemeMap>();
-            req->set("path", Value(path));
-            req->set("method", Value(method));
-            req->set("params", Value(paramsMap));
-            req->set("query", Value(queryMap));
-            req->set("body", bodyVal);
-            req->set("headers", headersVal.isMap() ? headersVal : Value(std::make_shared<MemeMap>()));
+        auto headersMap = std::make_shared<MemeMap>();
+        if (headersVal.isMap()) {
+            auto hm = headersVal.getMap();
+            for (const auto &k : hm->keyOrder) {
+                std::string lk = k;
+                for (char &c : lk) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                headersMap->set(lk, hm->entries[k]);
+            }
+        }
 
-            Value fnDeref = r.handler.deref();
-            if (!std::holds_alternative<std::shared_ptr<Callable>>(fnDeref.data))
-            {
-                throw std::runtime_error("Dhaba route handler callable jugaad hona chahiye!");
-            }
-            auto callable = std::get<std::shared_ptr<Callable>>(fnDeref.data);
-            Value handlerResult = callable->call(interpreter, { Value(req) });
+        std::string cookieHdr = headersMap->has("cookie") ? headersMap->entries["cookie"].deref().toString() : "";
+        auto cookiesMap = parseCookieHeader(cookieHdr);
 
-            Value dRes = handlerResult.deref();
-            if (dRes.isMap() && dRes.getMap()->has("status") && dRes.getMap()->has("body"))
-            {
-                return dRes;
-            }
+        // Mutable Request / Response objects
+        auto req = std::make_shared<MemeMap>();
+        req->set("path", Value(path));
+        req->set("method", Value(method));
+        req->set("url", Value(rawPath));
+        auto paramsMap = std::make_shared<MemeMap>();
+        req->set("params", Value(paramsMap));
+        req->set("query", Value(queryMap));
+        req->set("body", bodyVal);
+        req->set("headers", Value(headersMap));
+        req->set("cookies", Value(cookiesMap));
+        req->set("ip", Value(clientIp));
 
-            auto res = std::make_shared<MemeMap>();
-            res->set("status", Value(200LL));
-            res->set("body", handlerResult);
-            auto resHeaders = std::make_shared<MemeMap>();
-            if (dRes.isMap() || dRes.isList())
-            {
-                resHeaders->set("Content-Type", Value("application/json"));
-            }
-            else
-            {
-                resHeaders->set("Content-Type", Value("text/plain"));
-            }
-            res->set("headers", Value(resHeaders));
+        req->set("get", Value(std::make_shared<NativeMethodCallable>("get", 1, [headersMap](Interpreter &, const std::vector<Value> &a) -> Value {
+            std::string hk = a[0].deref().toString();
+            for (char &c : hk) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return headersMap->has(hk) ? headersMap->entries[hk] : Value(std::monostate{});
+        })));
+        req->set("header", req->entries["get"]);
+
+        auto res = std::make_shared<MemeMap>();
+        auto resHeaders = std::make_shared<MemeMap>();
+        auto statusCodePtr = std::make_shared<long long>(200LL);
+        auto isSentPtr = std::make_shared<bool>(false);
+        auto resBodyPtr = std::make_shared<Value>(std::monostate{});
+
+        res->set("status", Value(std::make_shared<NativeMethodCallable>("status", 1, [statusCodePtr, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            *statusCodePtr = a[0].deref().asInt();
             return Value(res);
+        })));
+
+        auto sendFn = [isSentPtr, resBodyPtr, resHeaders, res](const Value &body) {
+            *resBodyPtr = body;
+            *isSentPtr = true;
+            if (!resHeaders->has("Content-Type") && !resHeaders->has("content-type")) {
+                Value d = body.deref();
+                if (d.isMap() || d.isList()) {
+                    resHeaders->set("Content-Type", Value("application/json; charset=utf-8"));
+                } else {
+                    std::string s = d.toString();
+                    if (!s.empty() && s[0] == '<') resHeaders->set("Content-Type", Value("text/html; charset=utf-8"));
+                    else resHeaders->set("Content-Type", Value("text/plain; charset=utf-8"));
+                }
+            }
+            return Value(res);
+        };
+
+        res->set("send", Value(std::make_shared<NativeMethodCallable>("send", 1, [sendFn](Interpreter &, const std::vector<Value> &a) -> Value {
+            return sendFn(a[0]);
+        })));
+
+        res->set("json", Value(std::make_shared<NativeMethodCallable>("json", 1, [sendFn, resHeaders](Interpreter &, const std::vector<Value> &a) -> Value {
+            resHeaders->set("Content-Type", Value("application/json; charset=utf-8"));
+            return sendFn(a[0]);
+        })));
+
+        res->set("html", Value(std::make_shared<NativeMethodCallable>("html", 1, [sendFn, resHeaders](Interpreter &, const std::vector<Value> &a) -> Value {
+            resHeaders->set("Content-Type", Value("text/html; charset=utf-8"));
+            return sendFn(a[0]);
+        })));
+
+        res->set("text", Value(std::make_shared<NativeMethodCallable>("text", 1, [sendFn, resHeaders](Interpreter &, const std::vector<Value> &a) -> Value {
+            resHeaders->set("Content-Type", Value("text/plain; charset=utf-8"));
+            return sendFn(a[0]);
+        })));
+
+        res->set("redirect", Value(std::make_shared<NativeMethodCallable>("redirect", 1, 2, [statusCodePtr, resHeaders, isSentPtr, resBodyPtr, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            std::string url = a[0].deref().toString();
+            long long code = a.size() > 1 ? a[1].deref().asInt() : 302LL;
+            *statusCodePtr = code;
+            resHeaders->set("Location", Value(url));
+            *resBodyPtr = Value("");
+            *isSentPtr = true;
+            return Value(res);
+        })));
+
+        res->set("set", Value(std::make_shared<NativeMethodCallable>("set", 2, [resHeaders, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            resHeaders->set(a[0].deref().toString(), a[1]);
+            return Value(res);
+        })));
+        res->set("header", res->entries["set"]);
+
+        res->set("cookie", Value(std::make_shared<NativeMethodCallable>("cookie", 2, 3, [resHeaders, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            std::string name = a[0].deref().toString();
+            std::string val = a[1].deref().toString();
+            std::string cookieStr = name + "=" + val + "; Path=/";
+            if (a.size() > 2 && a[2].deref().isMap()) {
+                auto opts = a[2].deref().getMap();
+                if (opts->has("path")) cookieStr += "; Path=" + opts->entries["path"].deref().toString();
+                if (opts->has("httpOnly") && opts->entries["httpOnly"].deref().isTruthy()) cookieStr += "; HttpOnly";
+                if (opts->has("secure") && opts->entries["secure"].deref().isTruthy()) cookieStr += "; Secure";
+                if (opts->has("sameSite")) cookieStr += "; SameSite=" + opts->entries["sameSite"].deref().toString();
+            }
+            resHeaders->set("Set-Cookie", Value(cookieStr));
+            return Value(res);
+        })));
+
+        res->set("clearCookie", Value(std::make_shared<NativeMethodCallable>("clearCookie", 1, [resHeaders, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            std::string name = a[0].deref().toString();
+            resHeaders->set("Set-Cookie", Value(name + "=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT"));
+            return Value(res);
+        })));
+
+        res->set("sendFile", Value(std::make_shared<NativeMethodCallable>("sendFile", 1, [isSentPtr, resBodyPtr, resHeaders, statusCodePtr, res](Interpreter &, const std::vector<Value> &a) -> Value {
+            std::string filePath = a[0].deref().toString();
+            std::ifstream f(filePath, std::ios::binary);
+            if (f.is_open()) {
+                std::stringstream ss;
+                ss << f.rdbuf();
+                *resBodyPtr = Value(ss.str());
+                resHeaders->set("Content-Type", Value(getMimeType(filePath)));
+                *isSentPtr = true;
+            } else {
+                *statusCodePtr = 404LL;
+                *resBodyPtr = Value("File not found: " + filePath);
+                resHeaders->set("Content-Type", Value("text/plain; charset=utf-8"));
+                *isSentPtr = true;
+            }
+            return Value(res);
+        })));
+
+        // Elysia context (ctx)
+        auto ctx = std::make_shared<MemeMap>();
+        ctx->set("req", Value(req));
+        ctx->set("res", Value(res));
+        ctx->set("path", Value(path));
+        ctx->set("method", Value(method));
+        ctx->set("url", Value(rawPath));
+        ctx->set("params", Value(paramsMap));
+        ctx->set("query", Value(queryMap));
+        ctx->set("body", bodyVal);
+        ctx->set("headers", Value(headersMap));
+        ctx->set("cookies", Value(cookiesMap));
+        ctx->set("ip", Value(clientIp));
+        ctx->set("store", Value(stateMap));
+
+        auto setObj = std::make_shared<MemeMap>();
+        setObj->set("status", Value(*statusCodePtr));
+        setObj->set("headers", Value(resHeaders));
+        setObj->set("redirect", Value(""));
+        ctx->set("set", Value(setObj));
+
+        ctx->set("error", Value(std::make_shared<NativeMethodCallable>("error", 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+            auto errMap = std::make_shared<MemeMap>();
+            errMap->set("status", a[0]);
+            errMap->set("error", a[1]);
+            return Value(errMap);
+        })));
+
+        // Copy decorators into ctx
+        for (const auto &k : decorators->keyOrder) {
+            ctx->set(k, decorators->entries[k]);
+        }
+
+        // Helper to finalize response
+        auto packageResponse = [&](const Value &b) -> Value {
+            auto out = std::make_shared<MemeMap>();
+            long long finalStatus = *statusCodePtr;
+            if (setObj->has("status") && setObj->entries["status"].deref().isInteger()) {
+                long long s = setObj->entries["status"].deref().asInt();
+                if (s != 200LL) finalStatus = s;
+            }
+            if (b.deref().isMap() && b.deref().getMap()->has("status") && b.deref().getMap()->entries["status"].deref().isInteger()) {
+                long long s = b.deref().getMap()->entries["status"].deref().asInt();
+                if (finalStatus == 200LL && s != 200LL) finalStatus = s;
+            }
+            if (setObj->has("redirect") && !setObj->entries["redirect"].deref().toString().empty()) {
+                finalStatus = 302LL;
+                resHeaders->set("Location", setObj->entries["redirect"]);
+            }
+            out->set("status", Value(finalStatus));
+            out->set("headers", Value(resHeaders));
+            out->set("body", b);
+            out->set("ok", Value(finalStatus >= 200LL && finalStatus < 300LL));
+            return Value(out);
+        };
+
+        try {
+            // 1. onRequest Hooks
+            for (const auto &hookVal : onRequestHooks) {
+                if (hookVal.isCallable()) {
+                    Value r = hookVal.getCallable()->call(interpreter, { Value(ctx) });
+                    if (*isSentPtr) return packageResponse(*resBodyPtr);
+                    if (!r.isNull() && !std::holds_alternative<std::monostate>(r.deref().data)) {
+                        return packageResponse(r);
+                    }
+                }
+            }
+
+            // 2. Derivations (app.derive)
+            for (const auto &dVal : derivations) {
+                if (dVal.isCallable()) {
+                    Value derived = dVal.getCallable()->call(interpreter, { Value(ctx) });
+                    if (derived.isMap()) {
+                        auto dm = derived.getMap();
+                        for (const auto &k : dm->keyOrder) ctx->set(k, dm->entries[k]);
+                    }
+                }
+            }
+
+            // 3. Global & Prefix Middlewares
+            for (const auto &mw : middlewares) {
+                if (mw.pathPrefix.empty() || path.rfind(mw.pathPrefix, 0) == 0) {
+                    if (mw.isRouter && mw.handler.isMap() && mw.handler.getMap()->has("request")) {
+                        std::string subPath = path.substr(mw.pathPrefix.size());
+                        if (subPath.empty()) subPath = "/";
+                        else if (subPath.front() != '/') subPath = "/" + subPath;
+                        if (qPos != std::string::npos) subPath += rawPath.substr(qPos);
+                        auto rCallable = mw.handler.getMap()->entries["request"].getCallable();
+                        Value subRes = rCallable->call(interpreter, { Value(method), Value(subPath), req->entries["body"], Value(headersMap) });
+                        if (subRes.isMap() && subRes.getMap()->has("status") && subRes.getMap()->entries["status"].deref().asInt() != 404LL) {
+                            return subRes;
+                        }
+                    } else if (mw.handler.isCallable()) {
+                        bool nextCalled = false;
+                        auto nextCallable = std::make_shared<NativeMethodCallable>("next", 0, [&nextCalled](Interpreter &, const std::vector<Value> &) -> Value {
+                            nextCalled = true;
+                            return Value(true);
+                        });
+                        auto mwCallable = mw.handler.getCallable();
+                        Value r;
+                        if (mwCallable->maxArity() <= 1) {
+                            r = mwCallable->call(interpreter, { Value(ctx) });
+                        } else {
+                            r = mwCallable->call(interpreter, { Value(req), Value(res), Value(nextCallable) });
+                        }
+                        if (*isSentPtr) return packageResponse(*resBodyPtr);
+                        if (!nextCalled && !r.isNull() && !std::holds_alternative<std::monostate>(r.deref().data)) {
+                            return packageResponse(r);
+                        }
+                    }
+                }
+            }
+
+            // 4. Route Matching
+            auto reqParts = splitPath(path);
+            const HttpRoute *matchedRoute = nullptr;
+
+            for (const auto &r : routes) {
+                if (r.method != method && r.method != "ALL" && r.method != "*") continue;
+
+                if (r.path == path || r.path == "*") {
+                    matchedRoute = &r;
+                    break;
+                }
+                if (r.isWildcard && r.pathParts.size() <= reqParts.size()) {
+                    bool match = true;
+                    for (size_t i = 0; i < r.pathParts.size() - 1; ++i) {
+                        if (r.pathParts[i] != reqParts[i]) { match = false; break; }
+                    }
+                    if (match) {
+                        matchedRoute = &r;
+                        std::string wild;
+                        for (size_t i = r.pathParts.size() - 1; i < reqParts.size(); ++i) {
+                            if (!wild.empty()) wild += "/";
+                            wild += reqParts[i];
+                        }
+                        paramsMap->set("*", Value(wild));
+                        break;
+                    }
+                }
+                if (r.pathParts.size() == reqParts.size()) {
+                    bool match = true;
+                    auto tempParams = std::make_shared<MemeMap>();
+                    for (size_t i = 0; i < r.pathParts.size(); ++i) {
+                        if (!r.pathParts[i].empty() && r.pathParts[i][0] == ':') {
+                            tempParams->set(r.pathParts[i].substr(1), Value(reqParts[i]));
+                        } else if (r.pathParts[i] != reqParts[i]) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        for (const auto &k : tempParams->keyOrder) paramsMap->set(k, tempParams->entries[k]);
+                        matchedRoute = &r;
+                        break;
+                    }
+                }
+            }
+
+            if (!matchedRoute) {
+                *statusCodePtr = 404LL;
+                return packageResponse(Value("Dhabe pe ye item nahi milta! 404 Route Not Found: " + method + " " + path));
+            }
+
+            // 5. Schema Validation (Elysia-style complete typesafety)
+            if (matchedRoute->paramsSchema) {
+                auto vr = matchedRoute->paramsSchema->validate(Value(paramsMap), "params");
+                if (!vr.success) {
+                    *statusCodePtr = 400LL;
+                    auto errMap = std::make_shared<MemeMap>();
+                    errMap->set("status", Value(400LL));
+                    errMap->set("error", Value("ValidationError"));
+                    errMap->set("message", Value("Invalid route parameters"));
+                    auto errs = std::make_shared<MemeList>();
+                    for (const auto &e : vr.errors) errs->elements.push_back(Value(e));
+                    errMap->set("details", Value(errs));
+                    return packageResponse(Value(errMap));
+                }
+                if (vr.data.isMap()) {
+                    for (const auto &k : vr.data.getMap()->keyOrder) paramsMap->set(k, vr.data.getMap()->entries[k]);
+                }
+            }
+
+            if (matchedRoute->querySchema) {
+                auto vr = matchedRoute->querySchema->validate(Value(queryMap), "query");
+                if (!vr.success) {
+                    *statusCodePtr = 400LL;
+                    auto errMap = std::make_shared<MemeMap>();
+                    errMap->set("status", Value(400LL));
+                    errMap->set("error", Value("ValidationError"));
+                    errMap->set("message", Value("Invalid query string parameters"));
+                    auto errs = std::make_shared<MemeList>();
+                    for (const auto &e : vr.errors) errs->elements.push_back(Value(e));
+                    errMap->set("details", Value(errs));
+                    return packageResponse(Value(errMap));
+                }
+                if (vr.data.isMap()) {
+                    for (const auto &k : vr.data.getMap()->keyOrder) queryMap->set(k, vr.data.getMap()->entries[k]);
+                }
+            }
+
+            if (matchedRoute->bodySchema) {
+                auto vr = matchedRoute->bodySchema->validate(req->entries["body"], "body");
+                if (!vr.success) {
+                    *statusCodePtr = 400LL;
+                    auto errMap = std::make_shared<MemeMap>();
+                    errMap->set("status", Value(400LL));
+                    errMap->set("error", Value("ValidationError"));
+                    errMap->set("message", Value("Invalid request body payload"));
+                    auto errs = std::make_shared<MemeList>();
+                    for (const auto &e : vr.errors) errs->elements.push_back(Value(e));
+                    errMap->set("details", Value(errs));
+                    return packageResponse(Value(errMap));
+                }
+                req->set("body", vr.data);
+                ctx->set("body", vr.data);
+            }
+
+            if (matchedRoute->headersSchema) {
+                auto vr = matchedRoute->headersSchema->validate(Value(headersMap), "headers");
+                if (!vr.success) {
+                    *statusCodePtr = 400LL;
+                    auto errMap = std::make_shared<MemeMap>();
+                    errMap->set("status", Value(400LL));
+                    errMap->set("error", Value("ValidationError"));
+                    errMap->set("message", Value("Invalid request headers"));
+                    auto errs = std::make_shared<MemeList>();
+                    for (const auto &e : vr.errors) errs->elements.push_back(Value(e));
+                    errMap->set("details", Value(errs));
+                    return packageResponse(Value(errMap));
+                }
+            }
+
+            // 6. onBeforeHandle Hooks
+            for (const auto &hookVal : onBeforeHandleHooks) {
+                if (hookVal.isCallable()) {
+                    Value r = hookVal.getCallable()->call(interpreter, { Value(ctx) });
+                    if (*isSentPtr) return packageResponse(*resBodyPtr);
+                    if (!r.isNull() && !std::holds_alternative<std::monostate>(r.deref().data)) {
+                        return packageResponse(r);
+                    }
+                }
+            }
+
+            // 7. Route-specific Middlewares
+            for (const auto &rmwVal : matchedRoute->middlewares) {
+                if (rmwVal.isCallable()) {
+                    bool nextCalled = false;
+                    auto nextCallable = std::make_shared<NativeMethodCallable>("next", 0, [&nextCalled](Interpreter &, const std::vector<Value> &) -> Value {
+                        nextCalled = true;
+                        return Value(true);
+                    });
+                    auto callable = rmwVal.getCallable();
+                    Value r;
+                    if (callable->maxArity() <= 1) {
+                        r = callable->call(interpreter, { Value(ctx) });
+                    } else {
+                        r = callable->call(interpreter, { Value(req), Value(res), Value(nextCallable) });
+                    }
+                    if (*isSentPtr) return packageResponse(*resBodyPtr);
+                    if (!nextCalled && !r.isNull() && !std::holds_alternative<std::monostate>(r.deref().data)) {
+                        return packageResponse(r);
+                    }
+                }
+            }
+
+            // 8. Invoke Handler
+            Value handlerResult = Value(std::monostate{});
+            if (matchedRoute->handler.isCallable()) {
+                auto h = matchedRoute->handler.getCallable();
+                if (h->maxArity() <= 1) {
+                    handlerResult = h->call(interpreter, { Value(ctx) });
+                } else {
+                    bool dummyNext = false;
+                    auto nextCallable = std::make_shared<NativeMethodCallable>("next", 0, [&dummyNext](Interpreter &, const std::vector<Value> &) -> Value {
+                        dummyNext = true; return Value(true);
+                    });
+                    handlerResult = h->call(interpreter, { Value(req), Value(res), Value(nextCallable) });
+                }
+            }
+
+            Value finalBody = *isSentPtr ? *resBodyPtr : handlerResult;
+
+            // 9. Response Schema Validation
+            if (matchedRoute->responseSchema) {
+                auto vr = matchedRoute->responseSchema->validate(finalBody, "response");
+                if (vr.success) finalBody = vr.data;
+            }
+
+            // 10. onAfterHandle Hooks
+            for (const auto &hookVal : onAfterHandleHooks) {
+                if (hookVal.isCallable()) {
+                    hookVal.getCallable()->call(interpreter, { Value(ctx), finalBody });
+                }
+            }
+
+            return packageResponse(finalBody);
+        } catch (const std::exception &e) {
+            // onError Hooks
+            for (const auto &errHookVal : onErrorHooks) {
+                if (errHookVal.isCallable()) {
+                    Value r = errHookVal.getCallable()->call(interpreter, { Value(e.what()), Value(ctx) });
+                    if (*isSentPtr) return packageResponse(*resBodyPtr);
+                    if (!r.isNull() && !std::holds_alternative<std::monostate>(r.deref().data)) {
+                        return packageResponse(r);
+                    }
+                }
+            }
+            *statusCodePtr = 500LL;
+            auto errMap = std::make_shared<MemeMap>();
+            errMap->set("status", Value(500LL));
+            errMap->set("error", Value("InternalServerError"));
+            errMap->set("message", Value(e.what()));
+            return packageResponse(Value(errMap));
         }
     }
+};
 
-    auto notFoundRes = std::make_shared<MemeMap>();
-    notFoundRes->set("status", Value(404LL));
-    notFoundRes->set("body", Value("Dhabe pe ye item nahi milta! 404 Route Not Found: " + method + " " + path));
-    auto nfHeaders = std::make_shared<MemeMap>();
-    nfHeaders->set("Content-Type", Value("text/plain"));
-    notFoundRes->set("headers", Value(nfHeaders));
-    return Value(notFoundRes);
+static std::string formatHttpResponse(const Value &resVal)
+{
+    int status = 200;
+    std::string statusText = "OK";
+    std::string body;
+    std::map<std::string, std::string> headers;
+
+    Value d = resVal.deref();
+    if (d.isMap()) {
+        auto m = d.getMap();
+        if (m->has("status")) status = static_cast<int>(m->entries["status"].deref().asInt());
+        if (m->has("body")) {
+            Value bVal = m->entries["body"].deref();
+            if (bVal.isMap() || bVal.isList()) {
+                body = MemeJson::stringify(bVal);
+                if (headers.find("Content-Type") == headers.end()) {
+                    headers["Content-Type"] = "application/json; charset=utf-8";
+                }
+            } else {
+                body = bVal.toString();
+            }
+        }
+        if (m->has("headers") && m->entries["headers"].deref().isMap()) {
+            auto hm = m->entries["headers"].deref().getMap();
+            for (const auto &k : hm->keyOrder) {
+                headers[k] = hm->entries[k].deref().toString();
+            }
+        }
+    } else if (d.isList()) {
+        body = MemeJson::stringify(d);
+        headers["Content-Type"] = "application/json; charset=utf-8";
+    } else {
+        body = d.toString();
+        headers["Content-Type"] = "text/plain; charset=utf-8";
+    }
+
+    switch (status) {
+        case 200: statusText = "OK"; break;
+        case 201: statusText = "Created"; break;
+        case 204: statusText = "No Content"; break;
+        case 301: statusText = "Moved Permanently"; break;
+        case 302: statusText = "Found"; break;
+        case 304: statusText = "Not Modified"; break;
+        case 400: statusText = "Bad Request"; break;
+        case 401: statusText = "Unauthorized"; break;
+        case 403: statusText = "Forbidden"; break;
+        case 404: statusText = "Not Found"; break;
+        case 405: statusText = "Method Not Allowed"; break;
+        case 409: statusText = "Conflict"; break;
+        case 422: statusText = "Unprocessable Entity"; break;
+        case 500: statusText = "Internal Server Error"; break;
+        default: statusText = "Status " + std::to_string(status); break;
+    }
+
+    if (headers.find("Content-Type") == headers.end() && headers.find("content-type") == headers.end()) {
+        headers["Content-Type"] = (!body.empty() && body[0] == '<') ? "text/html; charset=utf-8" : "text/plain; charset=utf-8";
+    }
+    headers["Content-Length"] = std::to_string(body.size());
+    headers["Connection"] = "close";
+    headers["Server"] = "MEMElang-Dhaba/2.0";
+
+    std::ostringstream ss;
+    ss << "HTTP/1.1 " << status << " " << statusText << "\r\n";
+    for (const auto &[k, v] : headers) {
+        ss << k << ": " << v << "\r\n";
+    }
+    ss << "\r\n";
+    ss << body;
+    return ss.str();
+}
+
+static std::shared_ptr<MemeMap> createHttpServerMap(const std::shared_ptr<HttpServerState> &server, Interpreter &interpreter)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("__is_server__", Value(true));
+
+    auto addRoute = [server](const std::string &method, const std::vector<Value> &args) {
+        HttpRoute r;
+        r.method = method;
+        r.path = args[0].deref().toString();
+        r.pathParts = HttpServerState::splitPath(r.path);
+        r.isWildcard = (!r.pathParts.empty() && r.pathParts.back() == "*");
+
+        size_t idx = 1;
+        if (idx < args.size() && args[idx].deref().isMap() &&
+            (args[idx].deref().getMap()->has("body") || args[idx].deref().getMap()->has("query") ||
+             args[idx].deref().getMap()->has("params") || args[idx].deref().getMap()->has("headers") ||
+             args[idx].deref().getMap()->has("response") || args[idx].deref().getMap()->has("__is_schema__")))
+        {
+            auto sm = args[idx].deref().getMap();
+            if (sm->has("body")) r.bodySchema = extractSchema(sm->entries["body"]);
+            if (sm->has("query")) r.querySchema = extractSchema(sm->entries["query"]);
+            if (sm->has("params")) r.paramsSchema = extractSchema(sm->entries["params"]);
+            if (sm->has("headers")) r.headersSchema = extractSchema(sm->entries["headers"]);
+            if (sm->has("response")) r.responseSchema = extractSchema(sm->entries["response"]);
+            idx++;
+        }
+
+        while (idx + 1 < args.size()) {
+            r.middlewares.push_back(args[idx]);
+            idx++;
+        }
+        if (idx < args.size()) {
+            r.handler = args[idx];
+        }
+        server->routes.push_back(r);
+    };
+
+    auto makeMethodFn = [addRoute, m](const std::string &mName) {
+        return Value(std::make_shared<NativeMethodCallable>(mName, 2, -1, [addRoute, mName, m](Interpreter &, const std::vector<Value> &a) -> Value {
+            addRoute(mName, a);
+            return Value(m);
+        }));
+    };
+
+    m->set("get", makeMethodFn("GET"));
+    m->set("le", m->entries["get"]);
+    m->set("post", makeMethodFn("POST"));
+    m->set("bhej", m->entries["post"]);
+    m->set("put", makeMethodFn("PUT"));
+    m->set("rakh", m->entries["put"]);
+    m->set("patch", makeMethodFn("PATCH"));
+    m->set("sudhar", m->entries["patch"]);
+    m->set("delete", makeMethodFn("DELETE"));
+    m->set("mita", m->entries["delete"]);
+    m->set("head", makeMethodFn("HEAD"));
+    m->set("options", makeMethodFn("OPTIONS"));
+    m->set("all", makeMethodFn("ALL"));
+
+    auto routeFn = [addRoute, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string method = a[0].deref().toString();
+        for (char &c : method) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        std::vector<Value> rest(a.begin() + 1, a.end());
+        addRoute(method, rest);
+        return Value(m);
+    };
+    m->set("route", Value(std::make_shared<NativeMethodCallable>("route", 3, -1, routeFn)));
+
+    // app.use(...) / app.istemal(...)
+    auto useFn = [server, m](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (args.empty()) return Value(m);
+        HttpMiddleware mw;
+        size_t idx = 0;
+        if (args.size() > 1 && std::holds_alternative<std::string>(args[0].deref().data)) {
+            mw.pathPrefix = args[0].deref().toString();
+            idx = 1;
+        }
+        Value target = args[idx].deref();
+        if (target.isMap() && target.getMap()->has("__is_server__")) {
+            mw.isRouter = true;
+            // Retrieve server state through request method closure or attach
+            if (target.getMap()->has("__server_state__")) {
+                // router mounted
+            }
+        }
+        mw.handler = target;
+        server->middlewares.push_back(mw);
+        return Value(m);
+    };
+    m->set("use", Value(std::make_shared<NativeMethodCallable>("use", 1, 2, useFn)));
+    m->set("istemal", m->entries["use"]);
+
+    // app.request(method, path, body = null, headers = null) / app.handle(req)
+    auto reqFn = [server, &interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (args.size() == 1 && args[0].deref().isMap()) {
+            auto rm = args[0].deref().getMap();
+            std::string method = rm->has("method") ? rm->entries["method"].deref().toString() : "GET";
+            std::string path = rm->has("url") ? rm->entries["url"].deref().toString() : (rm->has("path") ? rm->entries["path"].deref().toString() : "/");
+            Value body = rm->has("body") ? rm->entries["body"] : Value(std::monostate{});
+            Value hdrs = rm->has("headers") ? rm->entries["headers"] : Value(std::monostate{});
+            return server->dispatchRequest(interpreter, method, path, body, hdrs, "127.0.0.1");
+        }
+        std::string method = args[0].deref().toString();
+        std::string path = args[1].deref().toString();
+        Value body = args.size() > 2 ? args[2] : Value(std::monostate{});
+        Value headers = args.size() > 3 ? args[3] : Value(std::monostate{});
+        return server->dispatchRequest(interpreter, method, path, body, headers, "127.0.0.1");
+    };
+    m->set("request", Value(std::make_shared<NativeMethodCallable>("request", 1, 4, reqFn)));
+    m->set("handle", m->entries["request"]);
+
+    // app.listen(port = 8080, [host / callback], [callback])
+    auto listenFn = [server, &interpreter, m](Interpreter &, const std::vector<Value> &args) -> Value {
+        int port = 8080;
+        std::string host = "0.0.0.0";
+        Value cbVal = Value(std::monostate{});
+
+        if (!args.empty()) port = static_cast<int>(args[0].deref().asInt());
+        if (args.size() > 1) {
+            if (std::holds_alternative<std::string>(args[1].deref().data)) host = args[1].deref().toString();
+            else if (args[1].isCallable()) cbVal = args[1];
+        }
+        if (args.size() > 2 && args[2].isCallable()) cbVal = args[2];
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        if (server->isRunning) server->stop();
+        server->globalsPtr = interpreter.getGlobals();
+        int sfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sfd < 0) throw std::runtime_error("Could not create TCP socket!");
+        int opt = 1;
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+        int flag = 1;
+        setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        sockaddr_in sin;
+        std::memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(port);
+        if (host.empty() || host == "0.0.0.0") sin.sin_addr.s_addr = INADDR_ANY;
+        else inet_pton(AF_INET, host.c_str(), &sin.sin_addr);
+
+        if (bind(sfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
+            close(sfd);
+            throw std::runtime_error("Port " + std::to_string(port) + " bind nahi ho paya!");
+        }
+
+        socklen_t slen = sizeof(sin);
+        getsockname(sfd, (sockaddr*)&sin, &slen);
+        server->port = ntohs(sin.sin_port);
+        ::listen(sfd, 512);
+        server->serverFd = sfd;
+        server->isRunning = true;
+
+        auto sRef = server;
+        server->acceptThread = std::thread([sRef]() {
+            while (sRef->isRunning) {
+                sockaddr_in csin;
+                socklen_t cslen = sizeof(csin);
+                int cfd = accept(sRef->serverFd, (sockaddr*)&csin, &cslen);
+                if (cfd < 0) {
+                    if (!sRef->isRunning) break;
+                    continue;
+                }
+                std::thread([sRef, cfd, csin]() {
+                    char buf[8192];
+                    std::string raw;
+                    ssize_t n = 0;
+                    while ((n = recv(cfd, buf, sizeof(buf), 0)) > 0) {
+                        raw.append(buf, n);
+                        size_t hend = raw.find("\r\n\r\n");
+                        if (hend != std::string::npos) {
+                            size_t clPos = raw.find("Content-Length: ");
+                            if (clPos == std::string::npos) clPos = raw.find("content-length: ");
+                            if (clPos != std::string::npos) {
+                                size_t clEnd = raw.find("\r\n", clPos);
+                                long long cl = std::stoll(raw.substr(clPos + 16, clEnd - (clPos + 16)));
+                                size_t bodyLen = raw.size() - (hend + 4);
+                                if (bodyLen < static_cast<size_t>(cl)) continue;
+                            }
+                            break;
+                        }
+                    }
+                    if (raw.empty()) { close(cfd); return; }
+
+                    std::istringstream rss(raw);
+                    std::string rline;
+                    std::getline(rss, rline);
+                    if (!rline.empty() && rline.back() == '\r') rline.pop_back();
+                    std::string m, p, ver;
+                    std::istringstream lss(rline);
+                    lss >> m >> p >> ver;
+
+                    auto hMap = std::make_shared<MemeMap>();
+                    std::string hl;
+                    while (std::getline(rss, hl) && hl != "\r" && !hl.empty()) {
+                        if (!hl.empty() && hl.back() == '\r') hl.pop_back();
+                        size_t c = hl.find(':');
+                        if (c != std::string::npos) {
+                            std::string hk = hl.substr(0, c);
+                            for (char &ch : hk) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                            std::string hv = hl.substr(c + 1);
+                            while (!hv.empty() && hv.front() == ' ') hv.erase(hv.begin());
+                            hMap->set(hk, Value(hv));
+                        }
+                    }
+
+                    size_t hend = raw.find("\r\n\r\n");
+                    std::string bstr = (hend != std::string::npos) ? raw.substr(hend + 4) : "";
+                    Value bval = Value(bstr);
+                    if (hMap->has("content-type")) {
+                        std::string ct = hMap->entries["content-type"].deref().toString();
+                        if (ct.find("application/json") != std::string::npos && !bstr.empty()) {
+                            try { MemeJson::Parser jp(bstr); bval = jp.parseValue(); } catch (...) {}
+                        } else if (ct.find("application/x-www-form-urlencoded") != std::string::npos && !bstr.empty()) {
+                            bval = parseUrlEncoded(bstr);
+                        }
+                    }
+
+                    char ipStr[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &csin.sin_addr, ipStr, sizeof(ipStr));
+                    Interpreter child;
+                    child.setGlobals(sRef->globalsPtr);
+
+                    Value resVal = sRef->dispatchRequest(child, m, p, bval, Value(hMap), std::string(ipStr));
+                    std::string wire = formatHttpResponse(resVal);
+                    send(cfd, wire.data(), wire.size(), 0);
+                    close(cfd);
+                }).detach();
+            }
+        });
+#else
+        server->port = port;
+        server->isRunning = true;
+#endif
+        interpreter.getOutputStream() << "[Dhaba / Express / Elysia Server] 🚀 Online on http://localhost:" << server->port << "\n";
+        if (cbVal.isCallable()) {
+            cbVal.getCallable()->call(interpreter, { Value(static_cast<long long>(server->port)) });
+        }
+        return Value(m);
+    };
+    m->set("listen", Value(std::make_shared<NativeMethodCallable>("listen", 0, 3, listenFn)));
+    m->set("chala", m->entries["listen"]);
+    m->set("sun", m->entries["listen"]);
+
+    auto stopFn = [server, m](Interpreter &, const std::vector<Value> &) -> Value {
+        server->stop();
+        return Value(m);
+    };
+    m->set("stop", Value(std::make_shared<NativeMethodCallable>("stop", 0, 0, stopFn)));
+    m->set("rok", m->entries["stop"]);
+    m->set("band_kar", m->entries["stop"]);
+
+    auto resetFn = [server, m](Interpreter &, const std::vector<Value> &) -> Value {
+        server->stop();
+        server->routes.clear();
+        server->middlewares.clear();
+        server->onRequestHooks.clear();
+        server->onBeforeHandleHooks.clear();
+        server->onAfterHandleHooks.clear();
+        server->onErrorHooks.clear();
+        server->derivations.clear();
+        server->decorators->entries.clear();
+        server->decorators->keyOrder.clear();
+        server->stateMap->entries.clear();
+        server->stateMap->keyOrder.clear();
+        return Value(m);
+    };
+    m->set("reset", Value(std::make_shared<NativeMethodCallable>("reset", 0, 0, resetFn)));
+    m->set("saaf", m->entries["reset"]);
+
+    // Elysia hooks & decorators
+    m->set("onRequest", Value(std::make_shared<NativeMethodCallable>("onRequest", 1, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        server->onRequestHooks.push_back(a[0]);
+        return Value(m);
+    })));
+    m->set("onBeforeHandle", Value(std::make_shared<NativeMethodCallable>("onBeforeHandle", 1, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        server->onBeforeHandleHooks.push_back(a[0]);
+        return Value(m);
+    })));
+    m->set("onAfterHandle", Value(std::make_shared<NativeMethodCallable>("onAfterHandle", 1, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        server->onAfterHandleHooks.push_back(a[0]);
+        return Value(m);
+    })));
+    m->set("onError", Value(std::make_shared<NativeMethodCallable>("onError", 1, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        server->onErrorHooks.push_back(a[0]);
+        return Value(m);
+    })));
+
+    m->set("derive", Value(std::make_shared<NativeMethodCallable>("derive", 1, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        server->derivations.push_back(a[0]);
+        return Value(m);
+    })));
+    m->set("decorate", Value(std::make_shared<NativeMethodCallable>("decorate", 2, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string k = a[0].deref().toString();
+        server->decorators->set(k, a[1]);
+        m->set(k, a[1]);
+        return Value(m);
+    })));
+    m->set("state", Value(std::make_shared<NativeMethodCallable>("state", 2, [server, m](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string k = a[0].deref().toString();
+        server->stateMap->set(k, a[1]);
+        return Value(m);
+    })));
+
+    return m;
 }
 
 static std::shared_ptr<MemeMap> createDhabaModule(Interpreter &interpreter)
 {
-    auto m = std::make_shared<MemeMap>();
+    auto serverState = std::make_shared<HttpServerState>();
+    auto m = createHttpServerMap(serverState, interpreter);
     m->isModule = true;
 
-    auto server = std::make_shared<DhabaServer>();
+    // Schema builder: t
+    auto schemaMod = Value(createSchemaModule());
+    m->set("t", schemaMod);
+    m->set("schema", schemaMod);
+    m->set("nirmaan", schemaMod);
 
-    auto addRoute = [server](const std::string &method, const Value &pathVal, const Value &handlerVal) {
-        DhabaRoute r;
-        r.method = method;
-        r.path = pathVal.deref().toString();
-        r.handler = handlerVal;
-        server->routes.push_back(r);
+    // Factory methods
+    auto banaoFn = [&interpreter](Interpreter &, const std::vector<Value> &) -> Value {
+        auto newServer = std::make_shared<HttpServerState>();
+        return Value(createHttpServerMap(newServer, interpreter));
     };
+    auto banaoVal = Value(std::make_shared<NativeMethodCallable>("banao", 0, 0, banaoFn));
+    m->set("banao", banaoVal);
+    m->set("create", banaoVal);
+    m->set("__call__", banaoVal);
+    m->set("__chala__", banaoVal);
 
-    auto getFn = [addRoute](Interpreter &, const std::vector<Value> &args) -> Value {
-        addRoute("GET", args[0], args[1]);
-        return Value(true);
+    // Sub-router factory
+    auto routerFn = [&interpreter](Interpreter &, const std::vector<Value> &) -> Value {
+        auto newRouter = std::make_shared<HttpServerState>();
+        auto rMap = createHttpServerMap(newRouter, interpreter);
+        rMap->set("__is_router__", Value(true));
+        return Value(rMap);
     };
-    m->set("get", Value(std::make_shared<NativeMethodCallable>("get", 2, getFn)));
+    auto routerVal = Value(std::make_shared<NativeMethodCallable>("Router", 0, 0, routerFn));
+    m->set("router", routerVal);
+    m->set("Router", routerVal);
 
-    auto postFn = [addRoute](Interpreter &, const std::vector<Value> &args) -> Value {
-        addRoute("POST", args[0], args[1]);
-        return Value(true);
+    // Built-in Express Middlewares
+    // json()
+    auto jsonMwFn = [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto mw = std::make_shared<NativeMethodCallable>("express.json", 3, [](Interpreter &interp, const std::vector<Value> &args) -> Value {
+            Value reqVal = args[0];
+            Value nextVal = args[2];
+            if (reqVal.isMap()) {
+                auto reqMap = reqVal.getMap();
+                if (reqMap->has("headers") && reqMap->entries["headers"].deref().isMap()) {
+                    auto hdrs = reqMap->entries["headers"].deref().getMap();
+                    if (hdrs->has("content-type")) {
+                        std::string ct = hdrs->entries["content-type"].deref().toString();
+                        if (ct.find("application/json") != std::string::npos) {
+                            if (reqMap->has("body") && std::holds_alternative<std::string>(reqMap->entries["body"].deref().data)) {
+                                std::string bstr = std::get<std::string>(reqMap->entries["body"].deref().data);
+                                if (!bstr.empty()) {
+                                    try { MemeJson::Parser p(bstr); reqMap->set("body", p.parseValue()); } catch (...) {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (nextVal.isCallable()) return nextVal.getCallable()->call(interp, {});
+            return Value(true);
+        });
+        return Value(mw);
     };
-    m->set("post", Value(std::make_shared<NativeMethodCallable>("post", 2, postFn)));
+    m->set("json", Value(std::make_shared<NativeMethodCallable>("json", 0, 0, jsonMwFn)));
 
-    auto putFn = [addRoute](Interpreter &, const std::vector<Value> &args) -> Value {
-        addRoute("PUT", args[0], args[1]);
-        return Value(true);
+    // urlencoded()
+    auto urlencodedMwFn = [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto mw = std::make_shared<NativeMethodCallable>("express.urlencoded", 3, [](Interpreter &interp, const std::vector<Value> &args) -> Value {
+            Value reqVal = args[0];
+            Value nextVal = args[2];
+            if (reqVal.isMap()) {
+                auto reqMap = reqVal.getMap();
+                if (reqMap->has("headers") && reqMap->entries["headers"].deref().isMap()) {
+                    auto hdrs = reqMap->entries["headers"].deref().getMap();
+                    if (hdrs->has("content-type")) {
+                        std::string ct = hdrs->entries["content-type"].deref().toString();
+                        if (ct.find("application/x-www-form-urlencoded") != std::string::npos) {
+                            if (reqMap->has("body") && std::holds_alternative<std::string>(reqMap->entries["body"].deref().data)) {
+                                reqMap->set("body", parseUrlEncoded(std::get<std::string>(reqMap->entries["body"].deref().data)));
+                            }
+                        }
+                    }
+                }
+            }
+            if (nextVal.isCallable()) return nextVal.getCallable()->call(interp, {});
+            return Value(true);
+        });
+        return Value(mw);
     };
-    m->set("put", Value(std::make_shared<NativeMethodCallable>("put", 2, putFn)));
+    m->set("urlencoded", Value(std::make_shared<NativeMethodCallable>("urlencoded", 0, 0, urlencodedMwFn)));
 
-    auto delFn = [addRoute](Interpreter &, const std::vector<Value> &args) -> Value {
-        addRoute("DELETE", args[0], args[1]);
-        return Value(true);
+    // cors()
+    auto corsMwFn = [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto mw = std::make_shared<NativeMethodCallable>("express.cors", 3, [](Interpreter &interp, const std::vector<Value> &args) -> Value {
+            Value reqVal = args[0];
+            Value resVal = args[1];
+            Value nextVal = args[2];
+            if (resVal.isMap()) {
+                auto resMap = resVal.getMap();
+                if (resMap->has("set") && resMap->entries["set"].isCallable()) {
+                    resMap->entries["set"].getCallable()->call(interp, { Value("Access-Control-Allow-Origin"), Value("*") });
+                    resMap->entries["set"].getCallable()->call(interp, { Value("Access-Control-Allow-Methods"), Value("GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD") });
+                    resMap->entries["set"].getCallable()->call(interp, { Value("Access-Control-Allow-Headers"), Value("*") });
+                }
+            }
+            if (reqVal.isMap() && reqVal.getMap()->has("method") && reqVal.getMap()->entries["method"].deref().toString() == "OPTIONS") {
+                if (resVal.isMap() && resVal.getMap()->has("status") && resVal.getMap()->has("send")) {
+                    resVal.getMap()->entries["status"].getCallable()->call(interp, { Value(204LL) });
+                    return resVal.getMap()->entries["send"].getCallable()->call(interp, { Value("") });
+                }
+            }
+            if (nextVal.isCallable()) return nextVal.getCallable()->call(interp, {});
+            return Value(true);
+        });
+        return Value(mw);
     };
-    m->set("delete", Value(std::make_shared<NativeMethodCallable>("delete", 2, delFn)));
+    m->set("cors", Value(std::make_shared<NativeMethodCallable>("cors", 0, 1, corsMwFn)));
 
-    auto routeFn = [addRoute](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string method = args[0].deref().toString();
-        for (char &c : method) c = std::toupper(static_cast<unsigned char>(c));
-        addRoute(method, args[1], args[2]);
-        return Value(true);
+    // static(dirPath)
+    auto staticMwFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string dir = args[0].deref().toString();
+        auto mw = std::make_shared<NativeMethodCallable>("express.static", 3, [dir](Interpreter &interp, const std::vector<Value> &a) -> Value {
+            Value reqVal = a[0];
+            Value resVal = a[1];
+            Value nextVal = a[2];
+            if (reqVal.isMap() && reqVal.getMap()->has("path")) {
+                std::string p = reqVal.getMap()->entries["path"].deref().toString();
+                std::string fullPath = dir + (p.front() == '/' ? p : "/" + p);
+                if (std::filesystem::exists(fullPath) && std::filesystem::is_regular_file(fullPath)) {
+                    if (resVal.isMap() && resVal.getMap()->has("sendFile")) {
+                        return resVal.getMap()->entries["sendFile"].getCallable()->call(interp, { Value(fullPath) });
+                    }
+                }
+            }
+            if (nextVal.isCallable()) return nextVal.getCallable()->call(interp, {});
+            return Value(true);
+        });
+        return Value(mw);
     };
-    m->set("route", Value(std::make_shared<NativeMethodCallable>("route", 3, routeFn)));
+    m->set("static", Value(std::make_shared<NativeMethodCallable>("static", 1, 1, staticMwFn)));
 
-    auto reqFn = [server, &interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string method = args[0].deref().toString();
-        for (char &c : method) c = std::toupper(static_cast<unsigned char>(c));
-        std::string path = args[1].deref().toString();
-        Value body = args.size() > 2 ? args[2] : Value(std::monostate{});
-        Value headers = args.size() > 3 ? args[3] : Value(std::monostate{});
-        return dispatchDhabaRequest(interpreter, server, method, path, body, headers);
+    // logger()
+    auto loggerMwFn = [&interpreter](Interpreter &, const std::vector<Value> &) -> Value {
+        auto mw = std::make_shared<NativeMethodCallable>("express.logger", 3, [&interpreter](Interpreter &interp, const std::vector<Value> &args) -> Value {
+            Value reqVal = args[0];
+            Value nextVal = args[2];
+            if (reqVal.isMap()) {
+                std::string m = reqVal.getMap()->has("method") ? reqVal.getMap()->entries["method"].deref().toString() : "GET";
+                std::string p = reqVal.getMap()->has("path") ? reqVal.getMap()->entries["path"].deref().toString() : "/";
+                interpreter.getOutputStream() << "[HTTP] " << m << " " << p << "\n";
+            }
+            if (nextVal.isCallable()) return nextVal.getCallable()->call(interp, {});
+            return Value(true);
+        });
+        return Value(mw);
     };
-    m->set("request", Value(std::make_shared<NativeMethodCallable>("request", 2, 4, reqFn)));
-
-    auto chalaFn = [server, &interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        int port = 8080;
-        if (!args.empty()) {
-            port = static_cast<int>(toLongLong(args[0]));
-        }
-        server->port = port;
-        server->isRunning = true;
-        interpreter.getOutputStream() << "[Dhaba Server] ☕ Garam orders taiyyar hain on http://localhost:" << port << "\n";
-        if (args.size() > 1 && std::holds_alternative<std::shared_ptr<Callable>>(args[1].deref().data)) {
-            auto cb = std::get<std::shared_ptr<Callable>>(args[1].deref().data);
-            cb->call(interpreter, { Value(static_cast<long long>(port)) });
-        }
-        return Value(true);
-    };
-    auto chalaVal = Value(std::make_shared<NativeMethodCallable>("chala", 0, 2, chalaFn));
-    m->set("chala", chalaVal);
-    m->set("listen", chalaVal);
-
-    auto saafFn = [server](Interpreter &, const std::vector<Value> &) -> Value {
-        server->routes.clear();
-        server->middlewares.clear();
-        server->isRunning = false;
-        return Value(true);
-    };
-    auto saafVal = Value(std::make_shared<NativeMethodCallable>("saaf", 0, saafFn));
-    m->set("saaf", saafVal);
-    m->set("reset", saafVal);
+    m->set("logger", Value(std::make_shared<NativeMethodCallable>("logger", 0, 0, loggerMwFn)));
 
     return m;
 }
@@ -6565,14 +9232,80 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("clone", nakalFunc);
     globals->define("copy", nakalFunc);
 
-    // Standard Library Modules: hisab, waqt, json, file
+    // Standard Library Modules: math, datetime, random, stats, crypto, regex, itertools, collections, csv, test
     auto hisabMod = Value(createHisabModule());
     globals->define("hisab", hisabMod);
+    globals->define("math", hisabMod);
     importedModules["hisab"] = hisabMod;
+    importedModules["math"] = hisabMod;
 
     auto waqtMod = Value(createWaqtModule());
     globals->define("waqt", waqtMod);
+    globals->define("datetime", waqtMod);
+    globals->define("time", waqtMod);
     importedModules["waqt"] = waqtMod;
+    importedModules["datetime"] = waqtMod;
+    importedModules["time"] = waqtMod;
+
+    auto randomMod = Value(createRandomModule());
+    globals->define("random", randomMod);
+    globals->define("tukka", randomMod);
+    importedModules["random"] = randomMod;
+    importedModules["tukka"] = randomMod;
+
+    auto statsMod = Value(createStatisticsModule());
+    globals->define("statistics", statsMod);
+    globals->define("stats", statsMod);
+    globals->define("aankde", statsMod);
+    importedModules["statistics"] = statsMod;
+    importedModules["stats"] = statsMod;
+    importedModules["aankde"] = statsMod;
+
+    auto cryptoMod = Value(createCryptoModule());
+    globals->define("crypto", cryptoMod);
+    globals->define("hashlib", cryptoMod);
+    globals->define("gupt", cryptoMod);
+    importedModules["crypto"] = cryptoMod;
+    importedModules["hashlib"] = cryptoMod;
+    importedModules["gupt"] = cryptoMod;
+
+    auto reMod = Value(createRegexModule());
+    globals->define("regex", reMod);
+    globals->define("re", reMod);
+    globals->define("dhundo", reMod);
+    importedModules["regex"] = reMod;
+    importedModules["re"] = reMod;
+    importedModules["dhundo"] = reMod;
+
+    auto iterMod = Value(createItertoolsModule());
+    globals->define("itertools", iterMod);
+    globals->define("jugaad_tools", iterMod);
+    importedModules["itertools"] = iterMod;
+    importedModules["jugaad_tools"] = iterMod;
+    globals->define("range", iterMod.getMap()->entries["range"]);
+    globals->define("zip", iterMod.getMap()->entries["zip"]);
+    globals->define("enumerate", iterMod.getMap()->entries["enumerate"]);
+
+    auto collMod = Value(createCollectionsModule());
+    globals->define("collections", collMod);
+    globals->define("mandali", collMod);
+    importedModules["collections"] = collMod;
+    importedModules["mandali"] = collMod;
+
+    auto csvMod = Value(createCsvModule());
+    globals->define("csv", csvMod);
+    importedModules["csv"] = csvMod;
+
+    auto testMod = Value(createTestModule());
+    globals->define("test", testMod);
+    globals->define("pariksha", testMod);
+    importedModules["test"] = testMod;
+    importedModules["pariksha"] = testMod;
+    importedModules["assert"] = testMod;
+    globals->define("assert", testMod.getMap()->entries["assert"]);
+    globals->define("assert_eq", testMod.getMap()->entries["assert_eq"]);
+    globals->define("assert_ne", testMod.getMap()->entries["assert_ne"]);
+    globals->define("assert_throws", testMod.getMap()->entries["assert_throws"]);
 
     // Top-level sleep
     auto sleepFunc = Value(std::make_shared<NativeMethodCallable>("so_ja", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
@@ -6743,9 +9476,23 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("dhaba", dhabaMod);
     globals->define("server", dhabaMod);
     globals->define("api", dhabaMod);
+    globals->define("express", dhabaMod);
+    globals->define("elysia", dhabaMod);
+    globals->define("Elysia", dhabaMod);
+
+    Value schemaVal = dhabaMod.getMap()->entries["t"];
+    globals->define("t", schemaVal);
+    globals->define("schema", schemaVal);
+    globals->define("nirmaan", schemaVal);
+
     importedModules["dhaba"] = dhabaMod;
     importedModules["server"] = dhabaMod;
     importedModules["api"] = dhabaMod;
+    importedModules["express"] = dhabaMod;
+    importedModules["elysia"] = dhabaMod;
+    importedModules["Elysia"] = dhabaMod;
+    importedModules["t"] = schemaVal;
+    importedModules["schema"] = schemaVal;
 
     auto uiMod = Value(createUiModule(*this));
     globals->define("ui", uiMod);
@@ -9054,6 +11801,19 @@ Value Interpreter::evaluate(const Expr *expr)
                 }
             }
         }
+        else if (callee.isMap())
+        {
+            auto map = callee.getMap();
+            if (map->has("__call__") || map->has("__chala__"))
+            {
+                std::string callKey = map->has("__call__") ? "__call__" : "__chala__";
+                Value mVal = map->entries[callKey].deref();
+                if (mVal.isCallable())
+                {
+                    function = mVal.getCallable();
+                }
+            }
+        }
 
         if (!function)
         {
@@ -9830,6 +12590,21 @@ Value Interpreter::evaluate(const Expr *expr)
                 throw std::runtime_error(
                     "Doglapan! '" + ident->name + "' abhi udhaar (borrowed) pe hai, isko modify nahi kar sakte!");
             }
+        }
+
+        if (objVal.isMap())
+        {
+            Value val;
+            if (auto *ident = dynamic_cast<const IdentifierExpr *>(s->value.get()))
+            {
+                val = moveVariable(ident->name);
+            }
+            else
+            {
+                val = evaluate(s->value.get());
+            }
+            objVal.getMap()->set(s->name, val);
+            return val;
         }
 
         if (!std::holds_alternative<std::shared_ptr<Instance>>(objVal.data))

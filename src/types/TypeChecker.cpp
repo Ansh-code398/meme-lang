@@ -134,7 +134,64 @@ void TypeChecker::initGlobals()
     globals->define("min", Type::Function({Type::Any(), Type::Any()}, Type::Point()), true);
     globals->define("max", Type::Function({Type::Any(), Type::Any()}, Type::Point()), true);
     globals->define("pow", Type::Function({Type::Any(), Type::Any()}, Type::Point()), true);
-    globals->define("random", Type::Function({}, Type::Point()), true);
+
+    // Itertools & Assert built-ins
+    globals->define("range", Type::Function({Type::Any()}, Type::List(Type::Ank())), true);
+    globals->define("zip", Type::Function({Type::Any()}, Type::List(Type::Tuple())), true);
+    globals->define("enumerate", Type::Function({Type::Any()}, Type::List(Type::Tuple())), true);
+    globals->define("assert", Type::Function({Type::Any()}, Type::Sach()), true);
+    globals->define("assert_eq", Type::Function({Type::Any(), Type::Any()}, Type::Sach()), true);
+    globals->define("assert_ne", Type::Function({Type::Any(), Type::Any()}, Type::Sach()), true);
+    globals->define("assert_throws", Type::Function({Type::Any()}, Type::Sach()), true);
+
+    // Preinstalled Standard Library Modules
+    auto modType = Type::Map(Type::Bol(), Type::Any());
+    globals->define("math", modType, true);
+    globals->define("hisab", modType, true);
+    globals->define("random", modType, true);
+    globals->define("tukka", modType, true);
+    globals->define("statistics", modType, true);
+    globals->define("stats", modType, true);
+    globals->define("aankde", modType, true);
+    globals->define("crypto", modType, true);
+    globals->define("hashlib", modType, true);
+    globals->define("gupt", modType, true);
+    globals->define("regex", modType, true);
+    globals->define("re", modType, true);
+    globals->define("dhundo", modType, true);
+    globals->define("datetime", modType, true);
+    globals->define("waqt", modType, true);
+    globals->define("time", modType, true);
+    globals->define("itertools", modType, true);
+    globals->define("jugaad_tools", modType, true);
+    globals->define("collections", modType, true);
+    globals->define("mandali", modType, true);
+    globals->define("csv", modType, true);
+    globals->define("test", modType, true);
+    globals->define("pariksha", modType, true);
+    globals->define("json", modType, true);
+    globals->define("file", modType, true);
+    globals->define("fs", modType, true);
+    globals->define("rasta", modType, true);
+    globals->define("path", modType, true);
+    globals->define("Vaada", modType, true);
+    globals->define("Promise", modType, true);
+    globals->define("dhaga", modType, true);
+    globals->define("thread", modType, true);
+    globals->define("kaamgar", modType, true);
+    globals->define("mp", modType, true);
+    globals->define("jaal", modType, true);
+    globals->define("http", modType, true);
+    globals->define("dhaba", modType, true);
+    globals->define("server", modType, true);
+    globals->define("api", modType, true);
+    globals->define("express", modType, true);
+    globals->define("elysia", modType, true);
+    globals->define("Elysia", modType, true);
+    globals->define("t", modType, true);
+    globals->define("schema", modType, true);
+    globals->define("nirmaan", modType, true);
+    globals->define("fetch", Type::Function({Type::Any()}, Type::Any()), true);
 }
 
 void TypeChecker::check(const std::vector<std::unique_ptr<Stmt>> &statements)
