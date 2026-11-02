@@ -1,9 +1,14 @@
 {
   "name": "memelang",
   "displayName": "MEMElang Language Support",
-  "description": "Syntax Highlighting, Autocomplete, Snippets & Tooling for MEMElang (.meme)",
-  "version": "1.0.0",
+  "description": "Syntax Highlighting, Context-Aware IntelliSense, Snippets, Hover Docs & Signature Help for MEMElang (.meme) with Express, Elysia, Concurrency, and React UI support",
+  "version": "2.0.0",
   "publisher": "memelang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ansh-code398/meme-lang.git"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -16,7 +21,9 @@
     "meme",
     "desi",
     "hindi",
-    "pythonic"
+    "pythonic",
+    "express",
+    "elysia"
   ],
   "main": "./extension.js",
   "activationEvents": [

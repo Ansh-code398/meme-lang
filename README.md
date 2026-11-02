@@ -310,9 +310,133 @@ app.mount(<App />, { "title": "ChaiVault", "width": 800, "height": 600 });
 
 ---
 
+### 8. Preinstalled Standard Libraries ("Batteries Included")
+
+Just like Python, MEMElang comes preinstalled with a complete, zero-dependency standard library available globally or via `import "module" as { ... }`:
+
+| Module | WhatsApp Hinglish Alias | Key Capabilities |
+| --- | --- | --- |
+| **`math`** | `hisab` | Constants (`pi`, `e`, `tau`), roots (`sqrt`, `cbrt`), logs (`log`, `log2`, `log10`), trig (`sin`, `cos`, `tan`), hyperbolic, combinatorics (`gcd`, `lcm`, `factorial`, `comb`, `perm`), geometry (`hypot`, `dist`), and `clamp` |
+| **`random`** | `tukka` | Full PRNG suite: `seed`, `random`, `randint`, `uniform`, `choice`, `shuffle`, `sample` |
+| **`statistics`** | `stats` / `aankde` | Descriptive statistics: `mean`, `median`, `mode`, `variance`, `stdev`, `quantiles`, `min`, `max`, `sum` |
+| **`crypto`** | `hashlib` / `gupt` | Industry standard hashing & encoding: `sha256`, `hmac_sha256`, `md5`, `sha1`, `base64_encode`, `base64_decode`, and RFC4122 `uuid` |
+| **`regex`** | `re` / `dhundo` | Full PCRE regular expressions: `test`, `search`, `match`, `find_all`, `replace`, `split` |
+| **`datetime`** | `waqt` / `time` | High-precision time and calendar: `now`, `now_ms`, `iso`, `format` (`strftime`), `parse` (`strptime`), year/month/day/hour getters, and non-blocking `sleep` |
+| **`itertools`** | `jugaad_tools` | Fast iterators: global `range(stop)` / `range(start, stop, step)`, `zip(...)`, `enumerate(...)`, `chunk(...)`, `flatten(...)`, `repeat(...)` |
+| **`collections`** | `mandali` | Specialized structures: `Counter(iterable)` (O(N) frequency tally) and `deque()` (O(1) double-ended queue) |
+| **`csv`** | `csv` | Standalone CSV parser and generator: `csv.parse(text)` (with or without headers) and `csv.stringify(rows)` |
+| **`test`** | `assert` / `pariksha` | Assertion utilities: `assert(cond, msg)`, `assert_eq(a, b)`, `assert_ne(a, b)`, and `assert_throws(fn)` |
+
+```meme
+// 1. Math & Itertools
+pakad r = range(1, 10, 2);                      // [1, 3, 5, 7, 9]
+pakad roots = r.map((n) => math.sqrt(n));
+dikha f"GCD: {math.gcd(24, 36)}, Factorial: {math.factorial(5)}";
+
+// 2. Statistics & Collections
+pakad freqs = collections.Counter("antigravity");
+dikha f"Letter 'a' count: {freqs.a}";
+dikha f"Mean: {stats.mean([10, 20, 30])}, Stdev: {stats.stdev([2, 4, 4, 4, 5, 5, 7, 9])}";
+
+// 3. Cryptography & Regular Expressions
+pakad hash = crypto.sha256("chai-and-code");
+pakad emailMatch = re.search("([a-z]+)@([a-z.]+)", "user@memelang.org");
+dikha f"User: {emailMatch.groups[0]}, Domain: {emailMatch.groups[1]}";
+
+// 4. CSV & Testing Assertions
+pakad rawData = "item,qty\nSamosa,10\nJalebi,25";
+pakad parsed = csv.parse(rawData);
+assert_eq(parsed[0].item, "Samosa");
+assert_eq(parsed.size, 2);
+```
+
+---
+
+### 9. Fast HTTP Servers (Full Express Parity & Elysia Type Safety)
+
+MEMElang features high-concurrency native multi-threaded HTTP servers powered by real OS sockets (`socket`, `SO_REUSEPORT`, `TCP_NODELAY`, worker thread pool) paired with complete Express middleware/routing parity and Elysia-style TypeBox schema validation:
+
+* **Elysia Type Safety (`t` / `schema`)**: Automatic request & response schema validation with type coercion (`string` numbers coerced to `int` / `float`) and detailed 400 Bad Request error reports.
+* **Full Express Parity**: Middleware pipeline (`app.use`), route-level middleware chains (`(req, res, next)`), sub-routers (`express.Router()`), `req.params`, `req.query`, `req.cookies`, `res.status().json()`, `res.sendFile()`, `express.json()`, `express.urlencoded()`, `express.cors()`, `express.static()`.
+* **Elysia Ergonomics**: Context parameter (`ctx.body`, `ctx.params`, `ctx.query`, `ctx.store`, `ctx.set`), lifecycle hooks (`onRequest`, `onBeforeHandle`, `onAfterHandle`, `onError`), derivations (`app.derive`), and state management (`app.state`).
+* **Universal Aliases**: `express()`, `elysia()`, `dhaba.banao()`, `server()`.
+
+```meme
+pakad app = elysia();
+
+// 1. State & Derivations
+app.state("visitors", 0);
+app.derive((ctx) => {
+    ye_le { "role": "admin" };
+});
+
+// 2. Elysia-Style Type-Safe Route with TypeBox Schema
+app.post("/users/:id", {
+    params: t.Object({ "id": t.Integer() }),
+    query: t.Object({ "ref": t.Optional(t.String()) }),
+    body: t.Object({
+        "username": t.String({ "minLength": 3 }),
+        "age": t.Integer({ "min": 18 }),
+        "email": t.Optional(t.String({ "format": "email" }))
+    })
+}, (ctx) => {
+    ctx.store.visitors = ctx.store.visitors + 1;
+    // Parameters, query & body are validated, coerced & guaranteed type-safe
+    ye_le {
+        "success": han,
+        "id": ctx.params.id,              // Coerced integer
+        "user": ctx.body.username,
+        "age": ctx.body.age,              // Coerced integer
+        "role": ctx.role,
+        "visits": ctx.store.visitors
+    };
+});
+
+// 3. Express-Style Route & Sub-Router
+pakad apiRouter = express.Router();
+apiRouter.get("/health", (req, res) => {
+    res.status(200).json({ "status": "ok", "ip": req.ip });
+});
+app.use("/api", apiRouter);
+
+// 4. Start Live Multi-Threaded HTTP Server
+app.listen(3000, () => {
+    dikha "Server running on http://localhost:3000";
+});
+```
+
+---
+
+## 🎨 VS Code Extension & Syntax Suggestions
+
+MEMElang provides first-class developer tooling with the official **MEMElang VS Code Extension** (`tools/vscode-memelang`):
+
+- **Context-Aware IntelliSense & Suggestions**:
+  - `app.` / `router.` -> Suggests all Express & Elysia routing, middleware, state, and lifecycle methods (`get`, `post`, `put`, `use`, `listen`, `state`, `derive`, `decorate`, etc.).
+  - `t.` / `schema.` -> Suggests TypeBox schema builders (`String`, `Integer`, `Number`, `Boolean`, `Object`, `Array`, `Optional`, `Union`, etc.).
+  - `req.` / `res.` / `ctx.` -> Suggests HTTP request properties, response helpers, and context containers.
+  - Standard libraries (`math.`, `crypto.`, `random.`, `file.`, `rasta.`, `dhaga.`, `kaamgar.`, `Vaada.`) -> Suggests module methods on typing `.`.
+  - Type annotations (after `: `) -> Suggests `ank`, `int32`, `byte`, `point`, `float32`, `char`, `bol`, `bytes`, `sach`, `soochi`, `khata`, `set`, `tuple`, `har_kism`.
+- **TextMate Syntax Highlighting**: Full tokenization for `.meme` files across all Desi meme keywords, WhatsApp Hinglish aliases, and modern standard constructs.
+- **Hover Documentation**: Interactive markdown tooltips displaying descriptions, type signatures, and example code on mouse hover.
+- **Parameter Signature Help**: Active parameter hints when opening parentheses for functions, routes, and schemas.
+- **Productivity Snippets**: Instant templates for Express servers, Elysia servers, TypeBox schemas, async functions, hardware threads, channels, and React UI components.
+
+### Installation
+
+```bash
+# Link directly to your local VS Code extensions directory:
+ln -s "$(pwd)/tools/vscode-memelang" ~/.vscode/extensions/memelang
+
+# Or install the pre-packaged VSIX:
+code --install-extension tools/vscode-memelang/memelang-2.0.0.vsix
+```
+
+---
+
 ## 🧪 Testing
 
-MEMElang comes with an exhaustive test harness covering all 22 compiler, runtime, and ecosystem subsystems:
+MEMElang comes with an exhaustive test harness covering all 25 compiler, runtime, and ecosystem subsystems:
 
 ```bash
 # Run the full test suite

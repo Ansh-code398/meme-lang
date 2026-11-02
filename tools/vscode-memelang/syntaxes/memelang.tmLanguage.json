@@ -9,11 +9,14 @@
     { "include": "#types" },
     { "include": "#tantrik-methods" },
     { "include": "#functional-transforms" },
+    { "include": "#keywords-async" },
     { "include": "#keywords-control" },
     { "include": "#keywords-decl" },
     { "include": "#keywords-oop" },
     { "include": "#keywords-error" },
     { "include": "#keywords-module" },
+    { "include": "#modules-stdlib" },
+    { "include": "#ui-components" },
     { "include": "#builtins" },
     { "include": "#constants" },
     { "include": "#numbers" },
@@ -138,7 +141,7 @@
       "patterns": [
         {
           "name": "entity.name.type.meme",
-          "match": "\\b(ank|bina_point|sankhya|int|point|point_wala|dashamlav|float|double|bol|shabd|vakya|baat|string|str|sach|faisla|vibe_check|bool|nalla|kuch_nhi|khali|void|null|har_kism|joker|sab|kuch_bhi|any|soochi|tolli|gang|list|khata|kundli|map)\\b"
+          "match": "\\b(ank|ank32|int|int32|int64|long|point|point32|point_wala|dashamlav|float|float32|float64|double|byte|char|bol|shabd|vakya|baat|string|str|bytes|sach|faisla|vibe_check|bool|nalla|kuch_nhi|khali|void|null|har_kism|joker|sab|kuch_bhi|any|soochi|tolli|gang|list|khata|kundli|map|set|jhund|tuple|joda)\\b"
         }
       ]
     },
@@ -154,7 +157,15 @@
       "patterns": [
         {
           "name": "entity.name.function.transform.meme",
-          "match": "(?<=\\.)\\b(sab_pe|badal_sab|chhaan|filter_kar|nichod|sameto|line_mein|chhaant|har_ek|pakad_ek|chala_de|jodo|hatao|chhodo|has|keys|values|nakal|clone)\\b"
+          "match": "(?<=\\.)\\b(sab_pe|badal_sab|chhaan|filter_kar|nichod|sameto|line_mein|chhaant|har_ek|pakad_ek|chala_de|jodo|hatao|chhodo|has|keys|values|nakal|clone|baat|kism|line|message|type)\\b"
+        }
+      ]
+    },
+    "keywords-async": {
+      "patterns": [
+        {
+          "name": "keyword.control.async.meme",
+          "match": "\\b(async|sabar|await|side_mein|asar)\\b"
         }
       ]
     },
@@ -162,7 +173,7 @@
       "patterns": [
         {
           "name": "storage.type.meme",
-          "match": "\\b(pakad|le|let|const|jugaad|kar|fn|def|biradari|vibe|class|sancha|avtar|kism|enum)\\b"
+          "match": "\\b(pakad|maan_lo|le|let|const|var|jugaad|kaam|kar|fn|def|biradari|vibe|class|sancha|avtar|kism|enum)\\b"
         }
       ]
     },
@@ -170,7 +181,7 @@
       "patterns": [
         {
           "name": "keyword.control.meme",
-          "match": "\\b(dekh|agar|if|warna|nahito|else|jabtak|while|ghoom|for|mein|in|bas|break|chal|continue|ye_le|wapas|de|return|jaanch|parakh|match|baaki|default)\\b"
+          "match": "\\b(dekh|agar|if|warna|nahito|varnah|else|jabtak|jabk|while|ghoom|har|for|mein|in|bas|roko|break|chal|karo|continue|ye_le|de|wapas|return|bhej|jaanch|parakh|match|baaki|default)\\b"
         }
       ]
     },
@@ -186,7 +197,7 @@
       "patterns": [
         {
           "name": "keyword.control.exception.meme",
-          "match": "\\b(panga|try|lafda|sambhal|catch|pakka|hamesha|finally|chillao|fek|throw)\\b"
+          "match": "\\b(panga|koshish|try|lafda|sambhal|catch|except|pakka|hamesha|finally|chillao|fek|throw|raise)\\b"
         }
       ]
     },
@@ -198,11 +209,27 @@
         }
       ]
     },
+    "modules-stdlib": {
+      "patterns": [
+        {
+          "name": "support.class.module.meme",
+          "match": "\\b(math|ganit|random|stats|crypto|regex|samay|datetime|itertools|collections|csv|test|file|fs|rasta|path|dhaga|thread|kaamgar|mp|Vaada|Promise|jaal|http|systumm|os|express|elysia|Elysia|dhaba|server|t|schema|nirmaan)\\b"
+        }
+      ]
+    },
+    "ui-components": {
+      "patterns": [
+        {
+          "name": "support.class.component.meme",
+          "match": "\\b(Component|VStack|HStack|ZStack|Text|Button|Input|Card|Badge)\\b"
+        }
+      ]
+    },
     "builtins": {
       "patterns": [
         {
           "name": "support.function.builtin.meme",
-          "match": "\\b(dikha|flex|print|pooch|bata|input|kya_hai|size|nakal|bina_point|point_wala|kundli|gol|upar_gol|neeche_gol|vargmool|ghaat|kalam|chhota|bada|ab|ruk)\\b"
+          "match": "\\b(dikha|flex|print|pooch|bata|input|kya_hai|size|nakal|bina_point|point_wala|kundli|gol|upar_gol|neeche_gol|vargmool|ghaat|kalam|chhota|bada|ab|ruk|Galti|Error|fetch|useState|useEffect|useRef|useMemo|useCallback|useContext|createContext|useNavigate|useLocation|useParams|useHitTest|useLayout)\\b"
         }
       ]
     },
@@ -214,7 +241,7 @@
         },
         {
           "name": "constant.language.null.meme",
-          "match": "\\b(nalla|shunya|null|nil|none)\\b"
+          "match": "\\b(nalla|shunya|khali|null|nil|none)\\b"
         }
       ]
     },

@@ -3,11 +3,32 @@
     "prefix": "jugaad",
     "body": [
       "jugaad ${1:naam}(${2:params}) {",
-      "\t${0:// masala logic yahan}",
+      "\t${0:// logic yahan}",
       "\tye_le ${3:result};",
       "}"
     ],
     "description": "Define a MEMElang function (jugaad)"
+  },
+  "Function (kaam)": {
+    "prefix": "kaam",
+    "body": [
+      "kaam ${1:naam}(${2:params}) {",
+      "\t${0}",
+      "\tye_le ${3:result};",
+      "}"
+    ],
+    "description": "Define a WhatsApp Hinglish function (kaam)"
+  },
+  "Async Function (async kaam)": {
+    "prefix": "async_kaam",
+    "body": [
+      "async kaam ${1:fetchData}(${2:url}) {",
+      "\tres = sabar fetch(${2:url});",
+      "\tdata = res.json();",
+      "\tye_le data;",
+      "}"
+    ],
+    "description": "Define an asynchronous function (async kaam / async jugaad)"
   },
   "Arrow Lambda": {
     "prefix": ["lambda", "arrow", "=>"],
@@ -103,7 +124,18 @@
       "\t${0:// false logic}",
       "}"
     ],
-    "description": "Conditional if-else statement"
+    "description": "Conditional if-else statement (dekh / warna)"
+  },
+  "If-Else (agar-varnah)": {
+    "prefix": "agar",
+    "body": [
+      "agar ${1:condition} {",
+      "\t${2:// true logic}",
+      "} varnah {",
+      "\t${0:// false logic}",
+      "}"
+    ],
+    "description": "WhatsApp Hinglish if-else (agar / varnah)"
   },
   "While Loop (jabtak)": {
     "prefix": "jabtak",
@@ -121,7 +153,16 @@
       "\t${0}",
       "}"
     ],
-    "description": "For-in iteration loop"
+    "description": "For-in iteration loop (ghoom)"
+  },
+  "For-Each Loop (har)": {
+    "prefix": "har",
+    "body": [
+      "har ${1:item} mein ${2:collection} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "WhatsApp Hinglish for-each loop (har x mein arr)"
   },
   "Filter (chhaan)": {
     "prefix": "chhaan",
@@ -156,13 +197,13 @@
     "body": [
       "panga {",
       "\t${1:// risky code}",
-      "} lafda error {",
-      "\tdikha \"Gadbad pakdi gayi:\", error;",
+      "} lafda (err) {",
+      "\tdikha f\"Lafda ho gaya: {err.baat} (Type: {err.kism} line {err.line})\";",
       "} pakka {",
       "\t${0:// cleanup}",
       "}"
     ],
-    "description": "Exception handling block (panga / lafda / pakka)"
+    "description": "Structured exception handling block (panga / lafda / pakka)"
   },
   "Pattern Match (jaanch)": {
     "prefix": "jaanch",
@@ -205,5 +246,162 @@
       "pakad {${1:key1}, ${2:key2}} = ${3:map_or_obj};"
     ],
     "description": "Unpack map or object fields into variables"
+  },
+  "Express HTTP Server": {
+    "prefix": "express_server",
+    "body": [
+      "app = express();",
+      "app.use(express.json());",
+      "app.use(express.cors());",
+      "",
+      "app.get(\"/\", (req, res) => {",
+      "\tres.json({ \"message\": \"Swag se swagat hai!\", \"status\": 200 });",
+      "});",
+      "",
+      "app.listen(${1:3000}, () => {",
+      "\tdikha f\"🚀 Express server active at http://localhost:${1:3000}\";",
+      "});"
+    ],
+    "description": "Create an Express-compatible HTTP Server"
+  },
+  "Elysia Type-Safe Server": {
+    "prefix": "elysia_server",
+    "body": [
+      "app = elysia();",
+      "",
+      "app.state(\"counter\", 0);",
+      "app.derive((ctx) => {",
+      "\tctx.store.counter = ctx.store.counter + 1;",
+      "\tye_le { \"client\": ctx.ip };",
+      "});",
+      "",
+      "${1:UserSchema} = {",
+      "\t\"body\": t.Object({",
+      "\t\t\"name\": t.String({ \"minLength\": 2 }),",
+      "\t\t\"age\": t.Integer({ \"minimum\": 18 })",
+      "\t})",
+      "};",
+      "",
+      "app.post(\"/users\", (ctx) => {",
+      "\tye_le {",
+      "\t\t\"success\": han,",
+      "\t\t\"data\": ctx.body,",
+      "\t\t\"reqNumber\": ctx.store.counter",
+      "\t};",
+      "}, ${1:UserSchema});",
+      "",
+      "app.listen(${2:3000}, () => {",
+      "\tdikha f\"⚡ Elysia server running at http://localhost:${2:3000}\";",
+      "});"
+    ],
+    "description": "Create an Elysia-style type-safe server with schema validation"
+  },
+  "TypeBox Schema Object": {
+    "prefix": "schema_object",
+    "body": [
+      "t.Object({",
+      "\t\"${1:id}\": t.Integer(),",
+      "\t\"${2:name}\": t.String({ \"minLength\": 1 }),",
+      "\t\"${3:email}\": t.String(),",
+      "\t\"${4:isAdmin}\": t.Optional(t.Boolean())",
+      "})"
+    ],
+    "description": "TypeBox Schema Object validator definition"
+  },
+  "HTTP Fetch Call": {
+    "prefix": "fetch_api",
+    "body": [
+      "res = sabar fetch(\"${1:https://api.example.com/data}\", {",
+      "\t\"method\": \"${2:GET}\",",
+      "\t\"headers\": { \"Accept\": \"application/json\" }",
+      "});",
+      "",
+      "agar res.ok {",
+      "\tdata = res.json();",
+      "\tdikha data;",
+      "}"
+    ],
+    "description": "Send asynchronous HTTP fetch request"
+  },
+  "Thread Spawn (dhaga)": {
+    "prefix": "thread_spawn",
+    "body": [
+      "t = dhaga.chala((${1:param}) => {",
+      "\t${0}",
+      "\tye_le \"done\";",
+      "}, ${2:arg});",
+      "",
+      "result = t.jod();"
+    ],
+    "description": "Spawn an OS hardware thread with dhaga.chala"
+  },
+  "Go-Style Channel (naali)": {
+    "prefix": "channel",
+    "body": [
+      "ch = dhaga.naali();",
+      "dhaga.chala(() => {",
+      "\tch.bhej(\"Message from thread\");",
+      "});",
+      "msg = ch.le();",
+      "dikha msg;"
+    ],
+    "description": "Thread-safe communication channel (naali)"
+  },
+  "Multi-Processing Map (kaamgar)": {
+    "prefix": "mp_map",
+    "body": [
+      "results = kaamgar.sab_pe((x) => x * x, ${1:dataList}, ${2:4});",
+      "dikha results;"
+    ],
+    "description": "Parallel CPU multi-processing map (kaamgar.sab_pe)"
+  },
+  "File Read / Write": {
+    "prefix": "file_ops",
+    "body": [
+      "content = file.padh(\"${1:./input.txt}\");",
+      "file.likh(\"${2:./output.txt}\", content + \"\\nUpdated\");"
+    ],
+    "description": "Read and write files with file / fs module"
+  },
+  "React Declarative Component": {
+    "prefix": "react_component",
+    "body": [
+      "biradari ${1:MyComponent} nepo Component {",
+      "\tjugaad shuru(props) {",
+      "\t\tse.shuru(props);",
+      "\t}",
+      "",
+      "\tjugaad render() {",
+      "\t\tpakad [count, setCount] = useState(0);",
+      "",
+      "\t\tye_le VStack({",
+      "\t\t\t\"class\": \"p-6 bg-slate-900 text-white rounded-xl shadow-lg\",",
+      "\t\t\t\"children\": [",
+      "\t\t\t\tText({ value: f\"Counter: {count}\", class: \"text-2xl font-bold\" }),",
+      "\t\t\t\tButton({ title: \"Increment\", onClick: () => setCount(count + 1) })",
+      "\t\t\t]",
+      "\t\t});",
+      "\t}",
+      "}"
+    ],
+    "description": "Declarative UI Component with hooks and Tailwind v4 engine"
+  },
+  "useState Hook": {
+    "prefix": "use_state",
+    "body": [
+      "pakad [${1:state}, set${1/(.*)/${1:/capitalize}/}] = useState(${2:initialValue});"
+    ],
+    "description": "React-style useState hook"
+  },
+  "Unit Test Suite": {
+    "prefix": "test_suite",
+    "body": [
+      "test.describe(\"${1:Feature}\", () => {",
+      "\ttest.it(\"${2:should succeed}\", () => {",
+      "\t\ttest.assert_eq(${3:actual}, ${4:expected});",
+      "\t});",
+      "});"
+    ],
+    "description": "Create a unit test suite with test module"
   }
 }

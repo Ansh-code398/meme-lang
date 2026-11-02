@@ -952,54 +952,189 @@ dikha helpers.formatText("namaste");
   },
   {
     id: 'stdlib',
-    title: 'Built-in Standard Library (hisab, waqt, json, file)',
+    title: 'Preinstalled Standard Library ("Batteries-Included")',
     badge: 'Standard Library',
-    description: 'Comprehensive built-in modules: `hisab` (Math), `waqt` (Time), `json` (Serialization), and `file` (File I/O).',
+    description: 'Comprehensive built-in modules preinstalled just like Python: `math`, `random`, `statistics`, `crypto`, `regex`, `datetime`, `itertools`, `collections`, `csv`, `test`, `json`, `file`, and `systumm`.',
     content: [
       {
         type: 'text',
-        text: `MEMElang includes built-in standard library modules directly available globally or via ` + '`bula`' + `:`
+        text: `MEMElang includes a zero-dependency standard library directly available in global scope or via ` + '`bula` / `import`' + `:`
       },
       {
         type: 'heading',
         level: 2,
-        text: '1. hisab (Math Module)'
+        text: '1. math / hisab (Comprehensive Mathematics)'
       },
       {
         type: 'table',
-        headers: ['Member', 'Description', 'Example'],
+        headers: ['Member', 'WhatsApp Alias', 'Description', 'Example'],
         rows: [
-          ['hisab.pi', 'Mathematical constant pi (3.14159...)', 'hisab.pi'],
-          ['hisab.e', 'Euler\'s constant e (2.71828...)', 'hisab.e'],
-          ['hisab.gol(x)', 'Rounds x to nearest integer', 'hisab.gol(3.7) -> 4'],
-          ['hisab.niche(x)', 'Floors x to integer', 'hisab.niche(3.9) -> 3'],
-          ['hisab.upar(x)', 'Ceils x to integer', 'hisab.upar(3.1) -> 4'],
-          ['hisab.jadd(x)', 'Square root of x', 'hisab.jadd(16) -> 4.0'],
-          ['hisab.taqat(b, exp)', 'Power base^exp', 'hisab.taqat(2, 3) -> 8.0'],
-          ['hisab.halka(a, b)', 'Minimum of a and b', 'hisab.halka(10, 20) -> 10'],
-          ['hisab.bhaari(a, b)', 'Maximum of a and b', 'hisab.bhaari(10, 20) -> 20'],
-          ['hisab.positive(x)', 'Absolute value |x|', 'hisab.positive(-42) -> 42'],
-          ['hisab.tukka()', 'Random float in [0.0, 1.0)', 'hisab.tukka()'],
-          ['hisab.tukka_num(min, max)', 'Random integer in [min, max]', 'hisab.tukka_num(1, 100)']
+          ['math.pi', 'hisab.pi', 'Mathematical constant pi (3.14159...)', 'math.pi'],
+          ['math.e', 'hisab.e', 'Euler\'s constant e (2.71828...)', 'math.e'],
+          ['math.tau', 'hisab.tau', 'Circle constant tau (6.28318...)', 'math.tau'],
+          ['math.sqrt(x)', 'hisab.jadd(x)', 'Square root of x', 'math.sqrt(49) -> 7.0'],
+          ['math.cbrt(x)', '-', 'Cube root of x', 'math.cbrt(27) -> 3.0'],
+          ['math.pow(b, exp)', 'hisab.taqat(b, exp)', 'Power base^exp', 'math.pow(2, 3) -> 8.0'],
+          ['math.log(x, base?)', 'hisab.ln(x)', 'Natural or custom base logarithm', 'math.log(100, 10) -> 2.0'],
+          ['math.sin(x) / cos / tan', '-', 'Trigonometric functions', 'math.sin(math.pi / 2) -> 1.0'],
+          ['math.hypot(x, y)', '-', 'Euclidean distance sqrt(x^2 + y^2)', 'math.hypot(3, 4) -> 5.0'],
+          ['math.gcd(a, b)', 'hisab.mahatam(a, b)', 'Greatest Common Divisor', 'math.gcd(48, 18) -> 6'],
+          ['math.lcm(a, b)', 'hisab.laghutam(a, b)', 'Least Common Multiple', 'math.lcm(4, 6) -> 12'],
+          ['math.factorial(n)', 'hisab.kramgunan(n)', 'Factorial n!', 'math.factorial(6) -> 720'],
+          ['math.comb(n, k)', '-', 'Combinations n choose k', 'math.comb(5, 2) -> 10'],
+          ['math.perm(n, k)', '-', 'Permutations nPk', 'math.perm(5, 2) -> 20'],
+          ['math.clamp(val, mn, mx)', '-', 'Clamps val into [mn, mx]', 'math.clamp(15, 0, 10) -> 10']
         ]
       },
       {
         type: 'heading',
         level: 2,
-        text: '2. waqt & so_ja (Time & Sleep)'
+        text: '2. random / tukka (Pseudo-Random Generation)'
       },
       {
-        type: 'code',
-        title: 'time_demo.meme',
-        code: `pakad t1 = waqt.ab(); // Unix timestamp in seconds
-so_ja(0.1);           // Sleep for 100ms
-pakad elapsed = waqt.ab() - t1;
-dikha "Elapsed time:", elapsed;`
+        type: 'table',
+        headers: ['Member', 'Description', 'Example'],
+        rows: [
+          ['random.seed(n)', 'Seeds pseudo-random number generator', 'random.seed(42)'],
+          ['random.random()', 'Random float in [0.0, 1.0)', 'random.random()'],
+          ['random.randint(min, max)', 'Random integer in [min, max] inclusive', 'random.randint(1, 100)'],
+          ['random.uniform(a, b)', 'Random float in [a, b]', 'random.uniform(1.5, 5.5)'],
+          ['random.choice(list)', 'Returns random element from sequence', 'random.choice(["chai", "samosa"])'],
+          ['random.shuffle(list)', 'Returns shuffled copy of list in-place', 'random.shuffle([1, 2, 3])'],
+          ['random.sample(list, k)', 'Random sample of k unique elements', 'random.sample(cards, 5)']
+        ]
       },
       {
         type: 'heading',
         level: 2,
-        text: '3. json (Serialization & Parsing)'
+        text: '3. statistics / stats / aankde (Descriptive Statistics)'
+      },
+      {
+        type: 'table',
+        headers: ['Member', 'Description', 'Example'],
+        rows: [
+          ['stats.mean(nums)', 'Arithmetic average of sequence', 'stats.mean([10, 20, 30]) -> 20.0'],
+          ['stats.median(nums)', 'Middle value in sequence', 'stats.median([1, 3, 2]) -> 2.0'],
+          ['stats.mode(nums)', 'Most frequently occurring item', 'stats.mode([1, 2, 2, 3]) -> 2'],
+          ['stats.variance(nums)', 'Sample variance of data', 'stats.variance([2, 4, 4, 4, 5])'],
+          ['stats.stdev(nums)', 'Standard deviation of data', 'stats.stdev([2, 4, 4, 4, 5])'],
+          ['stats.min(nums) / max(nums)', 'Extremum value in sequence', 'stats.min([5, 2, 9]) -> 2'],
+          ['stats.sum(nums)', 'Total sum of elements', 'stats.sum([1, 2, 3, 4]) -> 10']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '4. crypto / hashlib / gupt (Cryptography & Hashes)'
+      },
+      {
+        type: 'table',
+        headers: ['Member', 'Description', 'Example'],
+        rows: [
+          ['crypto.sha256(data)', 'Computes SHA-256 hex digest', 'crypto.sha256("password")'],
+          ['crypto.hmac_sha256(k, d)', 'Computes HMAC-SHA256 signature', 'crypto.hmac_sha256(secret, msg)'],
+          ['crypto.md5(data)', 'Computes MD5 128-bit checksum', 'crypto.md5("file_content")'],
+          ['crypto.sha1(data)', 'Computes SHA-1 160-bit checksum', 'crypto.sha1("data")'],
+          ['crypto.base64_encode(str)', 'Encodes text or bytes to Base64', 'crypto.base64_encode("hello")'],
+          ['crypto.base64_decode(b64)', 'Decodes Base64 to original string', 'crypto.base64_decode("aGVsbG8=")'] ,
+          ['crypto.uuid()', 'Generates random RFC 4122 v4 UUID string', 'crypto.uuid()']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '5. regex / re / dhundo (Regular Expressions)'
+      },
+      {
+        type: 'table',
+        headers: ['Member', 'Description', 'Example'],
+        rows: [
+          ['re.test(pat, str)', 'Returns true if pattern matches string anywhere', 're.test("^[0-9]+$", "123")'],
+          ['re.search(pat, str)', 'Finds first match with start, end, and groups', 're.search("([a-z]+)@", email)'],
+          ['re.match(pat, str)', 'Matches pattern starting from beginning of string', 're.match("[A-Z]+", "MEME")'],
+          ['re.find_all(pat, str)', 'Returns list of all regex match occurrences', 're.find_all("[0-9]+", text)'],
+          ['re.replace(pat, rep, str)', 'Replaces pattern matches with replacement string', 're.replace("chai", "coffee", s)'],
+          ['re.split(pat, str)', 'Splits string by regex delimiter', 're.split("[,; ]+", tags)']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '6. datetime / waqt / time & so_ja'
+      },
+      {
+        type: 'code',
+        title: 'datetime_demo.meme',
+        code: `pakad now = datetime.now();
+dikha "Current Year:", datetime.year();
+dikha "ISO String:", datetime.iso();
+dikha "Formatted Date:", datetime.format("%Y-%m-%d %H:%M:%S");
+
+// Sleep for 100 milliseconds
+so_ja(0.1);
+pakad elapsed = datetime.now() - now;
+dikha "Elapsed seconds:", elapsed;`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '7. itertools & collections (Iterators & Data Structures)'
+      },
+      {
+        type: 'code',
+        title: 'itertools_collections_demo.meme',
+        code: `// Itertools: range, zip, enumerate, chunk
+pakad r = range(0, 10, 2);             // [0, 2, 4, 6, 8]
+pakad zipped = zip([1, 2], ["A", "B"]); // [(1, "A"), (2, "B")]
+pakad pairs = enumerate(["Chai", "Coffee"]); // [(0, "Chai"), (1, "Coffee")]
+pakad chunks = itertools.chunk([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
+
+// Collections: Frequency Counter & Double-Ended Queue (deque)
+pakad counts = collections.Counter("banana");
+dikha "Letter 'a':", counts.a;         // 3
+
+pakad dq = collections.deque([1, 2]);
+dq.push_front(0);
+dq.push_back(3);
+dikha "Popped front:", dq.pop_front(); // 0
+dikha "Popped back:", dq.pop_back();   // 3`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '8. csv (Standalone Parsing & Generation)'
+      },
+      {
+        type: 'code',
+        title: 'csv_demo.meme',
+        code: `pakad rawCsv = "name,role,salary\\nRaju,Developer,75000\\nBaburao,Manager,90000";
+pakad records = csv.parse(rawCsv);
+dikha "First employee:", records[0].name; // "Raju"
+
+// Convert back to CSV string
+pakad csvOut = csv.stringify(records);
+dikha "Serialized CSV:\\n" + csvOut;`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '9. test & assert (Built-in Assertions)'
+      },
+      {
+        type: 'code',
+        title: 'test_demo.meme',
+        code: `assert(10 > 5, "Ten must be greater than five");
+assert_eq(2 + 2, 4);
+assert_ne("chai", "coffee");
+assert_throws(() => {
+    chillao "Error condition!";
+});
+dikha "All test assertions passed!";`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '10. json (Serialization & Parsing)'
       },
       {
         type: 'code',
@@ -1021,7 +1156,7 @@ dikha "Powers count:", parsed.powers.size();`
       {
         type: 'heading',
         level: 2,
-        text: '4. file (File System I/O)'
+        text: '11. file & fs (File System I/O)'
       },
       {
         type: 'code',
@@ -1038,7 +1173,7 @@ dekh file.hai_kya("data.txt") {
       {
         type: 'heading',
         level: 2,
-        text: '5. systumm (OS & Process Control)'
+        text: '12. systumm (OS & Process Control)'
       },
       {
         type: 'table',
@@ -1126,20 +1261,68 @@ dekh file.hai_kya("data.txt") {
       {
         type: 'heading',
         level: 2,
-        text: '10. dhaba (FastAPI / Express-Style Server)'
+        text: '10. dhaba / express / elysia (Fast Multi-threaded HTTP Server & Type Safety)'
+      },
+      {
+        type: 'text',
+        text: `MEMElang provides blazing fast native multi-threaded HTTP servers with full Express.js middleware parity and complete Elysia-style TypeBox schema validation:`
       },
       {
         type: 'table',
-        headers: ['Method', 'Description', 'Example'],
+        headers: ['Method / Property', 'Framework Parity', 'Description', 'Example'],
         rows: [
-          ['dhaba.get(route, handler)', 'Registers a GET endpoint handler (supports `:param` routes)', 'dhaba.get("/orders", (req) => { de {"ok": han} })'],
-          ['dhaba.post(route, handler)', 'Registers a POST endpoint handler with request body', 'dhaba.post("/order", (req) => { de req["body"] })'],
-          ['dhaba.put(route, handler)', 'Registers a PUT endpoint handler', 'dhaba.put("/order/:id", (req) => { ... })'],
-          ['dhaba.delete(route, handler)', 'Registers a DELETE endpoint handler', 'dhaba.delete("/order/:id", (req) => { ... })'],
-          ['dhaba.request(method, path, body?, headers?)', 'Dispatches request programmatically (in-memory or testing)', 'dhaba.request("GET", "/orders")'],
-          ['dhaba.chala(port, callback?)', 'Starts the HTTP server listener on given port', 'dhaba.chala(8080, () => dikha "Chalu!")'],
-          ['dhaba.saaf()', 'Clears all registered server routes', 'dhaba.saaf()']
+          ['express() / elysia()', 'Express / Elysia Factory', 'Creates a new isolated HTTP server application instance', 'app = express()'],
+          ['app.get / post / put / delete', 'Express Routing', 'Registers HTTP route handlers with `:param` and wildcard matching', 'app.get("/users/:id", (req, res) => ...)'],
+          ['app.use(mwOrRouter)', 'Express Middleware', 'Registers global/prefix middlewares or sub-routers with `(req, res, next)`', 'app.use("/api", router)'],
+          ['express.Router()', 'Express Sub-Router', 'Creates an isolated modular sub-router', 'api = express.Router()'],
+          ['express.json() / cors() / static()', 'Built-in Middlewares', 'Prebuilt middlewares for body parsing, CORS headers, and static files', 'app.use(express.cors())'],
+          ['t.Object / String / Integer', 'Elysia / TypeBox', 'Complete request & response schema definitions with automatic type coercion', 't.Object({ age: t.Integer() })'],
+          ['app.state(key, value)', 'Elysia State', 'Sets global server state accessible via `ctx.store`', 'app.state("visits", 0)'],
+          ['app.derive(fn)', 'Elysia Derivations', 'Enriches request context before route handlers run', 'app.derive(ctx => ({ role: "admin" }))'],
+          ['app.listen(port, cb?)', 'Multi-Threaded Server', 'Spawns high-throughput native TCP socket listener worker pool', 'app.listen(3000)'],
+          ['app.request(method, path)', 'In-Memory Dispatch', 'Dispatches request in microseconds without opening ports (for tests/WASM)', 'app.request("GET", "/ping")']
         ]
+      },
+      {
+        type: 'code',
+        title: 'express_elysia_demo.meme',
+        code: `pakad app = elysia();
+
+app.use(express.cors());
+app.state("counter", 0);
+
+// Elysia Type-Safe Route with TypeBox Schema
+app.post("/users/:id", {
+    params: t.Object({ "id": t.Integer() }),
+    query: t.Object({ "tag": t.Optional(t.String()) }),
+    body: t.Object({
+        "username": t.String({ "minLength": 3 }),
+        "age": t.Integer({ "min": 18 }),
+        "email": t.Optional(t.String({ "format": "email" }))
+    })
+}, (ctx) => {
+    ctx.store.counter = ctx.store.counter + 1;
+    // Guaranteed type-safe & coerced parameters
+    ye_le {
+        "success": han,
+        "id": ctx.params.id,              // Coerced integer
+        "user": ctx.body.username,
+        "age": ctx.body.age,              // Coerced integer
+        "total_requests": ctx.store.counter
+    };
+});
+
+// Express Sub-Router
+pakad v1 = express.Router();
+v1.get("/health", (req, res) => {
+    res.status(200).json({ "status": "healthy" });
+});
+app.use("/api/v1", v1);
+
+// Start live server
+app.listen(3000, () => {
+    dikha "🚀 Server running on http://localhost:3000";
+});`
       },
       {
         type: 'heading',
@@ -1987,6 +2170,60 @@ test("Immutability on note append", () => {
         commands: [
           'meme test tests/',
           '✔ Tests passed: 2 | Failed: 0 (100% green)'
+        ]
+      }
+    ]
+  },
+  {
+    id: 'vscode-extension',
+    title: 'VS Code Extension & IntelliSense Tooling',
+    badge: 'IDE & Developer Experience',
+    description: 'First-class Visual Studio Code support with context-aware autocomplete, syntax highlighting, hover documentation, parameter signatures, and snippets.',
+    content: [
+      {
+        type: 'text',
+        text: `MEMElang includes an official Visual Studio Code extension located at ` + '`tools/vscode-memelang`' + `. It provides instant syntax suggestions, context-aware completions, parameter signature help, hover documentation, and productivity snippets for all language features.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. Intelligent Context-Aware Suggestions'
+      },
+      {
+        type: 'list',
+        items: [
+          '**Server Autocomplete (`app.` / `router.`)**: Type `app.` to see all Express and Elysia methods (`get`, `post`, `put`, `delete`, `use`, `listen`, `state`, `derive`, `decorate`, `onRequest`).',
+          '**TypeBox Schema Builder (`t.` / `schema.`)**: Type `t.` to autocomplete TypeBox validation rules (`String`, `Integer`, `Number`, `Boolean`, `Object`, `Array`, `Optional`, `Union`, `Literal`, `Record`, `Any`).',
+          '**Request, Response & Context (`req.` / `res.` / `ctx.`)**: Autocomplete `req.params`, `req.query`, `req.body`, `res.status().json()`, `res.sendFile()`, `ctx.body`, `ctx.store`, and `ctx.set`.',
+          '**Preinstalled Modules (`math.`, `crypto.`, `random.`, `file.`, `rasta.`, `dhaga.`, `kaamgar.`, `Vaada.`)**: Type `.` after any standard library identifier to get tailored method suggestions.',
+          '**Type Annotations (`: `)**: Typing `:` after variables offers instant suggestions for all 15 primitive and composite types (`ank`, `int32`, `byte`, `point`, `float32`, `char`, `bol`, `bytes`, `sach`, `soochi`, `khata`, `set`, `tuple`, `har_kism`).',
+          '**Tantrik Magic Methods (`__`)**: Typing `__` suggests all dunder operator overloading methods (`__jod__`, `__ghata__`, `__barabar__`, `__chota__`, `__la__`, `__daal__`, `__dikha__`, etc.).'
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. Hover Documentation & Signature Help'
+      },
+      {
+        type: 'text',
+        text: `Hovering over any keyword, standard library function, or framework method displays interactive Markdown documentation with signatures and code examples. Typing ` + '`(`' + ` inside functions like ` + '`fetch()`' + `, ` + '`app.get()`' + `, or ` + '`useState()`' + ` displays active parameter signature help.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '3. Installation'
+      },
+      {
+        type: 'terminal',
+        commands: [
+          '# 1. Symlink directly into your VS Code extensions folder (Instant live sync)',
+          'ln -s "$(pwd)/tools/vscode-memelang" ~/.vscode/extensions/memelang',
+          '',
+          '# 2. Or package and install the official .vsix bundle',
+          'cd tools/vscode-memelang',
+          'npx @vscode/vsce package',
+          'code --install-extension memelang-2.0.0.vsix'
         ]
       }
     ]
