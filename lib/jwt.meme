@@ -1,0 +1,154 @@
+// 🔐 JWT (JSON Web Token) - Pure MEMElang Authentication Library
+// Written 100% in MEMElang (.meme)
+
+bula "crypto" jaise crypto;
+bula "json" jaise json;
+bula "samay" jaise samay;
+
+// Helper: base64url encode (replace '+' with '-', '/' with '_', strip '=')
+jugaad base64url_encode(str) {
+    pakad b64 = crypto.base64_encode(str);
+    pakad clean = "";
+    pakad i = 0;
+    jabtak i < b64.size {
+        pakad ch = b64[i];
+        dekh ch == "+" {
+            clean = clean + "-";
+        } warna {
+            dekh ch == "/" {
+                clean = clean + "_";
+            } warna {
+                dekh ch != "=" {
+                    clean = clean + ch;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    ye_le clean;
+}
+
+// Helper: base64url decode
+jugaad base64url_decode(str) {
+    pakad pad = str;
+    pakad rem = pad.size % 4;
+    dekh rem == 2 {
+        pad = pad + "==";
+    } warna {
+        dekh rem == 3 {
+            pad = pad + "=";
+        }
+    }
+    pakad standard = "";
+    pakad i = 0;
+    jabtak i < pad.size {
+        pakad ch = pad[i];
+        dekh ch == "-" {
+            standard = standard + "+";
+        } warna {
+            dekh ch == "_" {
+                standard = standard + "/";
+            } warna {
+                standard = standard + ch;
+            }
+        }
+        i = i + 1;
+    }
+    ye_le crypto.base64_decode(standard);
+}
+
+// Sign payload and return a compact JWT token string: header.payload.signature
+jugaad sign(payload, secret, expiresInSeconds = 3600) {
+    pakad nowSec = bina_point(samay.ab() / 1000);
+    pakad fullPayload = nakal(payload);
+    fullPayload["iat"] = nowSec;
+    fullPayload["exp"] = nowSec + expiresInSeconds;
+
+    pakad header = { "alg": "HS256", "typ": "JWT" };
+    pakad headerB64 = base64url_encode(json.likh(header));
+    pakad payloadB64 = base64url_encode(json.likh(fullPayload));
+
+    pakad signingInput = headerB64 + "." + payloadB64;
+    pakad signature = base64url_encode(crypto.hmac_sha256(secret, signingInput));
+
+    ye_le signingInput + "." + signature;
+}
+
+// Verify JWT token and return payload if valid, or throw error if invalid/expired
+jugaad verify(token, secret) {
+    pakad parts = [];
+    pakad cur = "";
+    pakad i = 0;
+    jabtak i < token.size {
+        pakad ch = token[i];
+        dekh ch == "." {
+            parts.jodo(cur);
+            cur = "";
+        } warna {
+            cur = cur + ch;
+        }
+        i = i + 1;
+    }
+    parts.jodo(cur);
+
+    dekh parts.size != 3 {
+        chillao Galti("Invalid JWT format: Token must have 3 segments", "AuthLafda");
+    }
+
+    pakad headerB64 = parts[0];
+    pakad payloadB64 = parts[1];
+    pakad signature = parts[2];
+
+    pakad signingInput = headerB64 + "." + payloadB64;
+    pakad expectedSig = base64url_encode(crypto.hmac_sha256(secret, signingInput));
+
+    dekh signature != expectedSig {
+        chillao Galti("Invalid signature: JWT signature verification failed", "AuthLafda");
+    }
+
+    pakad payloadJson = base64url_decode(payloadB64);
+    pakad payload = json.samajh(payloadJson);
+
+    // Check expiration
+    dekh payload.has("exp") {
+        pakad nowSec = bina_point(samay.ab() / 1000);
+        dekh nowSec > payload["exp"] {
+            chillao Galti("Token expired: JWT validity period has elapsed", "AuthLafda");
+        }
+    }
+
+    ye_le payload;
+}
+
+// Decode token payload without signature verification
+jugaad decode(token) {
+    pakad parts = [];
+    pakad cur = "";
+    pakad i = 0;
+    jabtak i < token.size {
+        pakad ch = token[i];
+        dekh ch == "." {
+            parts.jodo(cur);
+            cur = "";
+        } warna {
+            cur = cur + ch;
+        }
+        i = i + 1;
+    }
+    parts.jodo(cur);
+
+    dekh parts.size < 2 {
+        chillao Galti("Cannot decode invalid JWT token", "AuthLafda");
+    }
+
+    pakad payloadJson = base64url_decode(parts[1]);
+    ye_le json.samajh(payloadJson);
+}
+
+ye_le {
+    "sign": sign,
+    "verify": verify,
+    "decode": decode,
+    "base64url_encode": base64url_encode,
+    "base64url_decode": base64url_decode
+};

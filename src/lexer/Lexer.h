@@ -502,14 +502,21 @@ public:
                         case '\\':
                             value += '\\';
                             break;
+                        case 'e':
+                        case 'E':
+                            value += '\x1b';
+                            break;
                         case 'x':
                         case 'X':
                         {
-                            if (!isAtEnd() && std::isxdigit(peek()) && peekNext() != quote && std::isxdigit(peekNext()))
+                            if (!isAtEnd() && std::isxdigit(static_cast<unsigned char>(peek())))
                             {
                                 char h1 = advance();
-                                char h2 = advance();
-                                std::string hexStr = {h1, h2};
+                                std::string hexStr = {h1};
+                                if (!isAtEnd() && std::isxdigit(static_cast<unsigned char>(peek())))
+                                {
+                                    hexStr += advance();
+                                }
                                 char byteVal = static_cast<char>(std::stoi(hexStr, nullptr, 16));
                                 value += byteVal;
                             }
@@ -718,6 +725,40 @@ public:
                         case 't':
                             value += '\t';
                             break;
+
+                        case 'r':
+                            value += '\r';
+                            break;
+
+                        case '0':
+                            value += '\0';
+                            break;
+
+                        case 'e':
+                        case 'E':
+                            value += '\x1b';
+                            break;
+
+                        case 'x':
+                        case 'X':
+                        {
+                            if (!isAtEnd() && std::isxdigit(static_cast<unsigned char>(peek())))
+                            {
+                                char h1 = advance();
+                                std::string hexStr = {h1};
+                                if (!isAtEnd() && std::isxdigit(static_cast<unsigned char>(peek())))
+                                {
+                                    hexStr += advance();
+                                }
+                                char byteVal = static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                                value += byteVal;
+                            }
+                            else
+                            {
+                                value += escaped;
+                            }
+                            break;
+                        }
 
                         case '"':
                             value += '"';

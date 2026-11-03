@@ -1,0 +1,22 @@
+// Benchmark 4: Numerical Iterative Computation in MEMElang
+bula "samay" jaise samay;
+
+jugaad bench_math_loop(n) {
+    pakad a = 0;
+    pakad b = 1;
+    pakad i = 0;
+    pakad MOD = 1000000007;
+    jabtak i < n {
+        pakad c = (a + b) % MOD;
+        a = b;
+        b = c;
+        i = i + 1;
+    }
+    ye_le a;
+}
+
+pakad start = samay.ab();
+pakad res = bench_math_loop(200000);
+pakad elapsed = (samay.ab() - start) * 1000.0;
+
+dikha f"MEMElang | Steps: 200000 | Result: {res} | Time: {point_wala(elapsed)}ms";

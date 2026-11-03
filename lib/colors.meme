@@ -1,0 +1,32 @@
+// 🎨 Colors - ANSI Terminal Styling in Pure MEMElang
+// Written 100% in MEMElang (.meme)
+
+pakad ESC = "\e[";
+pakad RESET = "\e[0m";
+
+jugaad red(text) { ye_le ESC + "31m" + string(text) + RESET; }
+jugaad green(text) { ye_le ESC + "32m" + string(text) + RESET; }
+jugaad yellow(text) { ye_le ESC + "33m" + string(text) + RESET; }
+jugaad blue(text) { ye_le ESC + "34m" + string(text) + RESET; }
+jugaad magenta(text) { ye_le ESC + "35m" + string(text) + RESET; }
+jugaad cyan(text) { ye_le ESC + "36m" + string(text) + RESET; }
+jugaad white(text) { ye_le ESC + "37m" + string(text) + RESET; }
+jugaad bold(text) { ye_le ESC + "1m" + string(text) + RESET; }
+jugaad underline(text) { ye_le ESC + "4m" + string(text) + RESET; }
+
+jugaad badge(label, text, colorFn = cyan) {
+    ye_le bold(colorFn("[" + label + "]")) + " " + string(text);
+}
+
+ye_le {
+    "red": red,
+    "green": green,
+    "yellow": yellow,
+    "blue": blue,
+    "magenta": magenta,
+    "cyan": cyan,
+    "white": white,
+    "bold": bold,
+    "underline": underline,
+    "badge": badge
+};

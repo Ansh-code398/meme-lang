@@ -1,0 +1,32 @@
+// Benchmark 2: CSV Processing & Financial Calculations in MEMElang
+bula "file" jaise fs;
+bula "samay" jaise samay;
+
+pakad start = samay.ab();
+
+pakad rows = fs.padh_csv("benchmarks/data/sales_records.csv");
+
+pakad highValueOrders = 0;
+pakad totalNetRevenue = 0.0;
+pakad regionalRevenue = {};
+
+ghoom r mein rows {
+    pakad units = point_wala(r.units_sold);
+    pakad price = point_wala(r.unit_price);
+    pakad disc = point_wala(r.discount);
+    pakad net = units * price * (1.0 - disc);
+
+    totalNetRevenue = totalNetRevenue + net;
+
+    dekh net > 500.0 {
+        highValueOrders = highValueOrders + 1;
+        pakad reg = r.region;
+        dekh !regionalRevenue.has(reg) {
+            regionalRevenue[reg] = 0.0;
+        }
+        regionalRevenue[reg] = regionalRevenue[reg] + net;
+    }
+}
+
+pakad elapsed = (samay.ab() - start) * 1000.0;
+dikha f"MEMElang | Rows: {rows.size} | HighValue: {highValueOrders} | NetRev: {bina_point(totalNetRevenue)} | Regions: {regionalRevenue.keys().size} | Time: {point_wala(elapsed)}ms";

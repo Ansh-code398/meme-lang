@@ -1,0 +1,32 @@
+// Benchmark 1: JSON Data Processing & Aggregation in MEMElang
+bula "file" jaise fs;
+bula "json" jaise json;
+bula "samay" jaise samay;
+
+pakad start = samay.ab();
+
+pakad raw = fs.padh("benchmarks/data/transactions.json");
+pakad txns = json.samajh(raw);
+
+pakad completedCount = 0;
+pakad totalRevenue = 0.0;
+pakad categoryTotals = {};
+pakad categoryCounts = {};
+
+ghoom t mein txns {
+    dekh t.status == "completed" {
+        completedCount = completedCount + 1;
+        pakad amt = point_wala(t.amount);
+        totalRevenue = totalRevenue + amt;
+        pakad cat = t.category;
+        dekh !categoryTotals.has(cat) {
+            categoryTotals[cat] = 0.0;
+            categoryCounts[cat] = 0;
+        }
+        categoryTotals[cat] = categoryTotals[cat] + amt;
+        categoryCounts[cat] = categoryCounts[cat] + 1;
+    }
+}
+
+pakad elapsed = (samay.ab() - start) * 1000.0;
+dikha f"MEMElang | Completed: {completedCount} | Revenue: {bina_point(totalRevenue)} | Categories: {categoryTotals.keys().size} | Time: {point_wala(elapsed)}ms";

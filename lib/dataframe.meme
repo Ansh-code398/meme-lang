@@ -1,0 +1,176 @@
+// 📊 DataFrame - High-Performance Pure MEMElang Data Analytics Library
+// Written 100% in MEMElang (.meme)
+
+biradari DataFrame {
+    jugaad shuru(data = []) {
+        khud.rows = data;
+    }
+
+    jugaad count() {
+        ye_le khud.rows.size;
+    }
+
+    jugaad columns() {
+        dekh khud.rows.size == 0 {
+            ye_le [];
+        }
+        ye_le khud.rows[0].keys();
+    }
+
+    jugaad head(n = 5) {
+        pakad result = [];
+        pakad limit = n;
+        dekh limit > khud.rows.size {
+            limit = khud.rows.size;
+        }
+        pakad i = 0;
+        jabtak i < limit {
+            result.jodo(khud.rows[i]);
+            i = i + 1;
+        }
+        ye_le DataFrame(result);
+    }
+
+    jugaad select(colList) {
+        pakad newRows = khud.rows.sab_pe((row) => {
+            pakad selected = {};
+            ghoom c mein colList {
+                dekh row.has(c) {
+                    selected[c] = row[c];
+                }
+            }
+            ye_le selected;
+        });
+        ye_le DataFrame(newRows);
+    }
+
+    jugaad where(predicate) {
+        pakad filtered = khud.rows.chhaan(predicate);
+        ye_le DataFrame(filtered);
+    }
+
+    jugaad filter(predicate) {
+        ye_le khud.where(predicate);
+    }
+
+    jugaad sortBy(col, ascending = han) {
+        pakad copiedRows = nakal(khud.rows);
+        copiedRows.line_mein((a, b) => {
+            pakad va = a[col];
+            pakad vb = b[col];
+            dekh ascending {
+                dekh va < vb { ye_le -1; }
+                dekh va > vb { ye_le 1; }
+                ye_le 0;
+            } warna {
+                dekh va < vb { ye_le 1; }
+                dekh va > vb { ye_le -1; }
+                ye_le 0;
+            }
+        });
+        ye_le DataFrame(copiedRows);
+    }
+
+    jugaad sum(col) {
+        pakad total = 0.0;
+        ghoom r mein khud.rows {
+            dekh r.has(col) {
+                total = total + point_wala(r[col]);
+            }
+        }
+        ye_le total;
+    }
+
+    jugaad mean(col) {
+        dekh khud.rows.size == 0 {
+            ye_le 0.0;
+        }
+        ye_le khud.sum(col) / point_wala(khud.rows.size);
+    }
+
+    jugaad min(col) {
+        dekh khud.rows.size == 0 {
+            ye_le 0.0;
+        }
+        pakad m = point_wala(khud.rows[0][col]);
+        ghoom r mein khud.rows {
+            pakad v = point_wala(r[col]);
+            dekh v < m {
+                m = v;
+            }
+        }
+        ye_le m;
+    }
+
+    jugaad max(col) {
+        dekh khud.rows.size == 0 {
+            ye_le 0.0;
+        }
+        pakad m = point_wala(khud.rows[0][col]);
+        ghoom r mein khud.rows {
+            pakad v = point_wala(r[col]);
+            dekh v > m {
+                m = v;
+            }
+        }
+        ye_le m;
+    }
+
+    jugaad groupBy(col) {
+        pakad groups = {};
+        ghoom r mein khud.rows {
+            pakad key = string(r[col]);
+            dekh !groups.has(key) {
+                groups[key] = [];
+            }
+            groups[key].jodo(r);
+        }
+        pakad dfGroups = {};
+        ghoom k mein groups.keys() {
+            dfGroups[k] = DataFrame(groups[k]);
+        }
+        ye_le dfGroups;
+    }
+
+    jugaad to_csv() {
+        pakad cols = khud.columns();
+        pakad header = cols.nichod((acc, c) => acc + (acc.size > 0 ? "," : "") + c, "");
+        pakad lines = [header];
+        ghoom r mein khud.rows {
+            pakad line = cols.sab_pe((c) => string(r[c])).nichod((acc, val) => acc + (acc.size > 0 ? "," : "") + val, "");
+            lines.jodo(line);
+        }
+        ye_le lines.nichod((acc, l) => acc + (acc.size > 0 ? "\n" : "") + l, "");
+    }
+
+    // Tantrik Length Operator
+    jugaad __size__() {
+        ye_le khud.rows.size;
+    }
+
+    // Tantrik Indexing Operator
+    jugaad __la__(idx) {
+        ye_le khud.rows[idx];
+    }
+
+    // Tantrik String Representation
+    jugaad __dikha__() {
+        ye_le f"DataFrame(rows={khud.rows.size}, cols={khud.columns().size})";
+    }
+}
+
+jugaad from_csv_file(path) {
+    bula "file" jaise fs;
+    pakad rows = fs.padh_csv(path);
+    ye_le DataFrame(rows);
+}
+
+jugaad from_records(records) {
+    ye_le DataFrame(records);
+}
+
+ye_le {
+    "DataFrame": DataFrame,
+    "from_csv_file": from_csv_file,
+    "from_records": from_records
+};

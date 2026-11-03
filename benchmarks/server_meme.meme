@@ -1,0 +1,15 @@
+pakad app = express();
+
+app.get("/api/user", (req, res) => {
+    res.status(200).json({
+        "status": "ok",
+        "user": "Raju",
+        "role": "admin",
+        "active": han,
+        "balance": 1500.50
+    });
+});
+
+app.listen(19876, () => {
+    dikha "MEMElang HTTP server listening on http://localhost:19876";
+});

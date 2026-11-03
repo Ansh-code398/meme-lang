@@ -1,0 +1,25 @@
+// Benchmark 5: Pure MEMElang Library Performance (lib/dataframe.meme)
+bula "lib/dataframe" jaise { DataFrame, from_records };
+bula "file" jaise fs;
+bula "json" jaise json;
+bula "samay" jaise samay;
+
+pakad start = samay.ab();
+
+// 1. Read real dataset
+pakad raw = fs.padh("benchmarks/data/transactions.json");
+pakad data = json.samajh(raw);
+
+// 2. Instantiate pure MEMElang DataFrame
+pakad df = DataFrame(data);
+
+// 3. Functional operations using DataFrame library in pure .meme
+pakad completedDf = df.where(r => r.status == "completed");
+pakad totalRev = completedDf.sum("amount");
+pakad avgRev = completedDf.mean("amount");
+pakad maxRev = completedDf.max("amount");
+pakad minRev = completedDf.min("amount");
+pakad groups = completedDf.groupBy("category");
+
+pakad elapsed = (samay.ab() - start) * 1000.0;
+dikha f"DataFrame (Pure MEMElang) | Total: {df.count()} | Completed: {completedDf.count()} | Sum: {bina_point(totalRev)} | Mean: {avgRev} | Categories: {groups.keys().size} | Time: {point_wala(elapsed)}ms";

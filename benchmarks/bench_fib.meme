@@ -1,0 +1,15 @@
+// Benchmark 4: Recursive Function Call & Tree Computation in MEMElang
+bula "samay" jaise samay;
+
+jugaad fib(n) {
+    dekh n <= 1 {
+        ye_le n;
+    }
+    ye_le fib(n - 1) + fib(n - 2);
+}
+
+pakad start = samay.ab();
+pakad result = fib(32);
+pakad elapsed = (samay.ab() - start) * 1000.0;
+
+dikha f"MEMElang | fib(32) = {result} | Time: {point_wala(elapsed)}ms";

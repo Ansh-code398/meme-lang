@@ -8052,6 +8052,22 @@ static Value getListMethod(const std::shared_ptr<MemeList> &list, const std::str
             return Value(list->elements.empty());
         }));
     }
+    if (name == "jodo" || name == "push" || name == "append" || name == "daal")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [list](Interpreter &, const std::vector<Value> &args) {
+            list->elements.push_back(args[0]);
+            return Value(list);
+        }));
+    }
+    if (name == "hatao" || name == "pop" || name == "nikal")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [list](Interpreter &, const std::vector<Value> &) {
+            if (list->elements.empty()) return Value(std::monostate{});
+            Value last = list->elements.back();
+            list->elements.pop_back();
+            return last;
+        }));
+    }
 
     throw std::runtime_error("Khopdi tod saale ka! 'list' ke paas '" + name + "' naam ka koi method nahi hai!");
 }
@@ -9243,9 +9259,11 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("waqt", waqtMod);
     globals->define("datetime", waqtMod);
     globals->define("time", waqtMod);
+    globals->define("samay", waqtMod);
     importedModules["waqt"] = waqtMod;
     importedModules["datetime"] = waqtMod;
     importedModules["time"] = waqtMod;
+    importedModules["samay"] = waqtMod;
 
     auto randomMod = Value(createRandomModule());
     globals->define("random", randomMod);
@@ -10392,6 +10410,44 @@ Value Interpreter::importModule(const std::string &path, int line)
         else if (std::filesystem::exists(envPkgPath / "index.meme"))
         {
             canonicalPath = envPkgPath / "index.meme";
+        }
+    }
+
+    // Check lib/<path> or lib/<path>.meme or lib/<path>/index.meme
+    if (!std::filesystem::exists(canonicalPath))
+    {
+        std::filesystem::path libPath = (path.rfind("lib/", 0) == 0)
+            ? std::filesystem::path(path)
+            : (std::filesystem::path("lib") / path);
+        if (std::filesystem::exists(libPath))
+        {
+            canonicalPath = libPath;
+        }
+        else if (std::filesystem::exists(libPath.string() + ".meme"))
+        {
+            canonicalPath = libPath.string() + ".meme";
+        }
+        else if (std::filesystem::exists(libPath / "index.meme"))
+        {
+            canonicalPath = libPath / "index.meme";
+        }
+    }
+
+    // Check directly from working directory
+    if (!std::filesystem::exists(canonicalPath))
+    {
+        std::filesystem::path cwdPath(path);
+        if (std::filesystem::exists(cwdPath))
+        {
+            canonicalPath = cwdPath;
+        }
+        else if (std::filesystem::exists(cwdPath.string() + ".meme"))
+        {
+            canonicalPath = cwdPath.string() + ".meme";
+        }
+        else if (std::filesystem::exists(cwdPath / "index.meme"))
+        {
+            canonicalPath = cwdPath / "index.meme";
         }
     }
 

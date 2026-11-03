@@ -1,0 +1,31 @@
+// Benchmark 3: Cryptographic Hashing & Token Signing in MEMElang
+bula "file" jaise fs;
+bula "json" jaise json;
+bula "crypto" jaise crypto;
+bula "samay" jaise samay;
+
+pakad start = samay.ab();
+
+pakad raw = fs.padh("benchmarks/data/auth_payloads.json");
+pakad payloads = json.samajh(raw);
+
+pakad secret = "super_secret_jwt_hmac_signing_key_2026";
+pakad verifiedCount = 0;
+pakad lastSignature = "";
+
+ghoom p mein payloads {
+    pakad jsonStr = json.likh(p);
+    pakad sha = crypto.sha256(jsonStr);
+    pakad b64 = crypto.base64_encode(sha);
+    pakad sig = crypto.hmac_sha256(secret, b64);
+
+    // Verify HMAC signature
+    pakad expected = crypto.hmac_sha256(secret, b64);
+    dekh sig == expected {
+        verifiedCount = verifiedCount + 1;
+    }
+    lastSignature = sig;
+}
+
+pakad elapsed = (samay.ab() - start) * 1000.0;
+dikha f"MEMElang | Tokens: {payloads.size} | Verified: {verifiedCount} | HashLen: {lastSignature.size} | Time: {point_wala(elapsed)}ms";

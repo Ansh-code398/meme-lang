@@ -434,6 +434,47 @@ code --install-extension tools/vscode-memelang/memelang-2.0.0.vsix
 
 ---
 
+## 📦 Pure MEMElang Standard Libraries (`lib/`)
+
+In addition to core C++ native primitives, MEMElang includes standard libraries written **100% in pure MEMElang (`.meme`)**:
+
+* **`dataframe` (`lib/dataframe.meme`)**: High-performance tabular data manipulation engine (`DataFrame` class) with `.select()`, `.where()`, `.groupBy()`, `.sortBy()`, `.mean()`, `.sum()`, `.min()`, `.max()`, Tantrik `__size__` and bracket indexing (`__la__`).
+* **`jwt` (`lib/jwt.meme`)**: RFC 7519 JSON Web Token authentication library with Base64URL encoding, HMAC-SHA256 signature generation (`jwt.sign`), and cryptographic token verification with timestamp expiry (`jwt.verify`).
+* **`colors` (`lib/colors.meme`)**: ANSI terminal styling and status badge formatting (Chalk-equivalent).
+
+```meme
+bula "lib/dataframe" jaise { DataFrame, from_records };
+bula "lib/jwt" jaise jwt;
+bula "lib/colors" jaise colors;
+
+// Tabular Analytics in pure MEMElang
+pakad sales = from_records([{"item": "Chai", "price": 20}, {"item": "Samosa", "price": 15}]);
+dikha colors.green(f"Total Revenue: {sales.sum('price')}");
+
+// JWT Authentication in pure MEMElang
+pakad token = jwt.sign({"userId": 42, "role": "admin"}, "secret_key_123", 3600);
+pakad user = jwt.verify(token, "secret_key_123");
+dikha colors.cyan(f"Verified: {user.userId}");
+```
+
+---
+
+## ⚡ Performance Benchmarks (Real-World Data)
+
+Benchmarked on Apple Silicon macOS with real-world datasets across **MEMElang**, **Python 3.14**, **Node.js v26**, and **Bun v1.4**:
+
+| Benchmark Task | MEMElang | Python 3.14 | Node.js v26 | Bun v1.4 |
+| :--- | :--- | :--- | :--- | :--- |
+| **JSON Analytics** (50,000 txns, 6.1 MB) | **408.7 ms** | 52.7 ms | 38.4 ms | 18.6 ms |
+| **CSV Processing** (100,000 rows, 4.3 MB) | **1,259.6 ms** | 96.5 ms | 54.5 ms | 26.4 ms |
+| **Crypto & Token Signing** (10,000 SHA-256 + HMAC) | **151.3 ms** | 49.0 ms | 54.1 ms | 25.2 ms |
+| **Live HTTP Server** (1,000 Real Requests) | **5,453.8 req/s** | 6,853.6 req/s | 6,622.7 req/s | 7,901.4 req/s |
+| **Baseline RAM Footprint** (Idle RSS) | **7.7 MB** 🏆 | 13.9 MB | 47.3 MB | 10.2 MB |
+
+> *Run benchmarks locally:* `python3 benchmarks/run_benchmarks.py` and `python3 benchmarks/bench_http.py`
+
+---
+
 ## 🧪 Testing
 
 MEMElang comes with an exhaustive test harness covering all 25 compiler, runtime, and ecosystem subsystems:
