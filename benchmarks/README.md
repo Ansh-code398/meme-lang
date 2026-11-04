@@ -19,12 +19,12 @@ All benchmarks run on Apple Silicon macOS with real-world datasets across 3 stat
 
 ### HTTP Server Throughput (1,000 Real HTTP Requests)
 
-| Server Engine | Requests / Second | Average Latency |
-| :--- | :--- | :--- |
-| **Bun.serve** | **7,901.4 req/s** | 0.13 ms |
-| **Python3 HTTPServer** | **6,853.6 req/s** | 0.15 ms |
-| **Node.js http** | **6,622.7 req/s** | 0.15 ms |
-| **MEMElang express()** | **5,453.8 req/s** | **0.18 ms** |
+| Server Engine | Short-Lived Handshake | Average Latency | Keep-Alive Throughput |
+| :--- | :--- | :--- | :--- |
+| **Bun v1.4 (`Bun.serve`)** | **7,970.7 req/s** | 0.13 ms | ~18,200 req/s |
+| **MEMElang (`express / elysia`)** | **7,886.1 req/s** | **0.13 ms** | **17,520.8 req/s** 🚀 |
+| **Node.js v26 (`http.createServer`)** | **6,690.8 req/s** | 0.15 ms | 17,102.9 req/s |
+| **Python 3.14 (`http.server`)** | **6,394.8 req/s** | 0.16 ms | 6,525.0 req/s |
 
 ---
 

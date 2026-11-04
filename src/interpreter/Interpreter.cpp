@@ -5603,6 +5603,11 @@ struct HttpMiddleware {
     std::shared_ptr<HttpServerState> routerState = nullptr;
 };
 
+struct ClientConnection {
+    int cfd = -1;
+    sockaddr_in csin{};
+};
+
 class HttpServerState : public std::enable_shared_from_this<HttpServerState> {
 public:
     std::vector<HttpRoute> routes;
@@ -5621,6 +5626,10 @@ public:
     std::atomic<bool> isRunning{false};
     int serverFd = -1;
     std::thread acceptThread;
+    std::vector<std::thread> workerThreads;
+    std::queue<ClientConnection> clientQueue;
+    std::mutex queueMutex;
+    std::condition_variable queueCv;
     std::shared_ptr<Environment> globalsPtr;
 
     HttpServerState() {
@@ -5633,12 +5642,26 @@ public:
     }
 
     void stop() {
+        if (!isRunning) return;
         isRunning = false;
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
         if (serverFd >= 0) {
-            close(serverFd);
+            ::shutdown(serverFd, SHUT_RDWR);
+            ::close(serverFd);
             serverFd = -1;
         }
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            while (!clientQueue.empty()) {
+                ::close(clientQueue.front().cfd);
+                clientQueue.pop();
+            }
+        }
+        queueCv.notify_all();
+        for (auto &t : workerThreads) {
+            if (t.joinable()) t.join();
+        }
+        workerThreads.clear();
         if (acceptThread.joinable()) {
             acceptThread.join();
         }
@@ -6136,7 +6159,7 @@ public:
     }
 };
 
-static std::string formatHttpResponse(const Value &resVal)
+static std::string formatHttpResponse(const Value &resVal, bool keepAlive = false)
 {
     int status = 200;
     std::string statusText = "OK";
@@ -6194,17 +6217,22 @@ static std::string formatHttpResponse(const Value &resVal)
         headers["Content-Type"] = (!body.empty() && body[0] == '<') ? "text/html; charset=utf-8" : "text/plain; charset=utf-8";
     }
     headers["Content-Length"] = std::to_string(body.size());
-    headers["Connection"] = "close";
-    headers["Server"] = "MEMElang-Dhaba/2.0";
-
-    std::ostringstream ss;
-    ss << "HTTP/1.1 " << status << " " << statusText << "\r\n";
-    for (const auto &[k, v] : headers) {
-        ss << k << ": " << v << "\r\n";
+    if (headers.find("Connection") == headers.end() && headers.find("connection") == headers.end()) {
+        headers["Connection"] = keepAlive ? "keep-alive" : "close";
     }
-    ss << "\r\n";
-    ss << body;
-    return ss.str();
+    if (headers.find("Server") == headers.end() && headers.find("server") == headers.end()) {
+        headers["Server"] = "MEMElang-Dhaba/2.0";
+    }
+
+    std::string out;
+    out.reserve(256 + body.size());
+    out.append("HTTP/1.1 ").append(std::to_string(status)).append(" ").append(statusText).append("\r\n");
+    for (const auto &[k, v] : headers) {
+        out.append(k).append(": ").append(v).append("\r\n");
+    }
+    out.append("\r\n");
+    out.append(body);
+    return out;
 }
 
 static std::shared_ptr<MemeMap> createHttpServerMap(const std::shared_ptr<HttpServerState> &server, Interpreter &interpreter)
@@ -6358,11 +6386,177 @@ static std::shared_ptr<MemeMap> createHttpServerMap(const std::shared_ptr<HttpSe
         socklen_t slen = sizeof(sin);
         getsockname(sfd, (sockaddr*)&sin, &slen);
         server->port = ntohs(sin.sin_port);
-        ::listen(sfd, 512);
+        ::listen(sfd, 1024);
         server->serverFd = sfd;
         server->isRunning = true;
 
         auto sRef = server;
+
+        size_t hw = std::thread::hardware_concurrency();
+        size_t numWorkers = hw > 0 ? (hw * 2) : 8;
+        if (numWorkers < 4) numWorkers = 4;
+        if (numWorkers > 32) numWorkers = 32;
+
+        for (size_t wi = 0; wi < numWorkers; ++wi) {
+            server->workerThreads.emplace_back([sRef]() {
+                Interpreter workerInterp;
+                workerInterp.setGlobals(sRef->globalsPtr);
+
+                while (sRef->isRunning) {
+                    ClientConnection conn;
+                    {
+                        std::unique_lock<std::mutex> lock(sRef->queueMutex);
+                        sRef->queueCv.wait(lock, [sRef]() {
+                            return !sRef->isRunning || !sRef->clientQueue.empty();
+                        });
+                        if (!sRef->isRunning && sRef->clientQueue.empty()) break;
+                        conn = sRef->clientQueue.front();
+                        sRef->clientQueue.pop();
+                    }
+
+                    int cfd = conn.cfd;
+                    if (cfd < 0) continue;
+
+                    int flag = 1;
+                    setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+                    struct timeval tv;
+                    tv.tv_sec = 5;
+                    tv.tv_usec = 0;
+                    setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+                    char ipStr[INET_ADDRSTRLEN] = "127.0.0.1";
+                    inet_ntop(AF_INET, &conn.csin.sin_addr, ipStr, sizeof(ipStr));
+                    std::string clientIp(ipStr);
+
+                    std::string raw;
+                    char buf[8192];
+                    bool keepAlive = true;
+
+                    while (sRef->isRunning && keepAlive) {
+                        size_t hend = raw.find("\r\n\r\n");
+                        while (hend == std::string::npos) {
+                            ssize_t n = recv(cfd, buf, sizeof(buf), 0);
+                            if (n <= 0) {
+                                keepAlive = false;
+                                break;
+                            }
+                            raw.append(buf, n);
+                            hend = raw.find("\r\n\r\n");
+                        }
+                        if (!keepAlive || hend == std::string::npos) break;
+
+                        size_t bodyLenNeeded = 0;
+                        size_t clPos = raw.find("Content-Length: ");
+                        if (clPos == std::string::npos) clPos = raw.find("content-length: ");
+                        if (clPos != std::string::npos && clPos < hend) {
+                            size_t clEnd = raw.find("\r\n", clPos);
+                            if (clEnd != std::string::npos) {
+                                try {
+                                    bodyLenNeeded = static_cast<size_t>(std::stoll(raw.substr(clPos + 16, clEnd - (clPos + 16))));
+                                } catch (...) {}
+                            }
+                        }
+
+                        while (raw.size() < hend + 4 + bodyLenNeeded) {
+                            ssize_t n = recv(cfd, buf, sizeof(buf), 0);
+                            if (n <= 0) {
+                                keepAlive = false;
+                                break;
+                            }
+                            raw.append(buf, n);
+                        }
+                        if (!keepAlive) break;
+
+                        size_t totalReqLen = hend + 4 + bodyLenNeeded;
+                        std::string singleReq = raw.substr(0, totalReqLen);
+                        raw.erase(0, totalReqLen);
+
+                        // Parse Request Line
+                        size_t firstLineEnd = singleReq.find("\r\n");
+                        if (firstLineEnd == std::string::npos) break;
+                        std::string reqLine = singleReq.substr(0, firstLineEnd);
+
+                        std::string m = "GET", p = "/", ver = "HTTP/1.1";
+                        size_t s1 = reqLine.find(' ');
+                        if (s1 != std::string::npos) {
+                            m = reqLine.substr(0, s1);
+                            size_t s2 = reqLine.find(' ', s1 + 1);
+                            if (s2 != std::string::npos) {
+                                p = reqLine.substr(s1 + 1, s2 - (s1 + 1));
+                                ver = reqLine.substr(s2 + 1);
+                            } else {
+                                p = reqLine.substr(s1 + 1);
+                            }
+                        }
+
+                        // Protocol defaults
+                        if (ver.find("HTTP/1.0") != std::string::npos) {
+                            keepAlive = false;
+                        } else {
+                            keepAlive = true;
+                        }
+
+                        // Parse Headers
+                        auto hMap = std::make_shared<MemeMap>();
+                        size_t hStart = firstLineEnd + 2;
+                        while (hStart < hend) {
+                            size_t hEnd = singleReq.find("\r\n", hStart);
+                            if (hEnd == std::string::npos || hEnd == hStart) break;
+                            std::string hl = singleReq.substr(hStart, hEnd - hStart);
+                            hStart = hEnd + 2;
+
+                            size_t colon = hl.find(':');
+                            if (colon != std::string::npos) {
+                                std::string hk = hl.substr(0, colon);
+                                for (char &ch : hk) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                                std::string hv = hl.substr(colon + 1);
+                                while (!hv.empty() && hv.front() == ' ') hv.erase(hv.begin());
+                                while (!hv.empty() && (hv.back() == ' ' || hv.back() == '\r')) hv.pop_back();
+
+                                if (hk == "connection") {
+                                    std::string lhv = hv;
+                                    for (char &ch : lhv) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                                    if (lhv.find("close") != std::string::npos) {
+                                        keepAlive = false;
+                                    } else if (lhv.find("keep-alive") != std::string::npos) {
+                                        keepAlive = true;
+                                    }
+                                }
+                                hMap->set(hk, Value(hv));
+                            }
+                        }
+
+                        // Parse Body
+                        std::string bstr = (hend + 4 < totalReqLen) ? singleReq.substr(hend + 4, bodyLenNeeded) : "";
+                        Value bval = Value(bstr);
+                        if (hMap->has("content-type")) {
+                            std::string ct = hMap->entries["content-type"].deref().toString();
+                            if (ct.find("application/json") != std::string::npos && !bstr.empty()) {
+                                try { MemeJson::Parser jp(bstr); bval = jp.parseValue(); } catch (...) {}
+                            } else if (ct.find("application/x-www-form-urlencoded") != std::string::npos && !bstr.empty()) {
+                                bval = parseUrlEncoded(bstr);
+                            }
+                        }
+
+                        workerInterp.resetState();
+                        Value resVal = sRef->dispatchRequest(workerInterp, m, p, bval, Value(hMap), clientIp);
+                        std::string wire = formatHttpResponse(resVal, keepAlive);
+                        ssize_t sent = 0;
+                        while (sent < static_cast<ssize_t>(wire.size())) {
+                            ssize_t s = send(cfd, wire.data() + sent, wire.size() - sent, 0);
+                            if (s <= 0) {
+                                keepAlive = false;
+                                break;
+                            }
+                            sent += s;
+                        }
+                    }
+                    close(cfd);
+                }
+            });
+        }
+
         server->acceptThread = std::thread([sRef]() {
             while (sRef->isRunning) {
                 sockaddr_in csin;
@@ -6372,71 +6566,11 @@ static std::shared_ptr<MemeMap> createHttpServerMap(const std::shared_ptr<HttpSe
                     if (!sRef->isRunning) break;
                     continue;
                 }
-                std::thread([sRef, cfd, csin]() {
-                    char buf[8192];
-                    std::string raw;
-                    ssize_t n = 0;
-                    while ((n = recv(cfd, buf, sizeof(buf), 0)) > 0) {
-                        raw.append(buf, n);
-                        size_t hend = raw.find("\r\n\r\n");
-                        if (hend != std::string::npos) {
-                            size_t clPos = raw.find("Content-Length: ");
-                            if (clPos == std::string::npos) clPos = raw.find("content-length: ");
-                            if (clPos != std::string::npos) {
-                                size_t clEnd = raw.find("\r\n", clPos);
-                                long long cl = std::stoll(raw.substr(clPos + 16, clEnd - (clPos + 16)));
-                                size_t bodyLen = raw.size() - (hend + 4);
-                                if (bodyLen < static_cast<size_t>(cl)) continue;
-                            }
-                            break;
-                        }
-                    }
-                    if (raw.empty()) { close(cfd); return; }
-
-                    std::istringstream rss(raw);
-                    std::string rline;
-                    std::getline(rss, rline);
-                    if (!rline.empty() && rline.back() == '\r') rline.pop_back();
-                    std::string m, p, ver;
-                    std::istringstream lss(rline);
-                    lss >> m >> p >> ver;
-
-                    auto hMap = std::make_shared<MemeMap>();
-                    std::string hl;
-                    while (std::getline(rss, hl) && hl != "\r" && !hl.empty()) {
-                        if (!hl.empty() && hl.back() == '\r') hl.pop_back();
-                        size_t c = hl.find(':');
-                        if (c != std::string::npos) {
-                            std::string hk = hl.substr(0, c);
-                            for (char &ch : hk) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-                            std::string hv = hl.substr(c + 1);
-                            while (!hv.empty() && hv.front() == ' ') hv.erase(hv.begin());
-                            hMap->set(hk, Value(hv));
-                        }
-                    }
-
-                    size_t hend = raw.find("\r\n\r\n");
-                    std::string bstr = (hend != std::string::npos) ? raw.substr(hend + 4) : "";
-                    Value bval = Value(bstr);
-                    if (hMap->has("content-type")) {
-                        std::string ct = hMap->entries["content-type"].deref().toString();
-                        if (ct.find("application/json") != std::string::npos && !bstr.empty()) {
-                            try { MemeJson::Parser jp(bstr); bval = jp.parseValue(); } catch (...) {}
-                        } else if (ct.find("application/x-www-form-urlencoded") != std::string::npos && !bstr.empty()) {
-                            bval = parseUrlEncoded(bstr);
-                        }
-                    }
-
-                    char ipStr[INET_ADDRSTRLEN];
-                    inet_ntop(AF_INET, &csin.sin_addr, ipStr, sizeof(ipStr));
-                    Interpreter child;
-                    child.setGlobals(sRef->globalsPtr);
-
-                    Value resVal = sRef->dispatchRequest(child, m, p, bval, Value(hMap), std::string(ipStr));
-                    std::string wire = formatHttpResponse(resVal);
-                    send(cfd, wire.data(), wire.size(), 0);
-                    close(cfd);
-                }).detach();
+                {
+                    std::lock_guard<std::mutex> lock(sRef->queueMutex);
+                    sRef->clientQueue.push(ClientConnection{cfd, csin});
+                }
+                sRef->queueCv.notify_one();
             }
         });
 #else

@@ -137,7 +137,8 @@ public:
     void executeBlock(const std::vector<std::unique_ptr<Stmt>> &statements, std::shared_ptr<Environment> newEnv);
 
     std::shared_ptr<Environment> getGlobals() { return globals; }
-    void setGlobals(std::shared_ptr<Environment> g) { globals = g; }
+    void setGlobals(std::shared_ptr<Environment> g) { globals = g; environment = g; currentScopeDepth = 0; }
+    void resetState() { environment = globals; currentScopeDepth = 0; }
     std::shared_ptr<Environment> getEnvironment() { return environment; }
     void setEnvironment(std::shared_ptr<Environment> e) { environment = e; }
     std::ostream &getOutputStream() { return out; }
