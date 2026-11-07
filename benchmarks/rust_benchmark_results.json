@@ -1,0 +1,315 @@
+{
+  "timestamp": "2026-11-07T06:00:18.938355+00:00",
+  "environment": {
+    "os": "Darwin",
+    "os_release": "27.2.0",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "arch": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.7",
+    "rustc_version": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "meme_version": "MEMElang v1.0"
+  },
+  "benchmarks": {
+    "fib": {
+      "name": "Recursive Fibonacci",
+      "description": "Deep recursive call stack and integer arithmetic (fib(20))",
+      "files": {
+        "meme": "benchmarks/fib.meme",
+        "rust": "benchmarks/fib.rs"
+      },
+      "compilation": {
+        "rust": {
+          "status": "SUCCESS",
+          "compile_ms": 524.2111659608781,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_e_m7ee95/fib_bin"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "mode": "parse_only",
+          "prep_ms": 9.91587497992441
+        },
+        "prep_ratio_rust_over_meme": 52.86585067098882
+      },
+      "execution": {
+        "rust": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 6.64394434231023,
+          "median_wall_ms": 5.822667037136853,
+          "min_wall_ms": 5.130790988914669,
+          "max_wall_ms": 8.978375000879169,
+          "stdev_wall_ms": 2.0510602115188727,
+          "mean_cpu_ms": 6.666666666666654,
+          "peak_rss_mb": 1.83,
+          "raw_wall_ms": [
+            5.130790988914669,
+            8.978375000879169,
+            5.822667037136853
+          ],
+          "raw_cpu_ms": [
+            9.99999999999998,
+            9.99999999999998,
+            0.0
+          ],
+          "last_stdout": "Rust | fib(20) = 6765 | Time: 0.00996ms"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 3518.8452363557494,
+          "median_wall_ms": 3276.9407920422964,
+          "min_wall_ms": 3135.203417041339,
+          "max_wall_ms": 4144.391499983612,
+          "stdev_wall_ms": 546.3547078795291,
+          "mean_cpu_ms": 2943.3333333333335,
+          "peak_rss_mb": 8.44,
+          "raw_wall_ms": [
+            4144.391499983612,
+            3135.203417041339,
+            3276.9407920422964
+          ],
+          "raw_cpu_ms": [
+            3080.0,
+            2829.999999999999,
+            2920.000000000001
+          ],
+          "last_stdout": "MEMElang | fib(20) = 6765 | Time: 3266.699076ms"
+        }
+      },
+      "comparison": {
+        "speedup_ratio_rust_over_meme": 529.6319558168029,
+        "meme_wall_ms": 3518.8452363557494,
+        "rust_wall_ms": 6.64394434231023,
+        "difference_ms": 3512.2012920134393,
+        "rust_rss_mb": 1.83,
+        "meme_rss_mb": 8.44
+      }
+    },
+    "sieve": {
+      "name": "Sieve of Eratosthenes",
+      "description": "Array allocation, memory indexing, prime sieving up to 100,000",
+      "files": {
+        "meme": "benchmarks/sieve.meme",
+        "rust": "benchmarks/sieve.rs"
+      },
+      "compilation": {
+        "rust": {
+          "status": "SUCCESS",
+          "compile_ms": 646.2432499974966,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_e_m7ee95/sieve_bin"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "mode": "parse_only",
+          "prep_ms": 10.80616598483175
+        },
+        "prep_ratio_rust_over_meme": 59.80319485232842
+      },
+      "execution": {
+        "rust": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 5.41449966840446,
+          "median_wall_ms": 5.89616596698761,
+          "min_wall_ms": 4.340791027061641,
+          "max_wall_ms": 6.006542011164129,
+          "stdev_wall_ms": 0.9314952510092016,
+          "mean_cpu_ms": 3.333333333333336,
+          "peak_rss_mb": 1.95,
+          "raw_wall_ms": [
+            6.006542011164129,
+            5.89616596698761,
+            4.340791027061641
+          ],
+          "raw_cpu_ms": [
+            0.0,
+            0.0,
+            10.000000000000009
+          ],
+          "last_stdout": "Rust | Primes up to 100000: 9592 | Time: 0.07433ms"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 430.63288868870586,
+          "median_wall_ms": 424.74958300590515,
+          "min_wall_ms": 424.59900001995265,
+          "max_wall_ms": 442.5500830402598,
+          "stdev_wall_ms": 10.320867682440563,
+          "mean_cpu_ms": 393.33333333333377,
+          "peak_rss_mb": 11.45,
+          "raw_wall_ms": [
+            424.74958300590515,
+            424.59900001995265,
+            442.5500830402598
+          ],
+          "raw_cpu_ms": [
+            390.00000000000125,
+            389.9999999999992,
+            400.0000000000008
+          ],
+          "last_stdout": "MEMElang | Primes up to 100000: 9592 | Time: 429.380894ms"
+        }
+      },
+      "comparison": {
+        "speedup_ratio_rust_over_meme": 79.53327455195955,
+        "meme_wall_ms": 430.63288868870586,
+        "rust_wall_ms": 5.41449966840446,
+        "difference_ms": 425.2183890203014,
+        "rust_rss_mb": 1.95,
+        "meme_rss_mb": 11.45
+      }
+    },
+    "math_loop": {
+      "name": "Modular Math Loop",
+      "description": "Tight arithmetic loop (200,000 iterations) with modulo and addition",
+      "files": {
+        "meme": "benchmarks/math_loop.meme",
+        "rust": "benchmarks/math_loop.rs"
+      },
+      "compilation": {
+        "rust": {
+          "status": "SUCCESS",
+          "compile_ms": 160.6593340402469,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_e_m7ee95/math_loop_bin"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "mode": "parse_only",
+          "prep_ms": 10.256208013743162
+        },
+        "prep_ratio_rust_over_meme": 15.664593953726937
+      },
+      "execution": {
+        "rust": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 11.151347677999487,
+          "median_wall_ms": 11.905834020581096,
+          "min_wall_ms": 9.408624959178269,
+          "max_wall_ms": 12.139584054239094,
+          "stdev_wall_ms": 1.5137607557274337,
+          "mean_cpu_ms": 6.666666666665932,
+          "peak_rss_mb": 1.83,
+          "raw_wall_ms": [
+            11.905834020581096,
+            12.139584054239094,
+            9.408624959178269
+          ],
+          "raw_cpu_ms": [
+            19.999999999997797,
+            0.0,
+            0.0
+          ],
+          "last_stdout": "Rust | Math Loop 200000 | Result: 755102504 | Time: 0.95312ms"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 433.82890268306556,
+          "median_wall_ms": 443.2124579907395,
+          "min_wall_ms": 334.1820420464501,
+          "max_wall_ms": 524.0922080120072,
+          "stdev_wall_ms": 95.30218316977577,
+          "mean_cpu_ms": 353.3333333333333,
+          "peak_rss_mb": 8.22,
+          "raw_wall_ms": [
+            524.0922080120072,
+            443.2124579907395,
+            334.1820420464501
+          ],
+          "raw_cpu_ms": [
+            390.000000000001,
+            369.99999999999784,
+            300.00000000000114
+          ],
+          "last_stdout": "MEMElang | Math Loop 200000 | Result: 755102504 | Time: 323.982ms"
+        }
+      },
+      "comparison": {
+        "speedup_ratio_rust_over_meme": 38.90371955122226,
+        "meme_wall_ms": 433.82890268306556,
+        "rust_wall_ms": 11.151347677999487,
+        "difference_ms": 422.6775550050661,
+        "rust_rss_mb": 1.83,
+        "meme_rss_mb": 8.22
+      }
+    },
+    "tree_drop": {
+      "name": "Tree Allocation & Drop",
+      "description": "Object graph allocation, pointer linking, and recursive drop cleanup",
+      "files": {
+        "meme": "benchmarks/tree_drop.meme",
+        "rust": "benchmarks/tree_drop.rs"
+      },
+      "compilation": {
+        "rust": {
+          "status": "SUCCESS",
+          "compile_ms": 177.91650001890957,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_e_m7ee95/tree_drop_bin"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "mode": "parse_only",
+          "prep_ms": 9.75516700418666
+        },
+        "prep_ratio_rust_over_meme": 18.238180847396308
+      },
+      "execution": {
+        "rust": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 5.13587500123928,
+          "median_wall_ms": 4.822125018108636,
+          "min_wall_ms": 4.69783297739923,
+          "max_wall_ms": 5.887667008209974,
+          "stdev_wall_ms": 0.6540302318354212,
+          "mean_cpu_ms": 3.33333333333267,
+          "peak_rss_mb": 2.36,
+          "raw_wall_ms": [
+            4.822125018108636,
+            4.69783297739923,
+            5.887667008209974
+          ],
+          "raw_cpu_ms": [
+            0.0,
+            0.0,
+            9.99999999999801
+          ],
+          "last_stdout": "Rust | Tree Drop (depth 14) | Result: 16383 | Time: 0.62400ms"
+        },
+        "meme": {
+          "status": "SUCCESS",
+          "runs_count": 3,
+          "mean_wall_ms": 9302.42633332576,
+          "median_wall_ms": 9346.701874979772,
+          "min_wall_ms": 8590.746166999452,
+          "max_wall_ms": 9969.830957998056,
+          "stdev_wall_ms": 690.6076729102299,
+          "mean_cpu_ms": 8450.0,
+          "peak_rss_mb": 14.3,
+          "raw_wall_ms": [
+            9346.701874979772,
+            9969.830957998056,
+            8590.746166999452
+          ],
+          "raw_cpu_ms": [
+            8580.0,
+            8760.0,
+            8009.999999999997
+          ],
+          "last_stdout": "MEMElang | Tree Drop (depth 14) | Result: 16383 | Time: 8578.240156ms"
+        }
+      },
+      "comparison": {
+        "speedup_ratio_rust_over_meme": 1811.2641625976287,
+        "meme_wall_ms": 9302.42633332576,
+        "rust_wall_ms": 5.13587500123928,
+        "difference_ms": 9297.290458324522,
+        "rust_rss_mb": 2.36,
+        "meme_rss_mb": 14.3
+      }
+    }
+  }
+}

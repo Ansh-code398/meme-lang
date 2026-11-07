@@ -1,0 +1,11 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: No Matching Overload Variant Found
+// EXPECT_ERROR: Aukaat ke bahar
+// ==============================================================================
+
+bahuroop jugaad only_numbers(x: ank, y: ank) -> ank {
+    ye_le x + y;
+}
+
+// Disqualified: argument types incompatible with all defined variants
+only_numbers("PehlaString", "DoosraString");

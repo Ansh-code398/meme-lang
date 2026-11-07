@@ -1,0 +1,9 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Null Pointer Dereference
+// EXPECT_ERROR: Chuna laga diya
+// ==============================================================================
+
+pakad ptr = nalla;
+// Dereferencing null pointer must trigger runtime crash with meme diagnostic
+pakad val = *ptr;
+dikha val;

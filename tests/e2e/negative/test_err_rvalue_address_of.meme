@@ -1,0 +1,8 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Address-of Temporary Expression (Non-Lvalue)
+// EXPECT_ERROR: doglapan
+// ==============================================================================
+
+// Cannot take address of arithmetic temporary or rvalue
+pakad bad_ptr = patta (100 + 200);
+dikha bad_ptr;

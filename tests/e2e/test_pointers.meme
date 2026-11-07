@@ -1,0 +1,159 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Pointer Operations (Tiers 1 & 2)
+// Coverage:
+//   - Tier 1: Address-of (`&`, `patta`, `addr`, `ptr`), Deref (`*`, `asli`, `deref`, `val`)
+//   - Tier 1: Deref assignment (`*p = val`, `asli p = val`), multiple pointers to same slot
+//   - Tier 2: Pointer indirection (`**pp`), struct field pointers, boundary & null errors
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Pointer Operations (Tiers 1 & 2) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Symbolic Address-of (`&`) and Dereference (`*`)
+// ------------------------------------------------------------------------------
+pakad score = 100;
+pakad p_score = &score;
+pakad read_score = *p_score;
+assert_eq(read_score, 100, "T1_ptr_symbolic_addrof_and_deref_read");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Dereference Write / Assignment (`*p = val`)
+// ------------------------------------------------------------------------------
+*p_score = 250;
+assert_eq(score, 250, "T1_ptr_deref_write_mutates_original");
+assert_eq(*p_score, 250, "T1_ptr_deref_read_after_write");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Primary Desi Keywords (`patta` & `asli`)
+// ------------------------------------------------------------------------------
+pakad khazana = 5000;
+pakad p_khazana = patta khazana;
+pakad asli_val = asli p_khazana;
+assert_eq(asli_val, 5000, "T1_ptr_desi_patta_asli_read");
+
+asli p_khazana = 9999;
+assert_eq(khazana, 9999, "T1_ptr_desi_asli_write_mutates_original");
+assert_eq(asli p_khazana, 9999, "T1_ptr_desi_asli_read_after_write");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Desi Aliases (`thikana`, `dekh_patta`, `uthha`)
+// ------------------------------------------------------------------------------
+pakad nagri = "Ayodhya";
+pakad p_nagri = thikana nagri;
+pakad v_nagri = dekh_patta p_nagri;
+assert_eq(v_nagri, "Ayodhya", "T1_ptr_desi_alias_thikana_dekh_patta");
+
+pakad v_nagri2 = uthha p_nagri;
+assert_eq(v_nagri2, "Ayodhya", "T1_ptr_desi_alias_uthha");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: English Aliases (`addr`, `ptr`, `deref`, `val`)
+// ------------------------------------------------------------------------------
+let count = 42;
+let p_count = addr count;
+let v_count = deref p_count;
+assert_eq(v_count, 42, "T1_ptr_english_addr_deref_read");
+
+deref p_count = 84;
+assert_eq(count, 84, "T1_ptr_english_deref_write");
+
+let p_count2 = ptr count;
+let v_count2 = val p_count2;
+assert_eq(v_count2, 84, "T1_ptr_english_ptr_val");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Multiple Pointers to the Same Slot (Aliasing)
+// ------------------------------------------------------------------------------
+pakad shared_target = 777;
+pakad ptrA = &shared_target;
+pakad ptrB = &shared_target;
+
+*ptrA = 888;
+assert_eq(*ptrB, 888, "T1_ptr_aliasing_writeA_readB");
+assert_eq(shared_target, 888, "T1_ptr_aliasing_writeA_target");
+
+*ptrB = 999;
+assert_eq(*ptrA, 999, "T1_ptr_aliasing_writeB_readA");
+assert_eq(shared_target, 999, "T1_ptr_aliasing_writeB_target");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASES: Pointer to Pointer (Double Indirection `**pp`)
+// ------------------------------------------------------------------------------
+pakad base_num = 1234;
+pakad p_base = &base_num;
+pakad pp_base = &p_base;
+
+pakad double_read = **pp_base;
+assert_eq(double_read, 1234, "T2_ptr_double_indirection_read");
+
+**pp_base = 5678;
+assert_eq(base_num, 5678, "T2_ptr_double_indirection_write_target");
+assert_eq(*p_base, 5678, "T2_ptr_double_indirection_write_single_deref");
+assert_eq(**pp_base, 5678, "T2_ptr_double_indirection_write_double_deref");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASES: Pointer to Struct / Class Instance Field
+// ------------------------------------------------------------------------------
+biradari Khiladi {
+    jugaad shuru(naam: bol, runs: ank) {
+        khud.naam = naam;
+        khud.runs = runs;
+    }
+}
+
+pakad k = Khiladi("Sachin", 100);
+pakad p_runs = &k.runs;
+assert_eq(*p_runs, 100, "T2_ptr_struct_field_read");
+
+*p_runs = 200;
+assert_eq(k.runs, 200, "T2_ptr_struct_field_write_mutates_instance");
+assert_eq(*p_runs, 200, "T2_ptr_struct_field_read_after_write");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASES: Pointer Passed to Function & Mutated
+// ------------------------------------------------------------------------------
+jugaad double_in_place(p_val) {
+    *p_val = *p_val * 2;
+}
+
+pakad my_val = 35;
+double_in_place(&my_val);
+assert_eq(my_val, 70, "T2_ptr_pass_by_pointer_mutates_caller");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Null Pointer Dereference Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad null_deref_caught = nhi;
+panga {
+    pakad nalla_ptr = nalla;
+    pakad chori = *nalla_ptr;
+} lafda (err) {
+    null_deref_caught = han;
+    dikha "Caught expected null dereference error:", err;
+}
+assert_eq(null_deref_caught, han, "T2_boundary_err_null_pointer_deref");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Address-Of Non-Lvalue Temporary Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad rvalue_addrof_caught = nhi;
+panga {
+    // Attempting address of expression/temporary
+    pakad bad_ptr = patta (10 + 20);
+} lafda (err) {
+    rvalue_addrof_caught = han;
+    dikha "Caught expected address-of rvalue error:", err;
+}
+assert_eq(rvalue_addrof_caught, han, "T2_boundary_err_address_of_rvalue");
+
+dikha "=== All Pointer Operations Tests (Tiers 1 & 2) Completed Successfully! ===";

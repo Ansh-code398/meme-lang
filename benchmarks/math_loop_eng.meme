@@ -1,0 +1,21 @@
+import "samay" as samay;
+
+fn bench_math_loop(n) {
+    let a = 0;
+    let b = 1;
+    let i = 0;
+    let MOD = 1000000007;
+    while i < n {
+        let c = (a * 3 + b / 2 + i) % MOD;
+        a = b;
+        b = c;
+        i = i + 1;
+    }
+    return a;
+}
+
+let start = samay.ab();
+let result = bench_math_loop(200000);
+let elapsed = (samay.ab() - start) * 1000.0;
+
+print f"MEMElang | Math Loop 200000 | Result: {result} | Time: {point_wala(elapsed)}ms";

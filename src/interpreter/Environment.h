@@ -8,21 +8,50 @@
 #include <mutex>
 #include "Value.h"
 
+class UserFunction;
+
 struct VariableSlot
 {
     Value value;
     bool isMoved = false;
+    bool isOwned = false;
+    bool isMut = false;
+    bool isConst = false;
     int sharedBorrows = 0;
     bool hasExclusiveBorrow = false;
+    std::string typeAnnotation = "";
     int depth = 0;
+    std::shared_ptr<Environment> sourceEnv = nullptr;
+    std::string sourceVarName = "";
+    bool isParameter = false;
+
+    int sharedBorrowCount() const { return sharedBorrows; }
 };
 
 class Environment : public std::enable_shared_from_this<Environment>
 {
+public:
+    static inline std::atomic<int> activeThreadCount{0};
+
 private:
     mutable std::recursive_mutex envMutex;
     std::shared_ptr<Environment> enclosing;
     std::unordered_map<std::string, VariableSlot> values;
+
+    struct ScopedEnvLock
+    {
+        std::recursive_mutex &m;
+        bool locked;
+        ScopedEnvLock(std::recursive_mutex &mutex)
+            : m(mutex), locked(Environment::activeThreadCount.load(std::memory_order_relaxed) > 0)
+        {
+            if (locked) m.lock();
+        }
+        ~ScopedEnvLock()
+        {
+            if (locked) m.unlock();
+        }
+    };
 
 public:
     int depth = 0;
@@ -37,31 +66,37 @@ public:
 
     std::unordered_map<std::string, VariableSlot> &getSlots()
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         return values;
     }
 
     const std::unordered_map<std::string, VariableSlot> &getSlots() const
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         return values;
     }
 
-    void define(const std::string &name, Value value)
+    void define(const std::string &name, Value value,
+                bool isOwned = false, bool isMut = false, bool isConst = false,
+                const std::string &typeAnnotation = "")
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         VariableSlot slot;
         slot.value = std::move(value);
         slot.isMoved = false;
+        slot.isOwned = isOwned;
+        slot.isMut = isMut;
+        slot.isConst = isConst;
         slot.sharedBorrows = 0;
         slot.hasExclusiveBorrow = false;
+        slot.typeAnnotation = typeAnnotation;
         slot.depth = depth;
         values[name] = std::move(slot);
     }
 
     VariableSlot *findSlot(const std::string &name)
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -76,7 +111,7 @@ public:
 
     const VariableSlot *findSlot(const std::string &name) const
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -89,17 +124,25 @@ public:
         return nullptr;
     }
 
-    void assign(const std::string &name, Value value)
+    std::shared_ptr<Environment> findOwnerEnv(const std::string &name)
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
-        VariableSlot *slot = findSlot(name);
-        if (!slot)
+        ScopedEnvLock lock(envMutex);
+        auto it = values.find(name);
+        if (it != values.end())
         {
-            define(name, std::move(value));
-            return;
+            return shared_from_this();
         }
+        if (enclosing != nullptr)
+        {
+            return enclosing->findOwnerEnv(name);
+        }
+        return nullptr;
+    }
 
-        // If the slot contains a reference, mutate through reference!
+    void defineOverload(const std::string &name, std::shared_ptr<UserFunction> func);
+
+    void assignToSlot(VariableSlot *slot, Value value, const std::string &name)
+    {
         if (slot->value.isReference())
         {
             const auto &ref = slot->value.getReference();
@@ -116,6 +159,12 @@ public:
             return;
         }
 
+        if (slot->isConst)
+        {
+            throw std::runtime_error(
+                "Shanti gadadhari Bheem! Constant / atal variable '" + name + "' ko modify nahi kar sakte!");
+        }
+
         // Direct assignment to variable
         if (slot->sharedBorrows > 0 || slot->hasExclusiveBorrow)
         {
@@ -125,6 +174,17 @@ public:
 
         slot->value = std::move(value);
         slot->isMoved = false;
+    }
+
+    void assign(const std::string &name, Value value)
+    {
+        VariableSlot *slot = findSlot(name);
+        if (!slot)
+        {
+            define(name, std::move(value));
+            return;
+        }
+        assignToSlot(slot, std::move(value), name);
     }
 
     Value get(const std::string &name) const
@@ -153,7 +213,7 @@ public:
 
     Value getDirect(const std::string &name) const
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
@@ -168,10 +228,15 @@ public:
 
     void setDirect(const std::string &name, Value value)
     {
-        std::lock_guard<std::recursive_mutex> lock(envMutex);
+        ScopedEnvLock lock(envMutex);
         auto it = values.find(name);
         if (it != values.end())
         {
+            if (it->second.isConst)
+            {
+                throw std::runtime_error(
+                    "Shanti gadadhari Bheem! Constant / atal variable '" + name + "' ko modify nahi kar sakte!");
+            }
             it->second.value = std::move(value);
             it->second.isMoved = false;
             return;
@@ -217,6 +282,14 @@ inline Value Value::deref() const
 
 inline bool Value::operator==(const Value &other) const
 {
+    if (std::holds_alternative<long long>(data) && std::holds_alternative<long long>(other.data))
+    {
+        return std::get<long long>(data) == std::get<long long>(other.data);
+    }
+    if (std::holds_alternative<bool>(data) && std::holds_alternative<bool>(other.data))
+    {
+        return std::get<bool>(data) == std::get<bool>(other.data);
+    }
     Value a = this->deref();
     Value b = other.deref();
 
@@ -314,6 +387,18 @@ inline bool Value::operator==(const Value &other) const
                     if (it == rhs->entries.end() || it->second != pair.second) return false;
                 }
                 return true;
+            },
+            [](const std::shared_ptr<Pointer> &lhs, const std::shared_ptr<Pointer> &rhs) -> bool {
+                if (lhs == rhs) return true;
+                if (!lhs && !rhs) return true;
+                if (!lhs || !rhs) return false;
+                return *lhs == *rhs;
+            },
+            [](const std::shared_ptr<Pointer> &lhs, std::monostate) -> bool {
+                return !lhs || lhs->isNull();
+            },
+            [](std::monostate, const std::shared_ptr<Pointer> &rhs) -> bool {
+                return !rhs || rhs->isNull();
             },
             [](const auto &, const auto &) -> bool { return false; }
         },

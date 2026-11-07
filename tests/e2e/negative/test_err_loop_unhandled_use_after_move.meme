@@ -1,0 +1,12 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Unhandled Use-After-Move in Loop Iteration
+// EXPECT_ERROR: Pehli fursat mein nikal
+// ==============================================================================
+
+pakad token = "single_use_item";
+pakad idx = 0;
+jabtak idx < 2 {
+    idx = idx + 1;
+    // In iter 2 this throws unhandled use-after-move error
+    pakad sink = rawana token;
+}

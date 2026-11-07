@@ -46,6 +46,18 @@ static std::string runWithTypeCheck(const std::string &code)
     return out.str();
 }
 
+static bool checkTypeOnly(const std::string &code)
+{
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    auto program = parser.parseProgram();
+
+    TypeChecker typeChecker;
+    typeChecker.check(program);
+    return true;
+}
+
 static bool expectTypeError(const std::string &code, const std::string &expectedSubstring)
 {
     try
@@ -119,6 +131,291 @@ void testLexer()
     assert(tokens[15].type == TokenType::NHI);   // nahi alias
     assert(tokens[17].type == TokenType::KUCH_NHI);
     assert(tokens[19].type == TokenType::KUCH_NHI); // kuch_nahi alias
+
+    // Test Address-of (&) and Logical AND (&&)
+    Lexer lexAmp("& && &");
+    auto tokAmp = lexAmp.tokenize();
+    assert(tokAmp[0].type == TokenType::ADDRESS_OF && tokAmp[0].value == "&");
+    assert(tokAmp[1].type == TokenType::AUR && tokAmp[1].value == "&&");
+    assert(tokAmp[2].type == TokenType::ADDRESS_OF && tokAmp[2].value == "&");
+
+    // Test Milestone 2 Keywords and Aliases (Desi meme syntax & English aliases)
+    std::string allM2Keywords =
+        "bahuroop aur_ek ek_aur overload multimethod "
+        "tantrik kriya operator op "
+        "patta thikana addr address_of ptr "
+        "asli deref val dereference dekh_patta uthha "
+        "rawana khisko chal_nikal move "
+        "malik kabza malkiyat own owned owner "
+        "badal badlo mut mutable "
+        "atal sthir const immut "
+        "khatam alvida visarjan drop dispose "
+        "daayra seema elaqa scope lifetime;";
+    Lexer lexAll(allM2Keywords);
+    auto tokAll = lexAll.tokenize();
+    size_t ki = 0;
+    // Overload (5)
+    for (int i = 0; i < 5; ++i) assert(tokAll[ki++].type == TokenType::OVERLOAD);
+    // Operator (4)
+    for (int i = 0; i < 4; ++i) assert(tokAll[ki++].type == TokenType::OPERATOR);
+    // Address-of (5)
+    for (int i = 0; i < 5; ++i) assert(tokAll[ki++].type == TokenType::ADDRESS_OF);
+    // Deref (6)
+    for (int i = 0; i < 6; ++i) assert(tokAll[ki++].type == TokenType::DEREF);
+    // Move (4)
+    for (int i = 0; i < 4; ++i) assert(tokAll[ki++].type == TokenType::MOVE);
+    // Owned (6)
+    for (int i = 0; i < 6; ++i) assert(tokAll[ki++].type == TokenType::OWNED);
+    // Mut (4)
+    for (int i = 0; i < 4; ++i) assert(tokAll[ki++].type == TokenType::MUT);
+    // Const (4)
+    for (int i = 0; i < 4; ++i) assert(tokAll[ki++].type == TokenType::CONST);
+    // Drop (5)
+    for (int i = 0; i < 5; ++i) assert(tokAll[ki++].type == TokenType::DROP);
+    // Scope (5)
+    for (int i = 0; i < 5; ++i) assert(tokAll[ki++].type == TokenType::SCOPE);
+
+    // Test tokenTypeToString stringification for Milestone 2 tokens
+    assert(Lexer::tokenTypeToString(TokenType::OVERLOAD) == "OVERLOAD");
+    assert(Lexer::tokenTypeToString(TokenType::OPERATOR) == "OPERATOR");
+    assert(Lexer::tokenTypeToString(TokenType::ADDRESS_OF) == "ADDRESS_OF");
+    assert(Lexer::tokenTypeToString(TokenType::DEREF) == "DEREF");
+    assert(Lexer::tokenTypeToString(TokenType::MOVE) == "MOVE");
+    assert(Lexer::tokenTypeToString(TokenType::OWNED) == "OWNED");
+    assert(Lexer::tokenTypeToString(TokenType::MUT) == "MUT");
+    assert(Lexer::tokenTypeToString(TokenType::CONST) == "CONST");
+    assert(Lexer::tokenTypeToString(TokenType::DROP) == "DROP");
+    assert(Lexer::tokenTypeToString(TokenType::SCOPE) == "SCOPE");
+
+    // Parser AST Unit Tests:
+    // 1. &x -> AddressOfExpr
+    {
+        Lexer l("&x;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *stmt = dynamic_cast<ExprStmt *>(prog[0].get());
+        assert(stmt != nullptr);
+        auto *addr = dynamic_cast<AddressOfExpr *>(stmt->expression.get());
+        assert(addr != nullptr);
+        auto *ident = dynamic_cast<IdentifierExpr *>(addr->operand.get());
+        assert(ident != nullptr && ident->name == "x");
+    }
+
+    // 2. *p -> DerefExpr
+    {
+        Lexer l("*p;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *stmt = dynamic_cast<ExprStmt *>(prog[0].get());
+        assert(stmt != nullptr);
+        auto *deref = dynamic_cast<DerefExpr *>(stmt->expression.get());
+        assert(deref != nullptr);
+        auto *ident = dynamic_cast<IdentifierExpr *>(deref->operand.get());
+        assert(ident != nullptr && ident->name == "p");
+    }
+
+    // 3. *p = 10 -> DerefAssignExpr
+    {
+        Lexer l("*p = 10;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *stmt = dynamic_cast<ExprStmt *>(prog[0].get());
+        assert(stmt != nullptr);
+        auto *dassign = dynamic_cast<DerefAssignExpr *>(stmt->expression.get());
+        assert(dassign != nullptr);
+        auto *ptr = dynamic_cast<IdentifierExpr *>(dassign->pointer.get());
+        assert(ptr != nullptr && ptr->name == "p");
+        auto *val = dynamic_cast<IntExpr *>(dassign->value.get());
+        assert(val != nullptr && val->value == 10);
+    }
+
+    // 4. bahuroop jugaad f() {} -> FuncDeclStmt with isOverload = true
+    {
+        Lexer l("bahuroop jugaad f() {}");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *func = dynamic_cast<FuncDeclStmt *>(prog[0].get());
+        assert(func != nullptr);
+        assert(func->name == "f");
+        assert(func->isOverload == true);
+    }
+
+    // 5. tantrik +(other) {} inside class -> OperatorDeclStmt mapped to __jod__
+    {
+        Lexer l("biradari Num { tantrik + (other) { ye_le 42; } }");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *cls = dynamic_cast<ClassDeclStmt *>(prog[0].get());
+        assert(cls != nullptr && cls->name == "Num");
+        assert(cls->methods.size() == 1);
+        auto *op = dynamic_cast<OperatorDeclStmt *>(cls->methods[0].get());
+        assert(op != nullptr);
+        assert(op->opSymbol == "+");
+        assert(op->name == "__jod__");
+        assert(op->isOverload == true);
+        assert(op->isUnary == false);
+    }
+
+    // 6. rawana x -> MoveExpr
+    {
+        Lexer l("rawana x;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *stmt = dynamic_cast<ExprStmt *>(prog[0].get());
+        assert(stmt != nullptr);
+        auto *mov = dynamic_cast<MoveExpr *>(stmt->expression.get());
+        assert(mov != nullptr);
+        auto *ident = dynamic_cast<IdentifierExpr *>(mov->operand.get());
+        assert(ident != nullptr && ident->name == "x");
+    }
+
+    // 7. khatam x; -> DropStmt
+    {
+        Lexer l("khatam x;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *drop = dynamic_cast<DropStmt *>(prog[0].get());
+        assert(drop != nullptr);
+        auto *ident = dynamic_cast<IdentifierExpr *>(drop->expr.get());
+        assert(ident != nullptr && ident->name == "x");
+    }
+
+    // 8. daayra {} -> ScopeBlockStmt
+    {
+        Lexer l("daayra {}");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *scope = dynamic_cast<ScopeBlockStmt *>(prog[0].get());
+        assert(scope != nullptr);
+    }
+
+    // 9. pakad malik badal atal x: patta[ank] = 1; -> VarDeclStmt with modifiers & pointer type
+    {
+        Lexer l("pakad malik badal atal x: patta[ank] = 1;");
+        auto toks = l.tokenize();
+        Parser p(toks);
+        auto prog = p.parseProgram();
+        assert(prog.size() == 1);
+        auto *var = dynamic_cast<VarDeclStmt *>(prog[0].get());
+        assert(var != nullptr);
+        assert(var->name == "x");
+        assert(var->isOwned == true);
+        assert(var->isMut == true);
+        assert(var->isConst == true);
+        assert(var->typeAnnotation != nullptr);
+    }
+
+    // 10. Lexer mut_ref as IDENTIFIER
+    {
+        Lexer l("mut_ref");
+        auto toks = l.tokenize();
+        assert(toks.size() >= 1);
+        assert(toks[0].type == TokenType::IDENTIFIER && toks[0].value == "mut_ref");
+    }
+
+    // 11. Class destructors (jugaad alvida, fn drop, alvida(), drop())
+    {
+        std::string classCode =
+            "biradari Res1 { jugaad alvida() { x = 0; } }\n"
+            "biradari Res2 { fn drop() { x = 0; } }\n"
+            "biradari Res3 { alvida() { x = 0; } }\n"
+            "biradari Res4 { drop() { x = 0; } }";
+        Lexer l(classCode);
+        Parser p(l.tokenize());
+        auto prog = p.parseProgram();
+        assert(prog.size() == 4);
+        for (size_t i = 0; i < 4; ++i)
+        {
+            auto *cls = dynamic_cast<ClassDeclStmt *>(prog[i].get());
+            assert(cls != nullptr);
+            assert(cls->methods.size() == 1);
+        }
+    }
+
+    // 12. Top-level function declarations with keyword-derived names
+    {
+        std::string funcCode =
+            "jugaad alvida() { wapas 1; }\n"
+            "fn drop() { wapas 2; }\n"
+            "jugaad val() { wapas 3; }\n"
+            "jugaad ptr() { wapas 4; }\n"
+            "jugaad addr() { wapas 5; }";
+        Lexer l(funcCode);
+        Parser p(l.tokenize());
+        auto prog = p.parseProgram();
+        assert(prog.size() == 5);
+        auto *f0 = dynamic_cast<FuncDeclStmt *>(prog[0].get());
+        assert(f0 != nullptr && f0->name == "alvida");
+        auto *f1 = dynamic_cast<FuncDeclStmt *>(prog[1].get());
+        assert(f1 != nullptr && f1->name == "drop");
+        auto *f2 = dynamic_cast<FuncDeclStmt *>(prog[2].get());
+        assert(f2 != nullptr && f2->name == "val");
+        auto *f3 = dynamic_cast<FuncDeclStmt *>(prog[3].get());
+        assert(f3 != nullptr && f3->name == "ptr");
+        auto *f4 = dynamic_cast<FuncDeclStmt *>(prog[4].get());
+        assert(f4 != nullptr && f4->name == "addr");
+    }
+
+    // 13. Variables named ptr, addr, mut_ref, val
+    {
+        std::string varCode =
+            "pakad ptr = nalla;\n"
+            "pakad addr = 0x1000;\n"
+            "pakad mut_ref = 42;\n"
+            "pakad val = 100;\n"
+            "ptr = nalla;\n"
+            "*ptr = 10;\n"
+            "pakad v = *ptr;\n"
+            "pakad p = &ptr;";
+        Lexer l(varCode);
+        Parser p(l.tokenize());
+        auto prog = p.parseProgram();
+        assert(prog.size() == 8);
+    }
+
+    // 14. Contextual ptr / addr prefix expressions vs bare identifiers
+    {
+        std::string code =
+            "let p1 = ptr count;\n"
+            "let p2 = addr count;\n"
+            "let v1 = val p1;\n"
+            "dekh ptr == nalla { dikha 1; }";
+        Lexer l(code);
+        Parser p(l.tokenize());
+        auto prog = p.parseProgram();
+        assert(prog.size() == 4);
+    }
+
+    // 15. Scope block parsing with memory safety
+    {
+        std::string scopeCode =
+            "daayra { pakad a = 1; daayra { pakad b = 2; } }\n"
+            "scope { pakad c = 3; }";
+        Lexer l(scopeCode);
+        Parser p(l.tokenize());
+        auto prog = p.parseProgram();
+        assert(prog.size() == 2);
+        auto *s0 = dynamic_cast<ScopeBlockStmt *>(prog[0].get());
+        assert(s0 != nullptr && s0->statements.size() == 2);
+        auto *s1 = dynamic_cast<ScopeBlockStmt *>(prog[1].get());
+        assert(s1 != nullptr && s1->statements.size() == 1);
+    }
 
     std::cout << "PASSED\n";
 }
@@ -678,6 +975,117 @@ void testGradualTypingAndMemoryEfficiency()
         dikha 10 + 2.5;
     )raw";
     assert(runWithTypeCheck(quirksCode) == "hahaha\nScore: 100\n12.5\n");
+
+    // 9. Milestone 3: Pointer Value Representation & Size Invariant
+    static_assert(sizeof(Value) == 32, "Value size must be 32 bytes on 64-bit platforms!");
+    assert(sizeof(Value) == 32);
+
+    auto nullPtrVal = Value::nullPointer(false);
+    assert(nullPtrVal.isPointer());
+    assert(nullPtrVal.typeName() == "patta");
+    assert(nullPtrVal.toString() == "patta[0x0]");
+    assert(!nullPtrVal.isTruthy());
+
+    auto constNull = Value::nullPointer(false);
+    assert(!constNull.asPointer()->isMut);
+
+    auto mutNull = Value::nullPointer(true);
+    assert(mutNull.asPointer()->isMut);
+
+    long long targetVal = 42;
+    Pointer rawPtr(reinterpret_cast<Value*>(&targetVal), true, "targetVal");
+    auto rawVal = Value::pointer(rawPtr);
+    assert(rawVal.isPointer());
+    assert(rawVal.typeName() == "patta");
+    assert(rawVal.toString().find("patta[0x") == 0);
+    assert(rawVal.isTruthy());
+    assert(rawVal.pointerEquals(rawVal));
+
+    // 10. Milestone 3: PointerType Representation & Subtyping
+    auto pConstAnk = Type::pointer(Type::Ank(), false);
+    auto pMutAnk = Type::pointer(Type::Ank(), true);
+    auto pConstBol = Type::pointer(Type::Bol(), false);
+
+    assert(pConstAnk->isPointer());
+    assert(!pConstAnk->isMutablePointer());
+    assert(pMutAnk->isPointer());
+    assert(pMutAnk->isMutablePointer());
+    assert(pConstAnk->toString() == "patta[ank]");
+    assert(pMutAnk->toString() == "patta[badal ank]");
+
+    // Structural equality
+    assert(pConstAnk->equals(*Type::pointer(Type::Ank(), false)));
+    assert(!pConstAnk->equals(*pMutAnk));
+    assert(!pConstAnk->equals(*pConstBol));
+
+    // Mutability subtyping: mutable pointer can be assigned to immutable pointer (permission weakening)
+    assert(pMutAnk->isAssignableTo(*pConstAnk));
+    // Immutable pointer cannot be assigned to mutable pointer
+    assert(!pConstAnk->isAssignableTo(*pMutAnk));
+    // Nullable: nalla is assignable to pointer
+    assert(Type::Nalla()->isAssignableTo(*pConstAnk));
+    assert(Type::Nalla()->isAssignableTo(*pMutAnk));
+    // Incompatible pointees
+    assert(!pConstBol->isAssignableTo(*pConstAnk));
+    // Pointer is not assignable to non-pointer
+    assert(!pConstAnk->isAssignableTo(*Type::Ank()));
+
+    // 11. Milestone 3: Pointer Expression Type Checking
+    // 11a. Address-of lvalue and dereference
+    assert(checkTypeOnly("pakad a: ank = 10; pakad p = &a;"));
+    assert(checkTypeOnly("pakad atal k: ank = 50; pakad p = patta k;"));
+    assert(checkTypeOnly("pakad a: ank = 10; pakad p: patta[badal ank] = &a; *p = 20;"));
+    assert(checkTypeOnly("pakad a: ank = 10; pakad p = &a; pakad val: ank = *p;"));
+
+    // 11b. Rvalue address-of rejected with Doglapan
+    assert(expectTypeError("pakad bad = &(10 + 20);", "Doglapan! Sirf variable ya memory location ka patta liya ja sakta hai, temporary rvalue ka nahi!"));
+    assert(expectTypeError("pakad bad = patta (100 + 200);", "Doglapan! Sirf variable ya memory location ka patta liya ja sakta hai, temporary rvalue ka nahi!"));
+
+    // 11c. Deref of non-pointer rejected
+    assert(expectTypeError("pakad not_ptr: ank = 42; pakad v = *not_ptr;", "Aukaat ke bahar! Dereference '*' sirf pointer type par chal sakta hai"));
+
+    // 11d. Deref assignment to const pointer rejected
+    assert(expectTypeError("pakad atal c: ank = 100; pakad p = &c; *p = 200;", "Shanti gadadhari Bheem! Const / atal pointer ke through memory mutate nahi kar sakte!"));
+
+    // 11e. Deref assignment type mismatch rejected
+    assert(expectTypeError("pakad x: ank = 10; pakad p: patta[badal ank] = &x; *p = \"galat\";", "Aukaat ke bahar! Pointer type 'patta[badal ank]' mein 'bol' assign nahi kar sakte!"));
+
+    // 12. Milestone 3: Function Overload Resolution & Diagnostics
+    // 12a. Overload resolution by parameter type
+    std::string overloadByType = R"raw(
+        bahuroop kar jodo(a: ank, b: ank): ank { ye_le a + b; }
+        bahuroop kar jodo(s1: bol, s2: bol): bol { ye_le s1 + s2; }
+        jodo(10, 20);
+        jodo("Ram", "Sita");
+    )raw";
+    assert(checkTypeOnly(overloadByType));
+
+    // 12b. Overload resolution by arity
+    std::string overloadByArity = R"raw(
+        bahuroop kar hisaab(x: ank): ank { ye_le x * 2; }
+        bahuroop kar hisaab(x: ank, y: ank): ank { ye_le x + y; }
+        hisaab(21);
+        hisaab(15, 27);
+    )raw";
+    assert(checkTypeOnly(overloadByArity));
+
+    // 12c. Ambiguous overload (tie) -> "Confuse kar diya"
+    std::string tieOverload = R"raw(
+        bahuroop kar calc(a: ank, b: ank): ank { ye_le a + b; }
+        bahuroop kar calc(x: ank, y: ank): ank { ye_le x * y; }
+        calc(5, 10);
+    )raw";
+    assert(expectTypeError(tieOverload, "Confuse kar diya! Jugaad 'calc' ke overloads mein tie ho gaya!"));
+
+    // 12d. No matching overload -> "Aukaat ke bahar"
+    std::string noMatchOverload = R"raw(
+        bahuroop kar only_ank(x: ank, y: ank): ank { ye_le x + y; }
+        only_ank("a", "b");
+    )raw";
+    assert(expectTypeError(noMatchOverload, "Aukaat ke bahar! Jugaad 'only_ank' ke liye koi matching overload nahi mila!"));
+
+    // 12e. Non-overloaded function still produces exact legacy diagnostic
+    assert(expectTypeError("kar single_fn(n: ank) {} single_fn(\"galat\");", "Doglapan! Jugaad parameter ko 'ank' chahiye tha, par tumne 'bol' pass kiya!"));
 
     std::cout << "PASSED\n";
 }

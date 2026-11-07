@@ -48,6 +48,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " run <script>              Run a script defined in tapri.json\n";
     std::cout << "  " << prog << " test [dir]                Run test runner on *_test.meme files\n";
     std::cout << "  " << prog << " pakao <file> ...          Compile to native Flutter / macOS targets\n";
+    std::cout << "  " << prog << " --parse-only <file>       Parse and typecheck file without executing\n";
     std::cout << "  " << prog << " -h, --help                Show this help message\n";
 }
 
@@ -1714,6 +1715,39 @@ int main(int argc, char *argv[])
         else if (arg1 == "-v" || arg1 == "--version")
         {
             std::cout << "MEMElang v1.0\n";
+        }
+        else if (arg1 == "--parse-only")
+        {
+            if (argc < 3)
+            {
+                std::cerr << "Usage: ./meme --parse-only <file.meme>\n";
+                return 1;
+            }
+            std::string path = argv[2];
+            std::ifstream file(path);
+            if (!file.is_open())
+            {
+                std::cerr << "File not found: " << path << "\n";
+                return 1;
+            }
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            std::string source = buffer.str();
+            try
+            {
+                Lexer lexer(source);
+                auto tokens = lexer.tokenize();
+                Parser parser(tokens);
+                auto program = parser.parseProgram();
+                TypeChecker tc;
+                tc.check(program);
+                return 0;
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << "Parse error: " << e.what() << "\n";
+                return 1;
+            }
         }
         else if (arg1 == "naya" || arg1 == "create" || arg1 == "new")
         {

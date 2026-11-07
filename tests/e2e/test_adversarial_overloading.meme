@@ -1,0 +1,491 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Tier 5 Adversarial Coverage Hardening (Overloading)
+// Coverage:
+//   - Section 1: Dual-Lexicon Keyword Mixture in Same Scope (bahuroop, overload, etc.)
+//   - Section 2: Class Hierarchy & Inheritance Overloading (inherits, shadows, ops)
+//   - Section 3: Closures & Higher-Order Functions with Overload Sets
+//   - Section 4: Chained Operator Expressions & Multi-Overloaded Operators
+//   - Section 5: Tantrik Unary & Indexing Combinations (-(obj[0]), (-obj)[0], 2D matrix)
+//   - Section 6: Comprehensive 14 Tantrik Dunder Operators
+//   - Section 7: Boundary Error Trapping (panga/lafda on arity & type mismatches)
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Tier 5 Adversarial Overloading Hardening ===";
+
+// Test helper: sahi_hai assertion
+jugaad sahi_hai(cond, msg: bol) {
+    dekh !cond {
+        dikha f"[FAIL] {msg}";
+        chillao f"Assertion failed: {msg}";
+    }
+    dikha f"[PASS] {msg}";
+}
+
+// ------------------------------------------------------------------------------
+// SECTION 1: Dual-Lexicon Keyword Mixture in Single Scope
+// ------------------------------------------------------------------------------
+bahuroop jugaad dual_mix(x: ank) -> bol {
+    ye_le f"DESI_INT:{x}";
+}
+
+overload fn dual_mix(s: bol) -> bol {
+    return f"ENG_STR:{s}";
+}
+
+aur_ek jugaad dual_mix(b: sach) -> bol {
+    ye_le b ? "DESI_BOOL:TRUE" : "DESI_BOOL:FALSE";
+}
+
+multimethod fn dual_mix(x: ank, y: ank) -> ank {
+    return x * 100 + y;
+}
+
+ek_aur jugaad dual_mix(p: point) -> bol {
+    ye_le f"DESI_FLOAT:{p}";
+}
+
+sahi_hai(dual_mix(42) == "DESI_INT:42", "S1_dual_lexicon_int");
+sahi_hai(dual_mix("memelang") == "ENG_STR:memelang", "S1_dual_lexicon_string");
+sahi_hai(dual_mix(han) == "DESI_BOOL:TRUE", "S1_dual_lexicon_bool_true");
+sahi_hai(dual_mix(nhi) == "DESI_BOOL:FALSE", "S1_dual_lexicon_bool_false");
+sahi_hai(dual_mix(3, 7) == 307, "S1_dual_lexicon_multi_param");
+sahi_hai(dual_mix(3.14) == "DESI_FLOAT:3.14", "S1_dual_lexicon_float");
+
+// ------------------------------------------------------------------------------
+// SECTION 2: Class Hierarchy & Inheritance Overloading
+// ------------------------------------------------------------------------------
+biradari SuperGreeter {
+    jugaad shuru(id: ank) {
+        khud.id = id;
+    }
+
+    bahuroop jugaad greet() -> bol {
+        ye_le f"GREET_ZERO:{khud.id}";
+    }
+
+    aur_ek jugaad greet(name: bol) -> bol {
+        ye_le f"GREET_NAME:{name}:{khud.id}";
+    }
+
+    aur_ek jugaad greet(times: ank) -> bol {
+        ye_le f"GREET_TIMES:{times}:{khud.id}";
+    }
+}
+
+biradari SubGreeter nepo SuperGreeter {
+    jugaad shuru(id: ank, tag: bol) {
+        khud.id = id;
+        khud.tag = tag;
+    }
+}
+
+pakad sub_g = SubGreeter(99, "ALPHA");
+sahi_hai(sub_g.greet() == "GREET_ZERO:99", "S2_subclass_inherits_0_arg");
+sahi_hai(sub_g.greet("MEME") == "GREET_NAME:MEME:99", "S2_subclass_inherits_str_arg");
+sahi_hai(sub_g.greet(5) == "GREET_TIMES:5:99", "S2_subclass_inherits_int_arg");
+sahi_hai(sub_g.tag == "ALPHA", "S2_subclass_field_accessible");
+
+// Subclass shadowing base overloads
+biradari SubOverrider nepo SuperGreeter {
+    jugaad shuru(id: ank) {
+        khud.id = id;
+    }
+
+    bahuroop jugaad greet(flag: sach) -> bol {
+        ye_le f"OVERRIDE_BOOL:{flag}:{khud.id}";
+    }
+}
+
+pakad sub_ov = SubOverrider(77);
+sahi_hai(sub_ov.greet(han) == "OVERRIDE_BOOL:true:77", "S2_subclass_override_method");
+
+pakad shadow_caught = nhi;
+panga {
+    sub_ov.greet("MEME");
+} lafda (err) {
+    shadow_caught = han;
+}
+sahi_hai(shadow_caught, "S2_subclass_shadows_base_overloads");
+
+// Inherited operators without redefinition
+biradari BaseBox {
+    jugaad shuru(v: ank) {
+        khud.v = v;
+        khud.arr = [v, v * 2];
+    }
+
+    tantrik + (other) {
+        ye_le BaseBox(khud.v + other.v);
+    }
+
+    tantrik - (other) {
+        ye_le BaseBox(khud.v - other.v);
+    }
+
+    tantrik == (other) {
+        ye_le khud.v == other.v;
+    }
+
+    tantrik - () {
+        ye_le BaseBox(-khud.v);
+    }
+
+    tantrik [](idx: ank) {
+        ye_le khud.arr[idx];
+    }
+
+    tantrik []=(idx: ank, val) {
+        khud.arr[idx] = val;
+    }
+}
+
+biradari SubBox nepo BaseBox {
+    jugaad shuru(v: ank, name: bol) {
+        khud.v = v;
+        khud.name = name;
+        khud.arr = [v, v * 10];
+    }
+}
+
+pakad sb1 = SubBox(10, "First");
+pakad sb2 = SubBox(25, "Second");
+
+sahi_hai((sb1 + sb2).v == 35, "S2_subclass_inherits_add_op");
+sahi_hai((sb2 - sb1).v == 15, "S2_subclass_inherits_sub_op");
+sahi_hai(sb1 == SubBox(10, "Other"), "S2_subclass_inherits_eq_op");
+sahi_hai(sb1 != sb2, "S2_subclass_inherits_neq_derived_op");
+sahi_hai((-sb1).v == -10, "S2_subclass_inherits_unary_neg_op");
+sahi_hai(sb1[0] == 10 aur sb1[1] == 100, "S2_subclass_inherits_index_read");
+sb1[0] = 777;
+sahi_hai(sb1[0] == 777, "S2_subclass_inherits_index_write");
+
+// ------------------------------------------------------------------------------
+// SECTION 3: Closures & Higher-Order Functions with Overload Sets
+// ------------------------------------------------------------------------------
+bahuroop jugaad format_item(x: ank) -> bol {
+    ye_le f"INT[{x}]";
+}
+
+aur_ek jugaad format_item(s: bol) -> bol {
+    ye_le f"STR[{s}]";
+}
+
+aur_ek jugaad format_item(b: sach) -> bol {
+    ye_le b ? "BOOL[true]" : "BOOL[false]";
+}
+
+// 1. Calling typed overload inside a closure capturing outer variables
+jugaad make_int_formatter(prefix: bol) {
+    pakad call_count = 0;
+    ye_le jugaad(item: ank) {
+        call_count = call_count + 1;
+        ye_le f"{prefix}#{call_count}:{format_item(item)}";
+    };
+}
+
+pakad prefixer = make_int_formatter("NUM");
+sahi_hai(prefixer(10) == "NUM#1:INT[10]", "S3_closure_capturing_state_call_1");
+sahi_hai(prefixer(20) == "NUM#2:INT[20]", "S3_closure_capturing_state_call_2");
+
+// 2. Passing OverloadSet as higher-order callback to generic dispatcher
+jugaad dynamic_dispatch_call(callback, val) {
+    ye_le callback(val);
+}
+
+sahi_hai(dynamic_dispatch_call(format_item, 500) == "INT[500]", "S3_higher_order_dispatch_int");
+sahi_hai(dynamic_dispatch_call(format_item, "Namaste") == "STR[Namaste]", "S3_higher_order_dispatch_str");
+sahi_hai(dynamic_dispatch_call(format_item, han) == "BOOL[true]", "S3_higher_order_dispatch_bool");
+
+// 3. Storing OverloadSet in variable
+pakad fn_holder = format_item;
+sahi_hai(fn_holder(123) == "INT[123]", "S3_variable_overload_int");
+sahi_hai(fn_holder("Variable") == "STR[Variable]", "S3_variable_overload_str");
+
+// ------------------------------------------------------------------------------
+// SECTION 4: Chained Operator Expressions & Multi-Overloaded Operators
+// ------------------------------------------------------------------------------
+biradari AdvVec2 {
+    jugaad shuru(x: ank, y: ank) {
+        khud.x = x;
+        khud.y = y;
+    }
+
+    tantrik + (other: AdvVec2) -> AdvVec2 {
+        ye_le AdvVec2(khud.x + other.x, khud.y + other.y);
+    }
+
+    tantrik - (other: AdvVec2) -> AdvVec2 {
+        ye_le AdvVec2(khud.x - other.x, khud.y - other.y);
+    }
+
+    // Overload 1 of *: scalar multiply
+    tantrik * (scale: ank) -> AdvVec2 {
+        ye_le AdvVec2(khud.x * scale, khud.y * scale);
+    }
+
+    // Overload 2 of *: dot product returning int
+    tantrik * (other: AdvVec2) -> ank {
+        ye_le khud.x * other.x + khud.y * other.y;
+    }
+
+    tantrik < (other: AdvVec2) -> sach {
+        ye_le (khud.x * khud.x + khud.y * khud.y) < (other.x * other.x + other.y * other.y);
+    }
+
+    tantrik <= (other: AdvVec2) -> sach {
+        ye_le (khud.x * khud.x + khud.y * khud.y) <= (other.x * other.x + other.y * other.y);
+    }
+
+    tantrik == (other: AdvVec2) -> sach {
+        ye_le khud.x == other.x aur khud.y == other.y;
+    }
+}
+
+pakad av1 = AdvVec2(10, 20);
+pakad av2 = AdvVec2(2, 3);
+pakad av3 = AdvVec2(5, 5);
+
+// Precedence: av2 * 4 evaluated before + and -
+pakad chain_v = av1 + av2 * 4 - av3;
+sahi_hai(chain_v.x == 13 aur chain_v.y == 27, "S4_chained_arithmetic_precedence");
+
+// Multi-overloaded * on same class
+pakad v_scaled = av1 * 3;
+sahi_hai(v_scaled.x == 30 aur v_scaled.y == 60, "S4_operator_multi_overload_scalar");
+
+pakad v_dot = av1 * av2; // 10*2 + 20*3 = 80
+sahi_hai(v_dot == 80, "S4_operator_multi_overload_vector_dot");
+
+// Chained dot product and integer addition
+pakad dot_chain = (av1 * av2) + (AdvVec2(1, 1) * AdvVec2(4, 5)); // 80 + 9 = 89
+sahi_hai(dot_chain == 89, "S4_chained_dot_and_int_add");
+
+// Chained comparisons
+sahi_hai(av2 < av1 aur av3 < av1, "S4_chained_comparison_less");
+sahi_hai(av2 <= av3 aur av2 != av1, "S4_chained_comparison_le_neq");
+
+// ------------------------------------------------------------------------------
+// SECTION 5: Tantrik Unary & Indexing Combinations
+// ------------------------------------------------------------------------------
+biradari Elem {
+    jugaad shuru(v: ank) {
+        khud.val = v;
+    }
+
+    tantrik - () -> Elem {
+        ye_le Elem(-khud.val);
+    }
+
+    tantrik == (other: Elem) -> sach {
+        ye_le khud.val == other.val;
+    }
+}
+
+biradari Pack {
+    jugaad shuru(e0: Elem, e1: Elem) {
+        khud.elems = [e0, e1];
+    }
+
+    tantrik [](idx: ank) -> Elem {
+        ye_le khud.elems[idx];
+    }
+
+    tantrik []=(idx: ank, val: Elem) {
+        khud.elems[idx] = val;
+    }
+
+    tantrik - () -> Pack {
+        ye_le Pack(-khud.elems[0], -khud.elems[1]);
+    }
+}
+
+pakad pk = Pack(Elem(100), Elem(200));
+
+// Unary on indexed result: -(pk[0])
+pakad neg_e0 = -(pk[0]);
+sahi_hai(neg_e0.val == -100, "S5_unary_on_indexed_result");
+
+// Indexing on unary-negated container: (-pk)[0]
+pakad neg_pk_0 = (-pk)[0];
+sahi_hai(neg_pk_0.val == -100, "S5_indexing_on_negated_container_0");
+pakad neg_pk_1 = (-pk)[1];
+sahi_hai(neg_pk_1.val == -200, "S5_indexing_on_negated_container_1");
+
+// Logical not on member check
+sahi_hai(!(pk[0].val == 999), "S5_logical_not_on_field");
+
+// Index assignment with unary negated value
+pk[1] = -(pk[0]);
+sahi_hai(pk[1].val == -100, "S5_index_assign_unary_negated");
+
+// 2D Matrix multi-level indexing read and write
+biradari GridRow {
+    jugaad shuru(c0: ank, c1: ank) {
+        khud.cols = [c0, c1];
+    }
+    tantrik [](idx: ank) -> ank {
+        ye_le khud.cols[idx];
+    }
+    tantrik []=(idx: ank, val: ank) {
+        khud.cols[idx] = val;
+    }
+}
+
+biradari Grid2x2 {
+    jugaad shuru(r0: GridRow, r1: GridRow) {
+        khud.rows = [r0, r1];
+    }
+    tantrik [](idx: ank) -> GridRow {
+        ye_le khud.rows[idx];
+    }
+}
+
+pakad grid = Grid2x2(GridRow(10, 20), GridRow(30, 40));
+sahi_hai(grid[0][0] == 10, "S5_2d_index_read_0_0");
+sahi_hai(grid[0][1] == 20, "S5_2d_index_read_0_1");
+sahi_hai(grid[1][0] == 30, "S5_2d_index_read_1_0");
+sahi_hai(grid[1][1] == 40, "S5_2d_index_read_1_1");
+
+// Multi-level index write: grid[1][1] = 99
+grid[1][1] = 99;
+sahi_hai(grid[1][1] == 99, "S5_2d_index_write_1_1");
+
+// Multi-level indexing in expression
+pakad diag_sum = grid[0][0] + grid[1][1]; // 10 + 99 = 109
+sahi_hai(diag_sum == 109, "S5_2d_index_expression");
+
+// ------------------------------------------------------------------------------
+// SECTION 6: Comprehensive 14 Tantrik Dunder Operators
+// ------------------------------------------------------------------------------
+biradari TantrikSuite {
+    jugaad shuru(v: ank) {
+        khud.v = v;
+        khud.slots = [v, v + 10];
+    }
+
+    tantrik + (other: TantrikSuite) -> TantrikSuite {
+        ye_le TantrikSuite(khud.v + other.v);
+    }
+
+    tantrik - (other: TantrikSuite) -> TantrikSuite {
+        ye_le TantrikSuite(khud.v - other.v);
+    }
+
+    tantrik * (other: TantrikSuite) -> TantrikSuite {
+        ye_le TantrikSuite(khud.v * other.v);
+    }
+
+    tantrik / (other: TantrikSuite) -> TantrikSuite {
+        ye_le TantrikSuite(khud.v / other.v);
+    }
+
+    tantrik % (other: TantrikSuite) -> TantrikSuite {
+        ye_le TantrikSuite(khud.v % other.v);
+    }
+
+    tantrik == (other: TantrikSuite) -> sach {
+        ye_le khud.v == other.v;
+    }
+
+    tantrik != (other: TantrikSuite) -> sach {
+        ye_le khud.v != other.v;
+    }
+
+    tantrik < (other: TantrikSuite) -> sach {
+        ye_le khud.v < other.v;
+    }
+
+    tantrik > (other: TantrikSuite) -> sach {
+        ye_le khud.v > other.v;
+    }
+
+    tantrik <= (other: TantrikSuite) -> sach {
+        ye_le khud.v <= other.v;
+    }
+
+    tantrik >= (other: TantrikSuite) -> sach {
+        ye_le khud.v >= other.v;
+    }
+
+    tantrik - () -> TantrikSuite {
+        ye_le TantrikSuite(-khud.v);
+    }
+
+    tantrik [](idx: ank) -> ank {
+        ye_le khud.slots[idx];
+    }
+
+    tantrik []=(idx: ank, val: ank) {
+        khud.slots[idx] = val;
+    }
+
+    jugaad __not__() -> sach {
+        ye_le khud.v == 0;
+    }
+}
+
+pakad ts10 = TantrikSuite(10);
+pakad ts3 = TantrikSuite(3);
+
+sahi_hai((ts10 + ts3).v == 13, "S6_dunder_01_jod");
+sahi_hai((ts10 - ts3).v == 7, "S6_dunder_02_ghata");
+sahi_hai((ts10 * ts3).v == 30, "S6_dunder_03_guna");
+sahi_hai((ts10 / ts3).v == 3, "S6_dunder_04_bhaag");
+sahi_hai((ts10 % ts3).v == 1, "S6_dunder_05_bacha");
+sahi_hai(ts10 == TantrikSuite(10), "S6_dunder_06_barabar");
+sahi_hai(ts10 != ts3, "S6_dunder_07_alag");
+sahi_hai(ts3 < ts10, "S6_dunder_08_chota");
+sahi_hai(ts10 > ts3, "S6_dunder_09_bada");
+sahi_hai(ts3 <= ts10 aur ts10 <= TantrikSuite(10), "S6_dunder_10_chota_barabar");
+sahi_hai(ts10 >= ts3 aur ts10 >= TantrikSuite(10), "S6_dunder_11_bada_barabar");
+sahi_hai((-ts10).v == -10, "S6_dunder_12_ulta_unary_neg");
+sahi_hai(ts10[0] == 10 aur ts10[1] == 20, "S6_dunder_13_la_index_get");
+ts10[0] = 88;
+sahi_hai(ts10[0] == 88, "S6_dunder_14_daal_index_set");
+sahi_hai((!ts10).v == -10, "S6_dunder_15_not_operator_resolves_ulta");
+
+// Dedicated class with __not__ method without unary minus
+biradari CustomInvert {
+    jugaad shuru(flag: sach) {
+        khud.flag = flag;
+    }
+    jugaad __not__() -> sach {
+        ye_le !khud.flag;
+    }
+}
+sahi_hai((!CustomInvert(han)) == nhi, "S6_dunder_16_not_dunder_pure_bool_true");
+sahi_hai((!CustomInvert(nhi)) == han, "S6_dunder_17_not_dunder_pure_bool_false");
+
+
+// ------------------------------------------------------------------------------
+// SECTION 7: Boundary Cases & Error Trapping
+// ------------------------------------------------------------------------------
+// Arity mismatch caught
+pakad arity_err_caught = nhi;
+panga {
+    dual_mix(1, 2, 3, 4);
+} lafda (err) {
+    arity_err_caught = han;
+}
+sahi_hai(arity_err_caught, "S7_boundary_arity_mismatch_caught");
+
+// Type mismatch caught
+pakad type_err_caught = nhi;
+panga {
+    dual_mix([1, 2, 3]);
+} lafda (err) {
+    type_err_caught = han;
+}
+sahi_hai(type_err_caught, "S7_boundary_type_mismatch_caught");
+
+// Operator type mismatch caught
+pakad op_err_caught = nhi;
+panga {
+    pakad bad = ts10 + "IllegalStringOperand";
+} lafda (err) {
+    op_err_caught = han;
+}
+sahi_hai(op_err_caught, "S7_boundary_op_type_mismatch_caught");
+
+dikha "=== All Tier 5 Adversarial Overloading Tests Completed Successfully! ===";

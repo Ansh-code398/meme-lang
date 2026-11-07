@@ -36,6 +36,20 @@ enum class TokenType
     UDHAAR_BADAL,
     NAKAL,
 
+    // Overloading (Milestone 2)
+    OVERLOAD,
+    OPERATOR,
+
+    // Pointers & Rust-inspired Memory Management (Milestone 2)
+    ADDRESS_OF,
+    DEREF,
+    MOVE,
+    OWNED,
+    MUT,
+    CONST,
+    DROP,
+    SCOPE,
+
     // Error Handling
     PANGA,
     LAFDA,
@@ -260,7 +274,6 @@ public:
             {"udhaar_badal", TokenType::UDHAAR_BADAL},
             {"udhaar_badlo", TokenType::UDHAAR_BADAL},
             {"borrow_mut", TokenType::UDHAAR_BADAL},
-            {"mut_ref", TokenType::UDHAAR_BADAL},
             {"nakal", TokenType::NAKAL},
             {"clone", TokenType::NAKAL},
             {"copy", TokenType::NAKAL},
@@ -305,7 +318,75 @@ public:
             {"parakh", TokenType::JAANCH},
             {"match", TokenType::JAANCH},
             {"baaki", TokenType::BAAKI},
-            {"default", TokenType::BAAKI}};
+            {"default", TokenType::BAAKI},
+
+            // Function Overloading
+            {"bahuroop", TokenType::OVERLOAD},
+            {"aur_ek", TokenType::OVERLOAD},
+            {"ek_aur", TokenType::OVERLOAD},
+            {"overload", TokenType::OVERLOAD},
+            {"multimethod", TokenType::OVERLOAD},
+
+            // Operator Overloading
+            {"tantrik", TokenType::OPERATOR},
+            {"kriya", TokenType::OPERATOR},
+            {"operator", TokenType::OPERATOR},
+            {"op", TokenType::OPERATOR},
+
+            // Address-Of
+            {"patta", TokenType::ADDRESS_OF},
+            {"thikana", TokenType::ADDRESS_OF},
+            {"addr", TokenType::ADDRESS_OF},
+            {"address_of", TokenType::ADDRESS_OF},
+            {"ptr", TokenType::ADDRESS_OF},
+
+            // Dereference
+            {"asli", TokenType::DEREF},
+            {"deref", TokenType::DEREF},
+            {"val", TokenType::DEREF},
+            {"dereference", TokenType::DEREF},
+            {"dekh_patta", TokenType::DEREF},
+            {"uthha", TokenType::DEREF},
+
+            // Move Semantics
+            {"rawana", TokenType::MOVE},
+            {"khisko", TokenType::MOVE},
+            {"chal_nikal", TokenType::MOVE},
+            {"move", TokenType::MOVE},
+
+            // Ownership
+            {"malik", TokenType::OWNED},
+            {"kabza", TokenType::OWNED},
+            {"malkiyat", TokenType::OWNED},
+            {"own", TokenType::OWNED},
+            {"owned", TokenType::OWNED},
+            {"owner", TokenType::OWNED},
+
+            // Mutability
+            {"badal", TokenType::MUT},
+            {"badlo", TokenType::MUT},
+            {"mut", TokenType::MUT},
+            {"mutable", TokenType::MUT},
+
+            // Immutability / Const
+            {"atal", TokenType::CONST},
+            {"sthir", TokenType::CONST},
+            {"const", TokenType::CONST},
+            {"immut", TokenType::CONST},
+
+            // Drop
+            {"khatam", TokenType::DROP},
+            {"alvida", TokenType::DROP},
+            {"visarjan", TokenType::DROP},
+            {"drop", TokenType::DROP},
+            {"dispose", TokenType::DROP},
+
+            // Scope
+            {"daayra", TokenType::SCOPE},
+            {"seema", TokenType::SCOPE},
+            {"elaqa", TokenType::SCOPE},
+            {"scope", TokenType::SCOPE},
+            {"lifetime", TokenType::SCOPE}};
 
         while (!isAtEnd())
         {
@@ -980,7 +1061,7 @@ public:
                 else
                 {
                     advance();
-                    tokens.push_back({TokenType::ERROR, "Akela '&' kya kar raha hai? '&&' (aur) likhna chahte ho kya?", tokenLine, tokenColumn});
+                    tokens.push_back({TokenType::ADDRESS_OF, "&", tokenLine, tokenColumn});
                 }
                 break;
 
@@ -1044,7 +1125,7 @@ public:
         return tokens;
     }
 
-    std::string tokenTypeToString(TokenType type)
+    static std::string tokenTypeToString(TokenType type)
     {
         switch (type)
         {
@@ -1179,6 +1260,28 @@ public:
             return "ERROR";
         case TokenType::END_OF_FILE:
             return "END_OF_FILE";
+
+        // Milestone 2 Tokens
+        case TokenType::OVERLOAD:
+            return "OVERLOAD";
+        case TokenType::OPERATOR:
+            return "OPERATOR";
+        case TokenType::ADDRESS_OF:
+            return "ADDRESS_OF";
+        case TokenType::DEREF:
+            return "DEREF";
+        case TokenType::MOVE:
+            return "MOVE";
+        case TokenType::OWNED:
+            return "OWNED";
+        case TokenType::MUT:
+            return "MUT";
+        case TokenType::CONST:
+            return "CONST";
+        case TokenType::DROP:
+            return "DROP";
+        case TokenType::SCOPE:
+            return "SCOPE";
 
         default:
             return "UNKNOWN_TOKEN";

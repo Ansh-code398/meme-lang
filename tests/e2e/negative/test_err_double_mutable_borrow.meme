@@ -1,0 +1,12 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Conflicting Double Mutable Borrow
+// EXPECT_ERROR: Ek mawaali
+// ==============================================================================
+
+pakad resource = 1000;
+
+// First exclusive borrow
+pakad b1 = udhaar_badal resource;
+
+// Conflicting second exclusive borrow must fail
+pakad b2 = udhaar_badal resource;

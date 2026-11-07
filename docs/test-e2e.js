@@ -67,7 +67,7 @@ async function runE2ETests() {
 
     await page.waitForFunction(() => {
       return (
-        document.body.innerText.includes('Swagat hai Baburao Apte bhai from Mumbai!') &&
+        document.body.innerText.includes('Swagat hai Baburao Apte dost from Mumbai!') &&
         document.body.innerText.includes('5 saal baad aapki umar hogi: 55')
       );
     }, { timeout: 5000 });
@@ -107,7 +107,7 @@ async function runE2ETests() {
     await page.waitForFunction(() => {
       return (
         document.body.innerText.includes('Safe copy cloned: Tees Maar Khan Khazana') &&
-        document.body.innerText.includes('Shared read 1: Majnu Bhai') &&
+        document.body.innerText.includes('Shared read 1: Majnu Seth') &&
         document.body.innerText.includes('Score after scope borrow release: 100') &&
         document.body.innerText.includes('[RAII] Locker auto-dropped and sealed: Swiss Vault')
       );

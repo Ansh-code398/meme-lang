@@ -9,6 +9,7 @@
 #include "Callable.h"
 #include "Value.h"
 #include "Function.h"
+#include "OverloadSet.h"
 
 class ClassCallable;
 class BoundMethod;
@@ -56,12 +57,12 @@ class ClassCallable : public Callable, public std::enable_shared_from_this<Class
 private:
     std::string name;
     std::shared_ptr<ClassCallable> superclass;
-    std::unordered_map<std::string, std::shared_ptr<UserFunction>> methods;
+    std::unordered_map<std::string, std::shared_ptr<Callable>> methods;
 
 public:
     ClassCallable(const std::string &name,
                   std::shared_ptr<ClassCallable> superclass,
-                  std::unordered_map<std::string, std::shared_ptr<UserFunction>> methods)
+                  std::unordered_map<std::string, std::shared_ptr<Callable>> methods)
         : name(name), superclass(superclass), methods(std::move(methods)) {}
 
     const std::string &getName() const
@@ -74,7 +75,7 @@ public:
         return superclass;
     }
 
-    std::shared_ptr<UserFunction> findMethod(const std::string &methodName) const
+    std::shared_ptr<Callable> findMethod(const std::string &methodName) const
     {
         auto it = methods.find(methodName);
         if (it != methods.end())
@@ -109,7 +110,7 @@ public:
         return names;
     }
 
-    std::shared_ptr<UserFunction> findInitializer() const
+    std::shared_ptr<Callable> findInitializer() const
     {
         auto initializer = findMethod("shuru");
         if (initializer == nullptr)
@@ -185,53 +186,70 @@ class BoundMethod : public Callable
 {
 private:
     std::shared_ptr<Instance> instance;
-    std::shared_ptr<UserFunction> method;
+    std::shared_ptr<Callable> method;
 
 public:
-    BoundMethod(std::shared_ptr<Instance> instance, std::shared_ptr<UserFunction> method)
+    BoundMethod(std::shared_ptr<Instance> instance, std::shared_ptr<Callable> method)
         : instance(instance), method(method) {}
 
     size_t arity() const override
     {
-        return method->arity();
+        return method ? method->arity() : 0;
     }
 
     size_t minArity() const override
     {
-        return method->minArity();
+        return method ? method->minArity() : 0;
     }
 
     size_t maxArity() const override
     {
-        return method->maxArity();
+        return method ? method->maxArity() : 0;
     }
 
     bool isVariadic() const override
     {
-        return method->isVariadic();
+        return method ? method->isVariadic() : false;
     }
 
     bool checkArity(size_t count) const override
     {
-        return method->checkArity(count);
+        return method ? method->checkArity(count) : false;
     }
 
     Value call(Interpreter &interpreter, const std::vector<Value> &args) override
     {
-        auto env = std::make_shared<Environment>(method->getClosure());
-        env->define("apun", Value(instance));
-        env->define("khud", Value(instance));
-        env->define("apna", Value(instance));
-        env->define("this", Value(instance));
-        env->define("self", Value(instance));
+        if (!method) return Value(std::monostate{});
 
-        auto boundFunc = std::make_shared<UserFunction>(method->getDeclaration(), env);
-        return boundFunc->call(interpreter, args);
+        std::shared_ptr<UserFunction> uf = nullptr;
+        if (auto directUf = std::dynamic_pointer_cast<UserFunction>(method))
+        {
+            uf = directUf;
+        }
+        else if (auto os = std::dynamic_pointer_cast<OverloadSet>(method))
+        {
+            uf = os->resolve(args);
+        }
+
+        if (uf)
+        {
+            auto env = std::make_shared<Environment>(uf->getClosure());
+            env->define("apun", Value(instance));
+            env->define("khud", Value(instance));
+            env->define("apna", Value(instance));
+            env->define("this", Value(instance));
+            env->define("self", Value(instance));
+
+            auto boundFunc = std::make_shared<UserFunction>(uf->getDeclaration(), env);
+            return boundFunc->call(interpreter, args);
+        }
+
+        return method->call(interpreter, args);
     }
 
     std::string toString() const override
     {
-        return "<method " + method->getName() + ">";
+        return "<method " + (method ? method->toString() : "") + ">";
     }
 };
 

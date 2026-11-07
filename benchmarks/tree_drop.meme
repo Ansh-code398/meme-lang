@@ -1,0 +1,50 @@
+// Benchmark: Memory Allocation & Drop in MEMElang
+bula "samay" jaise samay;
+
+sancha TreeNode {
+    kar shuru(val, left, right) {
+        khud.val = val;
+        khud.left = left;
+        khud.right = right;
+    }
+
+    kar alvida() {
+        dekh khud.left != nalla {
+            khatam khud.left;
+        }
+        dekh khud.right != nalla {
+            khatam khud.right;
+        }
+    }
+}
+
+jugaad build_tree(depth) {
+    dekh depth <= 0 {
+        ye_le nalla;
+    }
+    pakad left = build_tree(depth - 1);
+    pakad right = build_tree(depth - 1);
+    ye_le TreeNode(1, left, right);
+}
+
+jugaad sum_tree(node) {
+    dekh node == nalla {
+        ye_le 0;
+    }
+    ye_le node.val + sum_tree(node.left) + sum_tree(node.right);
+}
+
+jugaad bench_tree_drop(depth) {
+    pakad total = 0;
+    daayra {
+        pakad root = build_tree(depth);
+        total = sum_tree(root);
+    }
+    ye_le total;
+}
+
+pakad start = samay.ab();
+pakad result = bench_tree_drop(14);
+pakad elapsed = (samay.ab() - start) * 1000.0;
+
+dikha f"MEMElang | Tree Drop (depth 14) | Result: {result} | Time: {point_wala(elapsed)}ms";

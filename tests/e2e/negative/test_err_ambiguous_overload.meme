@@ -1,0 +1,15 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Ambiguous Overload Resolution
+// EXPECT_ERROR: Confuse kar diya
+// ==============================================================================
+
+bahuroop jugaad calculate(a: ank, b: ank) -> ank {
+    ye_le a + b;
+}
+
+bahuroop jugaad calculate(x: ank, y: ank) -> ank {
+    ye_le x * y;
+}
+
+// Call creates a tie between indistinguishable parameter signatures
+calculate(10, 20);

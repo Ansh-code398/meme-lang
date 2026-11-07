@@ -6,6 +6,8 @@
 #include <memory>
 #include <sstream>
 
+struct Value;
+
 enum class TypeKind
 {
     ANY,
@@ -25,24 +27,42 @@ enum class TypeKind
     MAP,
     FUNCTION,
     CLASS,
-    ENUM
+    ENUM,
+    POINTER,    // Pointer type: patta[T] / *T
+    OVERLOAD    // Overload set holding candidate FunctionTypes
 };
+
+class PointerType;
 
 class Type : public std::enable_shared_from_this<Type>
 {
 public:
     TypeKind kind;
     std::string name;                                  // For CLASS, ENUM, or custom alias
-    std::shared_ptr<Type> elementType;                 // For LIST or SET
+    std::shared_ptr<Type> elementType;                 // For LIST, SET, or POINTER (pointee)
     std::shared_ptr<Type> keyType;                     // For MAP
     std::shared_ptr<Type> valueType;                   // For MAP
     std::vector<std::shared_ptr<Type>> paramTypes;     // For FUNCTION or TUPLE
     std::shared_ptr<Type> returnType;                  // For FUNCTION
+    bool isMut = false;                                // For POINTER (mutability)
+    std::vector<std::shared_ptr<Type>> overloads;      // For OVERLOAD
+    size_t minArity = 0;                               // For FUNCTION
+    size_t maxArity = 0;                               // For FUNCTION
+    bool isVariadic = false;                           // For FUNCTION
+    bool isOverload = false;                           // For FUNCTION
+    bool isConst = false;
 
     Type(TypeKind kind, const std::string &name = "")
         : kind(kind), name(name) {}
 
+    virtual ~Type() = default;
+
     bool isAny() const { return kind == TypeKind::ANY; }
+    bool isPointer() const { return kind == TypeKind::POINTER; }
+    bool isOverloadKind() const { return kind == TypeKind::OVERLOAD; }
+
+    virtual std::shared_ptr<Type> getPointee() const { return elementType; }
+    virtual bool isMutablePointer() const { return isMut; }
 
     bool isNumeric() const {
         return kind == TypeKind::ANK || kind == TypeKind::POINT ||
@@ -121,10 +141,25 @@ public:
         t->valueType = v ? v : Any();
         return t;
     }
-    static std::shared_ptr<Type> Function(std::vector<std::shared_ptr<Type>> params, std::shared_ptr<Type> ret = nullptr) {
+    static std::shared_ptr<Type> Function(
+        std::vector<std::shared_ptr<Type>> params,
+        std::shared_ptr<Type> ret = nullptr,
+        size_t minA = 0,
+        size_t maxA = 0,
+        bool isVar = false)
+    {
         auto t = std::make_shared<Type>(TypeKind::FUNCTION, "jugaad");
         t->paramTypes = std::move(params);
         t->returnType = ret ? ret : Any();
+        t->minArity = (minA == 0 && maxA == 0 && !t->paramTypes.empty()) ? t->paramTypes.size() : minA;
+        t->maxArity = (minA == 0 && maxA == 0 && !t->paramTypes.empty()) ? t->paramTypes.size() : maxA;
+        t->isVariadic = isVar;
+        return t;
+    }
+    static std::shared_ptr<Type> Overload(std::vector<std::shared_ptr<Type>> sigs)
+    {
+        auto t = std::make_shared<Type>(TypeKind::OVERLOAD, "overload");
+        t->overloads = std::move(sigs);
         return t;
     }
     static std::shared_ptr<Type> Class(const std::string &className) {
@@ -133,6 +168,11 @@ public:
     static std::shared_ptr<Type> Enum(const std::string &enumName) {
         return std::make_shared<Type>(TypeKind::ENUM, enumName);
     }
+    static std::shared_ptr<Type> pointer(std::shared_ptr<Type> pointee, bool isMut = false);
+    static std::shared_ptr<Type> Pointer(std::shared_ptr<Type> pointee, bool isMut = false);
+    static std::shared_ptr<Type> Patta(std::shared_ptr<Type> pointee, bool isMut = false);
+    static std::shared_ptr<Type> fromRuntimeValue(const Value &val, int depth = 0);
+    static int computeTypeDistance(const std::shared_ptr<Type> &arg, const std::shared_ptr<Type> &param);
 
     // Numeric rank for automatic widening
     static int numericRank(TypeKind k)
@@ -148,8 +188,93 @@ public:
         }
     }
 
+    virtual bool equals(const Type &other) const
+    {
+        if (this == &other) return true;
+        if (this->kind != other.kind) return false;
+
+        switch (kind)
+        {
+        case TypeKind::ANY:
+        case TypeKind::ANK:
+        case TypeKind::POINT:
+        case TypeKind::BOL:
+        case TypeKind::SACH:
+        case TypeKind::NALLA:
+        case TypeKind::BYTE:
+        case TypeKind::INT32:
+        case TypeKind::FLOAT32:
+        case TypeKind::CHAR:
+        case TypeKind::BYTES:
+            return true;
+
+        case TypeKind::CLASS:
+        case TypeKind::ENUM:
+            return this->name == other.name;
+
+        case TypeKind::LIST:
+        case TypeKind::SET:
+            if (!this->elementType && !other.elementType) return true;
+            if (!this->elementType || !other.elementType) return false;
+            return this->elementType->equals(*other.elementType);
+
+        case TypeKind::MAP:
+        {
+            bool kOk = (!this->keyType && !other.keyType) ||
+                       (this->keyType && other.keyType && this->keyType->equals(*other.keyType));
+            bool vOk = (!this->valueType && !other.valueType) ||
+                       (this->valueType && other.valueType && this->valueType->equals(*other.valueType));
+            return kOk && vOk;
+        }
+
+        case TypeKind::TUPLE:
+            if (this->paramTypes.size() != other.paramTypes.size()) return false;
+            for (size_t i = 0; i < this->paramTypes.size(); ++i)
+            {
+                if (!this->paramTypes[i] && !other.paramTypes[i]) continue;
+                if (!this->paramTypes[i] || !other.paramTypes[i]) return false;
+                if (!this->paramTypes[i]->equals(*other.paramTypes[i])) return false;
+            }
+            return true;
+
+        case TypeKind::FUNCTION:
+        {
+            if (this->paramTypes.size() != other.paramTypes.size()) return false;
+            for (size_t i = 0; i < this->paramTypes.size(); ++i)
+            {
+                if (!this->paramTypes[i] && !other.paramTypes[i]) continue;
+                if (!this->paramTypes[i] || !other.paramTypes[i]) return false;
+                if (!this->paramTypes[i]->equals(*other.paramTypes[i])) return false;
+            }
+            if (!this->returnType && !other.returnType) return true;
+            if (!this->returnType || !other.returnType) return false;
+            return this->returnType->equals(*other.returnType);
+        }
+
+        case TypeKind::POINTER:
+            if (this->isMut != other.isMut) return false;
+            if (!this->elementType && !other.elementType) return true;
+            if (!this->elementType || !other.elementType) return false;
+            return this->elementType->equals(*other.elementType);
+
+        case TypeKind::OVERLOAD:
+            if (this->overloads.size() != other.overloads.size()) return false;
+            for (size_t i = 0; i < this->overloads.size(); ++i)
+            {
+                if (!this->overloads[i] && !other.overloads[i]) continue;
+                if (!this->overloads[i] || !other.overloads[i]) return false;
+                if (!this->overloads[i]->equals(*other.overloads[i])) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    bool operator==(const Type &other) const { return equals(other); }
+    bool operator!=(const Type &other) const { return !equals(other); }
+
     // Assignability check: can `this` (source) be assigned to `target`?
-    bool isAssignableTo(const Type &target) const
+    virtual bool isAssignableTo(const Type &target) const
     {
         // Dynamic escape hatch: `any` can receive or be assigned to anything
         if (this->isAny() || target.isAny())
@@ -157,7 +282,7 @@ public:
             return true;
         }
 
-        // Nullable reference types: `nalla` can be assigned to object, list, map, set, tuple, bytes, or nalla
+        // Nullable reference types: `nalla` can be assigned to object, list, map, set, tuple, bytes, pointer, or nalla
         if (this->kind == TypeKind::NALLA)
         {
             return target.kind == TypeKind::NALLA ||
@@ -166,7 +291,8 @@ public:
                    target.kind == TypeKind::MAP ||
                    target.kind == TypeKind::SET ||
                    target.kind == TypeKind::TUPLE ||
-                   target.kind == TypeKind::BYTES;
+                   target.kind == TypeKind::BYTES ||
+                   target.kind == TypeKind::POINTER;
         }
 
         // Numeric widening: BYTE -> INT32 -> ANK -> FLOAT32 -> POINT
@@ -184,6 +310,22 @@ public:
         if (this->kind == TypeKind::CHAR && target.kind == TypeKind::BOL)
         {
             return true;
+        }
+
+        // Pointer assignability
+        if (this->kind == TypeKind::POINTER && target.kind == TypeKind::POINTER)
+        {
+            if (!this->isMut && target.isMut)
+            {
+                return false;
+            }
+            if (!this->elementType || !target.elementType) return true;
+            if (target.isMut)
+            {
+                return this->elementType->equals(*target.elementType);
+            }
+            return this->elementType->equals(*target.elementType) ||
+                   this->elementType->isAssignableTo(*target.elementType);
         }
 
         // If kinds match:
@@ -240,7 +382,7 @@ public:
         return false;
     }
 
-    std::string toString() const
+    virtual std::string toString() const
     {
         switch (kind)
         {
@@ -300,9 +442,129 @@ public:
             res += ") -> " + (returnType ? returnType->toString() : "any");
             return res;
         }
+        case TypeKind::POINTER:
+            return "patta[" + std::string(isMut ? "badal " : "") +
+                   (elementType ? elementType->toString() : "any") + "]";
+        case TypeKind::OVERLOAD:
+        {
+            std::string res = "overload<";
+            for (size_t i = 0; i < overloads.size(); ++i)
+            {
+                if (i > 0) res += " | ";
+                res += overloads[i] ? overloads[i]->toString() : "any";
+            }
+            res += ">";
+            return res;
+        }
         }
         return "any";
     }
 };
+
+class PointerType : public Type
+{
+public:
+    std::shared_ptr<Type> pointeeType;
+
+    PointerType(std::shared_ptr<Type> pointee = nullptr, bool isMut = false)
+        : Type(TypeKind::POINTER, "patta"),
+          pointeeType(pointee ? pointee : Type::Any())
+    {
+        this->elementType = this->pointeeType;
+        this->isMut = isMut;
+    }
+
+    std::shared_ptr<Type> getPointee() const override
+    {
+        return pointeeType;
+    }
+
+    bool isMutablePointer() const override
+    {
+        return isMut;
+    }
+
+    bool equals(const Type &other) const override
+    {
+        if (this == &other) return true;
+        if (other.kind != TypeKind::POINTER) return false;
+        const auto *otherPtr = dynamic_cast<const PointerType *>(&other);
+        if (!otherPtr)
+        {
+            return this->isMut == other.isMut &&
+                   ((!this->pointeeType && !other.elementType) ||
+                    (this->pointeeType && other.elementType && this->pointeeType->equals(*other.elementType)));
+        }
+        if (this->isMut != otherPtr->isMut) return false;
+        if (!this->pointeeType && !otherPtr->pointeeType) return true;
+        if (!this->pointeeType || !otherPtr->pointeeType) return false;
+        return this->pointeeType->equals(*otherPtr->pointeeType);
+    }
+
+    bool isAssignableTo(const Type &target) const override
+    {
+        if (this->isAny() || target.isAny())
+        {
+            return true;
+        }
+
+        if (target.kind != TypeKind::POINTER)
+        {
+            return false;
+        }
+
+        const auto *targetPtr = dynamic_cast<const PointerType *>(&target);
+        bool targetIsMut = targetPtr ? targetPtr->isMut : target.isMut;
+        const std::shared_ptr<Type> &targetPointee = targetPtr ? targetPtr->pointeeType : target.elementType;
+
+        if (targetIsMut && !this->isMut)
+        {
+            return false;
+        }
+
+        if (!this->pointeeType || !targetPointee)
+        {
+            return true;
+        }
+
+        if (this->pointeeType->isAny() || targetPointee->isAny())
+        {
+            return true;
+        }
+
+        if (targetIsMut)
+        {
+            return this->pointeeType->equals(*targetPointee);
+        }
+
+        return this->pointeeType->equals(*targetPointee) ||
+               this->pointeeType->isAssignableTo(*targetPointee);
+    }
+
+    std::string toString() const override
+    {
+        std::string inner = pointeeType ? pointeeType->toString() : "any";
+        if (isMut)
+        {
+            return "patta[badal " + inner + "]";
+        }
+        return "patta[" + inner + "]";
+    }
+};
+
+inline std::shared_ptr<Type> Type::pointer(std::shared_ptr<Type> pointee, bool isMut)
+{
+    return std::make_shared<PointerType>(pointee, isMut);
+}
+
+inline std::shared_ptr<Type> Type::Pointer(std::shared_ptr<Type> pointee, bool isMut)
+{
+    return pointer(pointee, isMut);
+}
+
+inline std::shared_ptr<Type> Type::Patta(std::shared_ptr<Type> pointee, bool isMut)
+{
+    return pointer(pointee, isMut);
+}
 
 #endif

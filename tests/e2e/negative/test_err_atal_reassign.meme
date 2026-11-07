@@ -1,0 +1,9 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Reassignment to Immutable Variable (atal / const)
+// EXPECT_ERROR: Shanti gadadhari Bheem
+// ==============================================================================
+
+pakad atal SAMAJ_KA_NIYAM = 42;
+
+// Illegal mutation of constant / immutable slot
+SAMAJ_KA_NIYAM = 100;

@@ -7677,7 +7677,7 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
 
 static Value getListMethod(const std::shared_ptr<MemeList> &list, const std::string &name)
 {
-    if (name == "ghusa" || name == "dhakka" || name == "push" || name == "append" || name == "daal")
+    if (name == "ghusa" || name == "dhakka" || name == "push" || name == "append" || name == "daal" || name == "jod")
     {
         return Value(std::make_shared<NativeMethodCallable>(name, 1, [list](Interpreter &, const std::vector<Value> &args) {
             list->elements.push_back(args[0]);
@@ -7826,7 +7826,7 @@ static Value getListMethod(const std::shared_ptr<MemeList> &list, const std::str
             return Value(resultList);
         }));
     }
-    if (name == "kul" || name == "jod" || name == "reduce" || name == "nichod" || name == "sameto")
+    if (name == "kul" || name == "reduce" || name == "nichod" || name == "sameto")
     {
         return Value(std::make_shared<NativeMethodCallable>(name, 1, 2, [list, name](Interpreter &interpreter, const std::vector<Value> &args) {
             if (args.empty())
@@ -8964,8 +8964,18 @@ Value LambaiBuiltin::call(Interpreter &interpreter, const std::vector<Value> &ar
     throw std::runtime_error("'size()' sirf string, list, khata, bytes, set ya tuple naapta hai, '" + val.typeName() + "' pe fita mat lagao!");
 }
 
+struct CallArgSource {
+    std::shared_ptr<Environment> env = nullptr;
+    std::string varName = "";
+    bool isMoved = false;
+};
+static thread_local std::vector<CallArgSource> currentArgSources;
+
 Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> &args)
 {
+    auto argSources = currentArgSources;
+    currentArgSources.clear();
+
     interpreter.enterScope();
     int funcScopeDepth = interpreter.getCurrentScopeDepth();
     auto env = std::make_shared<Environment>(closure, funcScopeDepth);
@@ -9010,7 +9020,25 @@ Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> 
         }
         else if (argIdx < args.size())
         {
-            env->define(param.name, args[argIdx++]);
+            env->define(param.name, args[argIdx]);
+            VariableSlot *slot = env->findSlot(param.name);
+            if (slot)
+            {
+                slot->isParameter = true;
+                if (argIdx < argSources.size())
+                {
+                    if (argSources[argIdx].isMoved)
+                    {
+                        slot->isOwned = true;
+                    }
+                    if (argSources[argIdx].env)
+                    {
+                        slot->sourceEnv = argSources[argIdx].env;
+                        slot->sourceVarName = argSources[argIdx].varName;
+                    }
+                }
+            }
+            argIdx++;
         }
         else
         {
@@ -9022,6 +9050,11 @@ Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> 
             else
             {
                 env->define(param.name, Value(std::monostate{}));
+            }
+            VariableSlot *slot = env->findSlot(param.name);
+            if (slot)
+            {
+                slot->isParameter = true;
             }
         }
     }
@@ -10045,7 +10078,19 @@ void Interpreter::dropInstance(std::shared_ptr<Instance> instance)
     auto dropMethod = instance->getClass()->findMethod("alvida");
     if (!dropMethod)
     {
+        dropMethod = instance->getClass()->findMethod("khatam");
+    }
+    if (!dropMethod)
+    {
+        dropMethod = instance->getClass()->findMethod("visarjan");
+    }
+    if (!dropMethod)
+    {
         dropMethod = instance->getClass()->findMethod("drop");
+    }
+    if (!dropMethod)
+    {
+        dropMethod = instance->getClass()->findMethod("dispose");
     }
 
     if (dropMethod)
@@ -10058,30 +10103,33 @@ void Interpreter::dropInstance(std::shared_ptr<Instance> instance)
 void Interpreter::cleanupScope(std::shared_ptr<Environment> env, int scopeDepth)
 {
     // 1. Release active borrows that were created at scopeDepth or deeper
-    for (auto it = activeBorrows.begin(); it != activeBorrows.end();)
+    if (!activeBorrows.empty())
     {
-        if (it->scopeDepth >= scopeDepth)
+        for (auto it = activeBorrows.begin(); it != activeBorrows.end();)
         {
-            if (it->env)
+            if (it->scopeDepth >= scopeDepth)
             {
-                VariableSlot *slot = it->env->findSlot(it->varName);
-                if (slot)
+                if (it->env)
                 {
-                    if (it->isMutable)
+                    VariableSlot *slot = it->env->findSlot(it->varName);
+                    if (slot)
                     {
-                        slot->hasExclusiveBorrow = false;
-                    }
-                    else
-                    {
-                        slot->sharedBorrows = std::max(0, slot->sharedBorrows - 1);
+                        if (it->isMutable)
+                        {
+                            slot->hasExclusiveBorrow = false;
+                        }
+                        else
+                        {
+                            slot->sharedBorrows = std::max(0, slot->sharedBorrows - 1);
+                        }
                     }
                 }
+                it = activeBorrows.erase(it);
             }
-            it = activeBorrows.erase(it);
-        }
-        else
-        {
-            ++it;
+            else
+            {
+                ++it;
+            }
         }
     }
 
@@ -10090,7 +10138,24 @@ void Interpreter::cleanupScope(std::shared_ptr<Environment> env, int scopeDepth)
     {
         for (auto &[name, slot] : env->getSlots())
         {
-            if (!slot.isMoved && slot.value.isInstance())
+            if (name == "khud" || name == "this" || name == "apun" || name == "apna" || name == "self")
+                continue;
+            if (slot.isMoved)
+                continue;
+            if (!slot.value.isInstance())
+                continue;
+
+            bool shouldDrop = false;
+            if (slot.isOwned)
+            {
+                shouldDrop = true;
+            }
+            else if (!slot.isParameter && slot.sourceEnv == nullptr)
+            {
+                shouldDrop = true;
+            }
+
+            if (shouldDrop)
             {
                 dropInstance(slot.value.getInstance());
                 slot.isMoved = true;
@@ -10699,20 +10764,14 @@ void Interpreter::execute(const Stmt *stmt)
         Value val;
         if (v->initializer)
         {
-            if (auto *ident = dynamic_cast<const IdentifierExpr *>(v->initializer.get()))
-            {
-                val = moveVariable(ident->name);
-            }
-            else
-            {
-                val = evaluate(v->initializer.get());
-            }
+            val = evaluate(v->initializer.get());
         }
         else
         {
             val = Value(std::monostate{});
         }
-        environment->define(v->name, std::move(val));
+        environment->define(v->name, std::move(val), v->isOwned, v->isMut, v->isConst,
+                            v->typeAnnotation ? v->typeAnnotation->toString() : "");
         return;
     }
 
@@ -10822,6 +10881,82 @@ void Interpreter::execute(const Stmt *stmt)
         return;
     }
 
+    // Drop statement: `khatam expr;`, `drop expr;`, `visarjan expr;`, `alvida expr;`, `dispose expr;`
+    if (auto *ds = dynamic_cast<const DropStmt *>(stmt))
+    {
+        if (auto *ident = dynamic_cast<const IdentifierExpr *>(ds->expr.get()))
+        {
+            VariableSlot *slot = environment->findSlot(ident->name);
+            if (!slot)
+            {
+                throw std::runtime_error(
+                    "Rasode mein kaun tha?! Ye '" + ident->name + "' bina bataye kahan se aaya? Pehle 'pakad " + ident->name + ";' se declare kar!");
+            }
+            if (slot->isMoved)
+            {
+                throw std::runtime_error(
+                    "Pehli fursat mein nikal! Variable '" + ident->name + "' ka maal move ho chuka hai! Ownership transfer ke baad use karna mana hai!");
+            }
+            if (slot->hasExclusiveBorrow || slot->sharedBorrows > 0)
+            {
+                throw std::runtime_error(
+                    "Khatam nahi hua abhi! '" + ident->name + "' udhaar pe hai, drop nahi kar sakte!");
+            }
+            if (slot->value.isInstance())
+            {
+                dropInstance(slot->value.getInstance());
+            }
+            slot->isMoved = true;
+            return;
+        }
+
+        if (auto *deref = dynamic_cast<const DerefExpr *>(ds->expr.get()))
+        {
+            Value ptrVal = evaluate(deref->operand.get()).deref();
+            if (!ptrVal.isPointer() || ptrVal.getPointer()->isNull())
+            {
+                throw std::runtime_error("Chuna laga diya! Null pointer ko drop nahi kar sakte!");
+            }
+            auto ptr = ptrVal.getPointer();
+            if (ptr->env && !ptr->varName.empty())
+            {
+                VariableSlot *slot = ptr->env->findSlot(ptr->varName);
+                if (slot)
+                {
+                    if (slot->isMoved)
+                    {
+                        throw std::runtime_error("Pehli fursat mein nikal! Variable '" + ptr->varName + "' ka maal move ho chuka hai!");
+                    }
+                    if (slot->value.isInstance())
+                    {
+                        dropInstance(slot->value.getInstance());
+                    }
+                    slot->isMoved = true;
+                    return;
+                }
+            }
+            if (ptr->instance)
+            {
+                dropInstance(ptr->instance);
+                return;
+            }
+        }
+
+        Value val = evaluate(ds->expr.get());
+        if (val.isInstance())
+        {
+            dropInstance(val.getInstance());
+        }
+        return;
+    }
+
+    // Scope Block statement: `daayra { ... }` or `scope { ... }`
+    if (auto *sb = dynamic_cast<const ScopeBlockStmt *>(stmt))
+    {
+        executeBlock(sb->statements, std::make_shared<Environment>(environment, currentScopeDepth + 1));
+        return;
+    }
+
     // 4. Block statement: `{ ... }`
     if (auto *b = dynamic_cast<const BlockStmt *>(stmt))
     {
@@ -10847,6 +10982,45 @@ void Interpreter::execute(const Stmt *stmt)
     // 6. While statement: `jabtak cond { ... }`
     if (auto *w = dynamic_cast<const WhileStmt *>(stmt))
     {
+        if (auto *b = dynamic_cast<const BlockStmt *>(w->body.get()))
+        {
+            auto loopEnv = std::make_shared<Environment>(environment, currentScopeDepth + 1);
+            enterScope();
+            int scopeDepth = currentScopeDepth;
+            auto prev = environment;
+            environment = loopEnv;
+            try
+            {
+                while (evaluate(w->condition.get()).isTruthy())
+                {
+                    try
+                    {
+                        for (const auto &s : b->statements)
+                        {
+                            execute(s.get());
+                        }
+                    }
+                    catch (const BreakSignal &)
+                    {
+                        break;
+                    }
+                    catch (const ContinueSignal &)
+                    {
+                        continue;
+                    }
+                }
+                cleanupScope(loopEnv, scopeDepth);
+                environment = prev;
+            }
+            catch (...)
+            {
+                cleanupScope(loopEnv, scopeDepth);
+                environment = prev;
+                throw;
+            }
+            return;
+        }
+
         while (evaluate(w->condition.get()).isTruthy())
         {
             try
@@ -11182,7 +11356,23 @@ void Interpreter::execute(const Stmt *stmt)
     if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt))
     {
         auto func = std::make_shared<UserFunction>(f, environment);
-        environment->define(f->name, Value(func));
+        if (f->isOverload)
+        {
+            environment->defineOverload(f->name, func);
+        }
+        else
+        {
+            auto *slot = environment->findSlot(f->name);
+            if (slot && slot->value.isCallable() &&
+                std::dynamic_pointer_cast<OverloadSet>(slot->value.getCallable()))
+            {
+                environment->defineOverload(f->name, func);
+            }
+            else
+            {
+                environment->define(f->name, Value(func));
+            }
+        }
         return;
     }
 
@@ -11206,11 +11396,42 @@ void Interpreter::execute(const Stmt *stmt)
             }
         }
 
-        std::unordered_map<std::string, std::shared_ptr<UserFunction>> methods;
+        std::unordered_map<std::string, std::shared_ptr<Callable>> methods;
         for (const auto &method : c->methods)
         {
             auto func = std::make_shared<UserFunction>(method.get(), environment);
-            methods[method->name] = func;
+            auto it = methods.find(method->name);
+            if (it != methods.end())
+            {
+                if (auto os = std::dynamic_pointer_cast<OverloadSet>(it->second))
+                {
+                    os->addCandidate(func);
+                }
+                else if (auto prevFunc = std::dynamic_pointer_cast<UserFunction>(it->second))
+                {
+                    auto os = std::make_shared<OverloadSet>(method->name);
+                    os->addCandidate(prevFunc);
+                    os->addCandidate(func);
+                    methods[method->name] = os;
+                }
+                else
+                {
+                    methods[method->name] = func;
+                }
+            }
+            else
+            {
+                if (method->isOverload)
+                {
+                    auto os = std::make_shared<OverloadSet>(method->name);
+                    os->addCandidate(func);
+                    methods[method->name] = os;
+                }
+                else
+                {
+                    methods[method->name] = func;
+                }
+            }
         }
 
         auto klass = std::make_shared<ClassCallable>(c->name, superclass, std::move(methods));
@@ -11471,6 +11692,72 @@ void Interpreter::execute(const Stmt *stmt)
     }
 }
 
+static Value dereferencePointerHelper(const Value &inputVal)
+{
+    Value ptrVal = inputVal;
+    if (ptrVal.isNil() || ptrVal.isNull())
+    {
+        throw std::runtime_error("Chuna laga diya! Null pointer dereference: nalla pointer ko dereference nahi kar sakte!");
+    }
+
+    if (ptrVal.isReference())
+    {
+        ptrVal = ptrVal.deref();
+    }
+
+    if (!ptrVal.isPointer())
+    {
+        throw std::runtime_error(
+            "Aukaat ke bahar! Dereference '*' sirf pointer type par chal sakta hai, mila '" +
+            ptrVal.typeName() + "'!");
+    }
+
+    auto ptr = ptrVal.asPointer();
+    if (!ptr || ptr->isNull())
+    {
+        throw std::runtime_error("Chuna laga diya! Null pointer dereference: nalla pointer ko dereference nahi kar sakte!");
+    }
+
+    // Read 1: Custom getter
+    if (ptr->customGetter)
+    {
+        return ptr->customGetter();
+    }
+
+    // Read 2: Struct / Class instance field
+    if (ptr->instance && !ptr->fieldName.empty())
+    {
+        return ptr->instance->get(ptr->fieldName);
+    }
+
+    // Read 3: Environment variable slot
+    if (ptr->env && !ptr->varName.empty())
+    {
+        VariableSlot *slot = ptr->env->findSlot(ptr->varName);
+        if (!slot)
+        {
+            throw std::runtime_error(
+                "Chuna laga diya! Pointer jis variable ko point kar raha tha ('" +
+                ptr->varName + "'), wo ab exist nahi karta!");
+        }
+        if (slot->isMoved)
+        {
+            throw std::runtime_error(
+                "Pehli fursat mein nikal! '" + ptr->varName +
+                "' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!");
+        }
+        return slot->value;
+    }
+
+    // Read 4: Raw address
+    if (ptr->rawAddress)
+    {
+        return *ptr->rawAddress;
+    }
+
+    throw std::runtime_error("Chuna laga diya! Null pointer dereference: nalla pointer ko dereference nahi kar sakte!");
+}
+
 Value Interpreter::evaluate(const Expr *expr)
 {
     if (!expr)
@@ -11485,46 +11772,6 @@ Value Interpreter::evaluate(const Expr *expr)
     if (auto *e = dynamic_cast<const IntExpr *>(expr))
         return Value(e->value);
 
-    if (auto *e = dynamic_cast<const FloatExpr *>(expr))
-    {
-        if (e->isFloat32) return Value(static_cast<float>(e->value));
-        return Value(e->value);
-    }
-
-    if (auto *e = dynamic_cast<const ByteExpr *>(expr))
-        return Value(e->value);
-
-    if (auto *e = dynamic_cast<const BytesExpr *>(expr))
-        return Value(std::make_shared<MemeBytes>(e->value));
-
-    if (auto *e = dynamic_cast<const StringExpr *>(expr))
-        return Value(e->value);
-
-    // F-String expression: `f"Hello {name}"`
-    if (auto *fs = dynamic_cast<const FStringExpr *>(expr))
-    {
-        std::string result = "";
-        for (const auto &part : fs->parts)
-        {
-            Value val = evaluate(part.get());
-            result += stringify(val);
-        }
-        return Value(result);
-    }
-
-    if (auto *e = dynamic_cast<const BoolExpr *>(expr))
-        return Value(e->value);
-
-    if (dynamic_cast<const NullExpr *>(expr))
-        return Value(std::monostate{});
-
-    // Lambda expression: `(a, b) => expr` or `jugaad(x) { ... }`
-    if (auto *l = dynamic_cast<const LambdaExpr *>(expr))
-    {
-        auto function = std::make_shared<UserFunction>(l->declaration, environment);
-        return Value(function);
-    }
-
     // Identifier lookup
     if (auto *e = dynamic_cast<const IdentifierExpr *>(expr))
         return environment->get(e->name);
@@ -11533,15 +11780,7 @@ Value Interpreter::evaluate(const Expr *expr)
     if (auto *e = dynamic_cast<const AssignExpr *>(expr))
     {
         VariableSlot *slot = environment->findSlot(e->name);
-        Value val;
-        if (auto *ident = dynamic_cast<const IdentifierExpr *>(e->value.get()))
-        {
-            val = moveVariable(ident->name);
-        }
-        else
-        {
-            val = evaluate(e->value.get());
-        }
+        Value val = evaluate(e->value.get());
 
         if (!slot)
         {
@@ -11562,154 +11801,10 @@ Value Interpreter::evaluate(const Expr *expr)
             }
         }
 
-        environment->assign(e->name, val);
+        environment->assignToSlot(slot, val, e->name);
         return val;
     }
 
-    // Array Destructure Assignment: `[a, b, *rest] = value` or `[count, setCount] = useState(0)`
-    if (auto *da = dynamic_cast<const DestructureAssignExpr *>(expr))
-    {
-        Value val = evaluate(da->value.get()).deref();
-        if (!val.isList())
-        {
-            throw std::runtime_error("Destructuring sirf Array / list pe ho sakti hai! Mila: " + val.typeName());
-        }
-        auto list = val.getList();
-        size_t listIdx = 0;
-        size_t total = list ? list->elements.size() : 0;
-        for (const auto &item : da->items)
-        {
-            Value elemVal;
-            if (item.isVariadic)
-            {
-                auto restList = std::make_shared<MemeList>();
-                while (listIdx < total)
-                {
-                    restList->elements.push_back(list->elements[listIdx++]);
-                }
-                elemVal = Value(restList);
-            }
-            else
-            {
-                elemVal = (listIdx < total) ? list->elements[listIdx++] : Value(std::monostate{});
-            }
-
-            VariableSlot *slot = environment->findSlot(item.name);
-            if (slot)
-            {
-                environment->assign(item.name, elemVal);
-            }
-            else
-            {
-                environment->define(item.name, elemVal);
-            }
-        }
-        return val;
-    }
-
-    // Borrow expression: `udhaar x` or `udhaar_badal x`
-    if (auto *b = dynamic_cast<const BorrowExpr *>(expr))
-    {
-        auto *ident = dynamic_cast<const IdentifierExpr *>(b->operand.get());
-        if (!ident)
-        {
-            throw std::runtime_error(
-                "Ye sab doglapan hai! Sirf variable ko udhaar (borrow) kiya ja sakta hai!");
-        }
-
-        VariableSlot *slot = environment->findSlot(ident->name);
-        if (!slot)
-        {
-            throw std::runtime_error(
-                "Rasode mein kaun tha?! Ye '" + ident->name + "' bina bataye kahan se aaya? Pehle 'pakad " + ident->name + ";' se declare kar!");
-        }
-
-        if (slot->isMoved)
-        {
-            throw std::runtime_error(
-                "Pehli fursat mein nikal! '" + ident->name + "' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!");
-        }
-
-        if (b->isMutable)
-        {
-            if (slot->hasExclusiveBorrow)
-            {
-                throw std::runtime_error(
-                    "Ek mawaali ek time pe ek hi jagah! '" + ident->name + "' already exclusively borrowed hai!");
-            }
-            if (slot->sharedBorrows > 0)
-            {
-                throw std::runtime_error(
-                    "Ek mawaali ek time pe ek hi jagah! '" + ident->name + "' already udhaar (borrowed) pe hai, exclusive borrow nahi mil sakta!");
-            }
-
-            slot->hasExclusiveBorrow = true;
-        }
-        else
-        {
-            if (slot->hasExclusiveBorrow)
-            {
-                throw std::runtime_error(
-                    "Shanti gadadhari Bheem! '" + ident->name + "' already mutably borrowed hai!");
-            }
-
-            slot->sharedBorrows++;
-        }
-
-        uint64_t bId = nextBorrowId++;
-        activeBorrows.push_back({bId, environment, ident->name, b->isMutable, currentScopeDepth});
-
-        Reference ref;
-        ref.varName = ident->name;
-        ref.env = environment;
-        ref.isMutable = b->isMutable;
-        ref.scopeDepth = currentScopeDepth;
-        ref.borrowId = bId;
-
-        return Value(ref);
-    }
-
-    // Nakal (clone) expression: `nakal(expr)` or `nakal expr`
-    if (auto *n = dynamic_cast<const NakalExpr *>(expr))
-    {
-        Value val = evaluate(n->operand.get());
-        return cloneValue(val);
-    }
-
-    // Await expression: `sabar expr` or `await expr`
-    if (auto *a = dynamic_cast<const AwaitExpr *>(expr))
-    {
-        Value operand = evaluate(a->expression.get());
-        Value d = operand.deref();
-        if (d.isMap())
-        {
-            auto map = d.getMap();
-            if (map->has("__is_promise__") || map->has("__is_thread__"))
-            {
-                if (map->has("jod"))
-                {
-                    Value jodVal = map->entries["jod"].deref();
-                    if (jodVal.isCallable())
-                    {
-                        return jodVal.getCallable()->call(*this, {});
-                    }
-                }
-            }
-        }
-        return operand;
-    }
-
-    // Unary expression: `-x`, `!x`
-    if (auto *e = dynamic_cast<const UnaryExpr *>(expr))
-    {
-        Value operand = evaluate(e->operand.get());
-        if (e->op.type == TokenType::MINUS)
-            return negate(operand);
-        if (e->op.type == TokenType::NOT)
-            return logicalNot(operand);
-
-        throw std::runtime_error("Ye operator '" + e->op.value + "' unary mein nahi chalta!");
-    }
 
     // Binary expression
     if (auto *e = dynamic_cast<const BinaryExpr *>(expr))
@@ -11734,6 +11829,66 @@ Value Interpreter::evaluate(const Expr *expr)
 
         Value left = evaluate(e->left.get());
         Value right = evaluate(e->right.get());
+
+        // Fast path for raw 64-bit integers: zero dynamic deref, zero instance lookups, direct ALU ops
+        if (std::holds_alternative<long long>(left.data) && std::holds_alternative<long long>(right.data))
+        {
+            long long lval = std::get<long long>(left.data);
+            long long rval = std::get<long long>(right.data);
+            switch (e->op.type)
+            {
+            case TokenType::PLUS: {
+                long long res = 0;
+                if (__builtin_add_overflow(lval, rval, &res)) {
+                    throw std::runtime_error("25 din mein paisa double karte-karte integer overflow ho gaya! Aukaat ke bahar chala gaya jod.");
+                }
+                return Value(res);
+            }
+            case TokenType::MINUS: {
+                long long res = 0;
+                if (__builtin_sub_overflow(lval, rval, &res)) {
+                    throw std::runtime_error("Ghatate-ghatate patal lok pahunch gaye! Integer underflow/overflow ho gaya.");
+                }
+                return Value(res);
+            }
+            case TokenType::MULTIPLY: {
+                long long res = 0;
+                if (__builtin_mul_overflow(lval, rval, &res)) {
+                    throw std::runtime_error("Hisab-kitab aukaat ke bahar! Guna (*) karte-karte integer overflow ho gaya.");
+                }
+                return Value(res);
+            }
+            case TokenType::DIVIDE: {
+                if (rval == 0) {
+                    throw std::runtime_error("Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+                }
+                if (lval == std::numeric_limits<long long>::min() && rval == -1) {
+                    throw std::runtime_error("Integer overflow ho gaya! Is hisaab ko sambhalne ki aukaat nahi hai.");
+                }
+                return Value(lval / rval);
+            }
+            case TokenType::MOD: {
+                if (rval == 0) {
+                    throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
+                }
+                return Value(lval % rval);
+            }
+            case TokenType::LESS_THAN:
+                return Value(lval < rval);
+            case TokenType::LESS_THAN_EQUAL:
+                return Value(lval <= rval);
+            case TokenType::GREATER_THAN:
+                return Value(lval > rval);
+            case TokenType::GREATER_THAN_EQUAL:
+                return Value(lval >= rval);
+            case TokenType::EQUAL:
+                return Value(lval == rval);
+            case TokenType::NOT_EQUAL:
+                return Value(lval != rval);
+            default:
+                break;
+            }
+        }
 
         Value dl = left.deref();
         Value dr = right.deref();
@@ -11841,6 +11996,13 @@ Value Interpreter::evaluate(const Expr *expr)
         {
             if (dl.isInstance())
             {
+                auto neMethod = dl.getInstance()->getClass()->findMethod("__alag__");
+                if (!neMethod) neMethod = dl.getInstance()->getClass()->findMethod("__ne__");
+                if (neMethod)
+                {
+                    BoundMethod bound(dl.getInstance(), neMethod);
+                    return bound.call(*this, {dr});
+                }
                 auto method = dl.getInstance()->getClass()->findMethod("__barabar__");
                 if (!method) method = dl.getInstance()->getClass()->findMethod("__eq__");
                 if (method)
@@ -11849,15 +12011,16 @@ Value Interpreter::evaluate(const Expr *expr)
                     Value res = bound.call(*this, {dr});
                     return Value(!res.isTruthy());
                 }
-                auto neMethod = dl.getInstance()->getClass()->findMethod("__ne__");
-                if (neMethod)
-                {
-                    BoundMethod bound(dl.getInstance(), neMethod);
-                    return bound.call(*this, {dr});
-                }
             }
             if (dr.isInstance())
             {
+                auto neMethod = dr.getInstance()->getClass()->findMethod("__alag__");
+                if (!neMethod) neMethod = dr.getInstance()->getClass()->findMethod("__ne__");
+                if (neMethod)
+                {
+                    BoundMethod bound(dr.getInstance(), neMethod);
+                    return bound.call(*this, {dl});
+                }
                 auto method = dr.getInstance()->getClass()->findMethod("__barabar__");
                 if (!method) method = dr.getInstance()->getClass()->findMethod("__eq__");
                 if (method)
@@ -11879,6 +12042,16 @@ Value Interpreter::evaluate(const Expr *expr)
                 {
                     BoundMethod bound(dl.getInstance(), method);
                     return bound.call(*this, {dr});
+                }
+            }
+            if (dr.isInstance())
+            {
+                auto method = dr.getInstance()->getClass()->findMethod("__bada__");
+                if (!method) method = dr.getInstance()->getClass()->findMethod("__gt__");
+                if (method)
+                {
+                    BoundMethod bound(dr.getInstance(), method);
+                    return bound.call(*this, {dl});
                 }
             }
             return lessThan(dl, dr);
@@ -11911,7 +12084,8 @@ Value Interpreter::evaluate(const Expr *expr)
         {
             if (dl.isInstance())
             {
-                auto leMethod = dl.getInstance()->getClass()->findMethod("__le__");
+                auto leMethod = dl.getInstance()->getClass()->findMethod("__chota_barabar__");
+                if (!leMethod) leMethod = dl.getInstance()->getClass()->findMethod("__le__");
                 if (leMethod)
                 {
                     BoundMethod bound(dl.getInstance(), leMethod);
@@ -11920,6 +12094,13 @@ Value Interpreter::evaluate(const Expr *expr)
             }
             if (dr.isInstance())
             {
+                auto geMethod = dr.getInstance()->getClass()->findMethod("__bada_barabar__");
+                if (!geMethod) geMethod = dr.getInstance()->getClass()->findMethod("__ge__");
+                if (geMethod)
+                {
+                    BoundMethod bound(dr.getInstance(), geMethod);
+                    return bound.call(*this, {dl});
+                }
                 auto chotaMethod = dr.getInstance()->getClass()->findMethod("__chota__");
                 if (!chotaMethod) chotaMethod = dr.getInstance()->getClass()->findMethod("__lt__");
                 if (chotaMethod)
@@ -11935,7 +12116,8 @@ Value Interpreter::evaluate(const Expr *expr)
         {
             if (dl.isInstance())
             {
-                auto geMethod = dl.getInstance()->getClass()->findMethod("__ge__");
+                auto geMethod = dl.getInstance()->getClass()->findMethod("__bada_barabar__");
+                if (!geMethod) geMethod = dl.getInstance()->getClass()->findMethod("__ge__");
                 if (geMethod)
                 {
                     BoundMethod bound(dl.getInstance(), geMethod);
@@ -11948,6 +12130,16 @@ Value Interpreter::evaluate(const Expr *expr)
                     BoundMethod bound(dl.getInstance(), chotaMethod);
                     Value res = bound.call(*this, {dr});
                     return Value(!res.isTruthy());
+                }
+            }
+            if (dr.isInstance())
+            {
+                auto leMethod = dr.getInstance()->getClass()->findMethod("__chota_barabar__");
+                if (!leMethod) leMethod = dr.getInstance()->getClass()->findMethod("__le__");
+                if (leMethod)
+                {
+                    BoundMethod bound(dr.getInstance(), leMethod);
+                    return bound.call(*this, {dl});
                 }
             }
             return greaterThanEqual(dl, dr);
@@ -12010,16 +12202,36 @@ Value Interpreter::evaluate(const Expr *expr)
             throw std::runtime_error("Beta, tumse na ho payega! '" + callee.toString() + "' koi jugaad (function) thodi hai jo call kar rahe ho!");
         }
 
-        bool isUserFunc = (dynamic_cast<UserFunction *>(function.get()) != nullptr) ||
-                          (dynamic_cast<BoundMethod *>(function.get()) != nullptr);
-
+        std::vector<CallArgSource> argSources;
         std::vector<Value> arguments;
         for (const auto &arg : e->args)
         {
+            CallArgSource src;
+            if (auto *mv = dynamic_cast<const MoveExpr *>(arg.get()))
+            {
+                src.isMoved = true;
+                if (auto *ident = dynamic_cast<const IdentifierExpr *>(mv->operand.get()))
+                {
+                    src.env = environment->findOwnerEnv(ident->name);
+                    src.varName = ident->name;
+                }
+            }
+            else if (auto *ident = dynamic_cast<const IdentifierExpr *>(arg.get()))
+            {
+                src.env = environment->findOwnerEnv(ident->name);
+                src.varName = ident->name;
+            }
+            argSources.push_back(src);
+
             if (auto *sp = dynamic_cast<const SpreadExpr *>(arg.get()))
             {
                 Value val = evaluate(sp->expr.get());
                 val = val.deref();
+                if (val.isPointer())
+                {
+                    arguments.push_back(dereferencePointerHelper(val));
+                    continue;
+                }
                 if (!val.isList())
                 {
                     throw std::runtime_error("Doglapan! Spread ('*') sirf list / array pe chal sakta hai! Mila: " + val.typeName());
@@ -12032,18 +12244,10 @@ Value Interpreter::evaluate(const Expr *expr)
                 continue;
             }
 
-            if (isUserFunc)
-            {
-                if (auto *ident = dynamic_cast<const IdentifierExpr *>(arg.get()))
-                {
-                    arguments.push_back(moveVariable(ident->name));
-                    continue;
-                }
-            }
             arguments.push_back(evaluate(arg.get()));
         }
 
-        if (!function->checkArity(arguments.size()))
+        if (dynamic_cast<OverloadSet *>(function.get()) == nullptr && !function->checkArity(arguments.size()))
         {
             int line = (e->line > 0) ? e->line : currentLine;
             throw std::runtime_error(
@@ -12052,7 +12256,499 @@ Value Interpreter::evaluate(const Expr *expr)
                 std::to_string(arguments.size()) + " pakda diye!");
         }
 
+        currentArgSources = std::move(argSources);
         return function->call(*this, arguments);
+    }
+
+
+    if (auto *e = dynamic_cast<const FloatExpr *>(expr))
+    {
+        if (e->isFloat32) return Value(static_cast<float>(e->value));
+        return Value(e->value);
+    }
+
+    if (auto *e = dynamic_cast<const ByteExpr *>(expr))
+        return Value(e->value);
+
+    if (auto *e = dynamic_cast<const BytesExpr *>(expr))
+        return Value(std::make_shared<MemeBytes>(e->value));
+
+    if (auto *e = dynamic_cast<const StringExpr *>(expr))
+        return Value(e->value);
+
+    // F-String expression: `f"Hello {name}"`
+    if (auto *fs = dynamic_cast<const FStringExpr *>(expr))
+    {
+        std::string result = "";
+        for (const auto &part : fs->parts)
+        {
+            Value val = evaluate(part.get());
+            Value d = val.deref();
+            if (std::holds_alternative<bool>(d.data))
+            {
+                result += std::get<bool>(d.data) ? "true" : "false";
+            }
+            else
+            {
+                result += stringify(val);
+            }
+        }
+        return Value(result);
+    }
+
+    if (auto *e = dynamic_cast<const BoolExpr *>(expr))
+        return Value(e->value);
+
+    if (dynamic_cast<const NullExpr *>(expr))
+        return Value(std::monostate{});
+
+    // Lambda expression: `(a, b) => expr` or `jugaad(x) { ... }`
+    if (auto *l = dynamic_cast<const LambdaExpr *>(expr))
+    {
+        auto function = std::make_shared<UserFunction>(l->declaration, environment);
+        return Value(function);
+    }
+
+    // Array Destructure Assignment: `[a, b, *rest] = value` or `[count, setCount] = useState(0)`
+    if (auto *da = dynamic_cast<const DestructureAssignExpr *>(expr))
+    {
+        Value val = evaluate(da->value.get()).deref();
+        if (!val.isList())
+        {
+            throw std::runtime_error("Destructuring sirf Array / list pe ho sakti hai! Mila: " + val.typeName());
+        }
+        auto list = val.getList();
+        size_t listIdx = 0;
+        size_t total = list ? list->elements.size() : 0;
+        for (const auto &item : da->items)
+        {
+            Value elemVal;
+            if (item.isVariadic)
+            {
+                auto restList = std::make_shared<MemeList>();
+                while (listIdx < total)
+                {
+                    restList->elements.push_back(list->elements[listIdx++]);
+                }
+                elemVal = Value(restList);
+            }
+            else
+            {
+                elemVal = (listIdx < total) ? list->elements[listIdx++] : Value(std::monostate{});
+            }
+
+            VariableSlot *slot = environment->findSlot(item.name);
+            if (slot)
+            {
+                environment->assign(item.name, elemVal);
+            }
+            else
+            {
+                environment->define(item.name, elemVal);
+            }
+        }
+        return val;
+    }
+
+    // Borrow expression: `udhaar x` or `udhaar_badal x`
+    if (auto *b = dynamic_cast<const BorrowExpr *>(expr))
+    {
+        auto *ident = dynamic_cast<const IdentifierExpr *>(b->operand.get());
+        if (!ident)
+        {
+            throw std::runtime_error(
+                "Ye sab doglapan hai! Sirf variable ko udhaar (borrow) kiya ja sakta hai!");
+        }
+
+        VariableSlot *slot = environment->findSlot(ident->name);
+        if (!slot)
+        {
+            throw std::runtime_error(
+                "Rasode mein kaun tha?! Ye '" + ident->name + "' bina bataye kahan se aaya? Pehle 'pakad " + ident->name + ";' se declare kar!");
+        }
+
+        if (slot->isMoved)
+        {
+            throw std::runtime_error(
+                "Pehli fursat mein nikal! '" + ident->name + "' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!");
+        }
+
+        if (b->isMutable)
+        {
+            if (slot->isConst)
+            {
+                throw std::runtime_error(
+                    "Shanti gadadhari Bheem! Constant / atal variable '" + ident->name + "' ka badal (mutable) udhaar nahi le sakte!");
+            }
+
+            if (slot->hasExclusiveBorrow)
+            {
+                throw std::runtime_error(
+                    "Ek mawaali ek time pe ek hi jagah! '" + ident->name + "' already exclusively borrowed hai!");
+            }
+            if (slot->sharedBorrows > 0)
+            {
+                throw std::runtime_error(
+                    "Ek mawaali ek time pe ek hi jagah! '" + ident->name + "' already udhaar (borrowed) pe hai, exclusive borrow nahi mil sakta!");
+            }
+
+            slot->hasExclusiveBorrow = true;
+        }
+        else
+        {
+            if (slot->hasExclusiveBorrow)
+            {
+                throw std::runtime_error(
+                    "Shanti gadadhari Bheem! '" + ident->name + "' already mutably borrowed hai!");
+            }
+
+            slot->sharedBorrows++;
+        }
+
+        uint64_t bId = nextBorrowId++;
+        activeBorrows.push_back({bId, environment, ident->name, b->isMutable, currentScopeDepth});
+
+        Reference ref;
+        ref.varName = ident->name;
+        ref.env = environment;
+        ref.isMutable = b->isMutable;
+        ref.scopeDepth = currentScopeDepth;
+        ref.borrowId = bId;
+
+        return Value(ref);
+    }
+
+    // Nakal (clone) expression: `nakal(expr)` or `nakal expr`
+    if (auto *n = dynamic_cast<const NakalExpr *>(expr))
+    {
+        Value val = evaluate(n->operand.get());
+        return cloneValue(val);
+    }
+
+    // Await expression: `sabar expr` or `await expr`
+    if (auto *a = dynamic_cast<const AwaitExpr *>(expr))
+    {
+        Value operand = evaluate(a->expression.get());
+        Value d = operand.deref();
+        if (d.isMap())
+        {
+            auto map = d.getMap();
+            if (map->has("__is_promise__") || map->has("__is_thread__"))
+            {
+                if (map->has("jod"))
+                {
+                    Value jodVal = map->entries["jod"].deref();
+                    if (jodVal.isCallable())
+                    {
+                        return jodVal.getCallable()->call(*this, {});
+                    }
+                }
+            }
+        }
+        return operand;
+    }
+
+    // Move expression: `rawana x` or `move x`
+    if (auto *m = dynamic_cast<const MoveExpr *>(expr))
+    {
+        if (auto *ident = dynamic_cast<const IdentifierExpr *>(m->operand.get()))
+        {
+            VariableSlot *slot = environment->findSlot(ident->name);
+            if (!slot)
+            {
+                throw std::runtime_error(
+                    "Rasode mein kaun tha?! Ye '" + ident->name + "' bina bataye kahan se aaya? Pehle 'pakad " + ident->name + ";' se declare kar!");
+            }
+            if (slot->isMoved)
+            {
+                throw std::runtime_error(
+                    "Pehli fursat mein nikal! Variable '" + ident->name + "' ka maal move ho chuka hai! Ownership transfer ke baad use karna mana hai!");
+            }
+            if (slot->hasExclusiveBorrow || slot->sharedBorrows > 0)
+            {
+                throw std::runtime_error(
+                    "Khatam nahi hua abhi! '" + ident->name + "' udhaar pe hai, move nahi kar sakte!");
+            }
+            slot->isMoved = true;
+            return slot->value;
+        }
+        return evaluate(m->operand.get());
+    }
+
+    // Address-of expression: `&expr` or `patta expr`
+    if (auto *addrOf = dynamic_cast<const AddressOfExpr *>(expr))
+    {
+        if (!addrOf->operand)
+        {
+            throw std::runtime_error("Doglapan! AddressOf ka operand gayab hai!");
+        }
+
+        // Case 1: Variable identifier `&x`
+        if (auto *ident = dynamic_cast<const IdentifierExpr *>(addrOf->operand.get()))
+        {
+            auto ownerEnv = environment->findOwnerEnv(ident->name);
+            VariableSlot *slot = environment->findSlot(ident->name);
+            if (!slot || !ownerEnv)
+            {
+                throw std::runtime_error(
+                    "Rasode mein kaun tha?! Ye '" + ident->name +
+                    "' bina bataye kahan se aaya? Pehle 'pakad " + ident->name + ";' se declare kar!");
+            }
+
+            if (slot->isMoved)
+            {
+                throw std::runtime_error(
+                    "Pehli fursat mein nikal! '" + ident->name +
+                    "' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!");
+            }
+
+            if (slot->sourceEnv && !slot->sourceVarName.empty())
+            {
+                auto srcOwner = slot->sourceEnv->findOwnerEnv(slot->sourceVarName);
+                auto srcSlot = slot->sourceEnv->findSlot(slot->sourceVarName);
+                if (srcOwner && srcSlot)
+                {
+                    bool isMut = !srcSlot->isConst;
+                    Pointer ptr(srcOwner, slot->sourceVarName, isMut, &srcSlot->value);
+                    return Value(ptr);
+                }
+            }
+
+            bool isMut = !slot->isConst;
+            Pointer ptr(ownerEnv, ident->name, isMut, &slot->value);
+            return Value(ptr);
+        }
+
+        // Case 2: Object field access `&obj.field`
+        if (auto *g = dynamic_cast<const GetExpr *>(addrOf->operand.get()))
+        {
+            Value objVal = evaluate(g->object.get()).deref();
+            if (!objVal.isInstance())
+            {
+                throw std::runtime_error(
+                    "Doglapan! Struct field ka pointer lene ke liye instance hona chahiye, mila: " + objVal.typeName());
+            }
+
+            auto inst = objVal.getInstance();
+            if (!inst)
+            {
+                throw std::runtime_error("Chuna laga diya! Null instance ke field ka address nahi le sakte!");
+            }
+
+            uintptr_t fieldAddr = reinterpret_cast<uintptr_t>(inst.get()) ^
+                                  (static_cast<uintptr_t>(std::hash<std::string>{}(g->name)) << 3);
+            Pointer ptr(inst, g->name, true);
+            ptr.address = fieldAddr;
+            return Value(ptr);
+        }
+
+        // Case 3: Array / Map indexing `&arr[i]`
+        if (auto *ix = dynamic_cast<const IndexExpr *>(addrOf->operand.get()))
+        {
+            Value target = evaluate(ix->target.get()).deref();
+            Value idxVal = evaluate(ix->index.get()).deref();
+
+            if (target.isList())
+            {
+                auto list = target.getList();
+                if (!idxVal.isNumeric())
+                {
+                    throw std::runtime_error("Array index number hona chahiye!");
+                }
+                long long idx = idxVal.asInt();
+                long long sz = list ? static_cast<long long>(list->elements.size()) : 0;
+                if (idx < 0) idx += sz;
+                if (idx < 0 || idx >= sz)
+                {
+                    throw std::runtime_error("Aukaat ke bahar! Index out of bounds in address-of!");
+                }
+
+                Pointer ptr;
+                ptr.rawAddress = &list->elements[idx];
+                ptr.address = reinterpret_cast<uintptr_t>(&list->elements[idx]);
+                ptr.isMut = true;
+                ptr.customGetter = [list, idx]() -> Value {
+                    return list->elements[idx];
+                };
+                ptr.customSetter = [list, idx](Value newVal) {
+                    list->elements[idx] = std::move(newVal);
+                };
+                return Value(ptr);
+            }
+
+            if (target.isMap())
+            {
+                auto map = target.getMap();
+                std::string key = idxVal.toString();
+                Pointer ptr;
+                ptr.address = reinterpret_cast<uintptr_t>(map.get()) ^
+                              (static_cast<uintptr_t>(std::hash<std::string>{}(key)) << 3);
+                ptr.isMut = true;
+                ptr.customGetter = [map, key]() -> Value {
+                    return map->get(key);
+                };
+                ptr.customSetter = [map, key](Value newVal) {
+                    map->set(key, std::move(newVal));
+                };
+                return Value(ptr);
+            }
+
+            throw std::runtime_error("Doglapan! Indexing target ka address nahi liya ja sakta!");
+        }
+
+        // Case 4: Dereference address-of: `&*p` cancels to p
+        if (auto *d = dynamic_cast<const DerefExpr *>(addrOf->operand.get()))
+        {
+            return evaluate(d->operand.get());
+        }
+
+        // Case 5: Non-lvalue rvalue temporary
+        throw std::runtime_error(
+            "Doglapan! Sirf variable ya memory location ka patta liya ja sakta hai, temporary rvalue ka nahi!");
+    }
+
+    // Dereference expression: `*expr` or `asli expr`
+    if (auto *deref = dynamic_cast<const DerefExpr *>(expr))
+    {
+        if (!deref->operand)
+        {
+            throw std::runtime_error("Chuna laga diya! Dereference ka operand gayab hai!");
+        }
+
+        Value ptrVal = evaluate(deref->operand.get());
+        return dereferencePointerHelper(ptrVal);
+    }
+
+    // Dereference assignment: `*ptr = val` or `asli ptr = val`
+    if (auto *derefAssign = dynamic_cast<const DerefAssignExpr *>(expr))
+    {
+        if (!derefAssign->pointer || !derefAssign->value)
+        {
+            throw std::runtime_error("Aukaat ke bahar! Deref assignment incomplete hai!");
+        }
+
+        Value ptrVal = evaluate(derefAssign->pointer.get());
+
+        // Null pointer check
+        if (ptrVal.isNil() || ptrVal.isNull())
+        {
+            throw std::runtime_error("Chuna laga diya! Null pointer dereference: nalla pointer pe assign nahi kar sakte!");
+        }
+
+        if (ptrVal.isReference())
+        {
+            ptrVal = ptrVal.deref();
+        }
+
+        if (!ptrVal.isPointer())
+        {
+            throw std::runtime_error(
+                "Aukaat ke bahar! Deref assignment sirf pointer pe chal sakti hai, mila '" +
+                ptrVal.typeName() + "'!");
+        }
+
+        auto ptr = ptrVal.asPointer();
+        if (!ptr || ptr->isNull())
+        {
+            throw std::runtime_error("Chuna laga diya! Null pointer dereference: nalla pointer pe assign nahi kar sakte!");
+        }
+
+        if (!ptr->isMut)
+        {
+            throw std::runtime_error("Doglapan! Constant pointer (atal/const) ke target ko modify nahi kar sakte!");
+        }
+
+        // Evaluate RHS value
+        Value newVal;
+        if (auto *ident = dynamic_cast<const IdentifierExpr *>(derefAssign->value.get()))
+        {
+            newVal = moveVariable(ident->name);
+        }
+        else
+        {
+            newVal = evaluate(derefAssign->value.get());
+        }
+
+        // Write 1: Custom setter
+        if (ptr->customSetter)
+        {
+            ptr->customSetter(newVal);
+            return newVal;
+        }
+
+        // Write 2: Struct / Class instance field
+        if (ptr->instance && !ptr->fieldName.empty())
+        {
+            ptr->instance->set(ptr->fieldName, newVal);
+            return newVal;
+        }
+
+        // Write 3: Environment variable slot
+        if (ptr->env && !ptr->varName.empty())
+        {
+            VariableSlot *slot = ptr->env->findSlot(ptr->varName);
+            if (!slot)
+            {
+                throw std::runtime_error(
+                    "Chuna laga diya! Pointer jis variable ko point kar raha tha ('" +
+                    ptr->varName + "'), wo ab exist nahi karta!");
+            }
+            if (slot->isConst)
+            {
+                throw std::runtime_error(
+                    "Shanti gadadhari Bheem! Constant / atal variable '" + ptr->varName + "' ko modify nahi kar sakte!");
+            }
+            slot->value = newVal;
+            slot->isMoved = false;
+            return newVal;
+        }
+
+        // Write 4: Raw address
+        if (ptr->rawAddress)
+        {
+            *ptr->rawAddress = newVal;
+            return newVal;
+        }
+
+        throw std::runtime_error("Chuna laga diya! Invalid pointer assignment!");
+    }
+
+    // Unary expression: `-x`, `!x`
+    if (auto *e = dynamic_cast<const UnaryExpr *>(expr))
+    {
+        Value operand = evaluate(e->operand.get());
+        Value dop = operand.deref();
+        if (dop.isInstance())
+        {
+            auto inst = dop.getInstance();
+            if (e->op.type == TokenType::MINUS)
+            {
+                auto method = inst->getClass()->findMethod("__ulta__");
+                if (!method) method = inst->getClass()->findMethod("__neg__");
+                if (method)
+                {
+                    BoundMethod bound(inst, method);
+                    return bound.call(*this, {});
+                }
+            }
+            if (e->op.type == TokenType::NOT)
+            {
+                auto method = inst->getClass()->findMethod("__ulta__");
+                if (!method) method = inst->getClass()->findMethod("__not__");
+                if (!method) method = inst->getClass()->findMethod("__invert__");
+                if (method)
+                {
+                    BoundMethod bound(inst, method);
+                    return bound.call(*this, {});
+                }
+            }
+        }
+        if (e->op.type == TokenType::MINUS)
+            return negate(operand);
+        if (e->op.type == TokenType::NOT)
+            return logicalNot(operand);
+
+        throw std::runtime_error("Ye operator '" + e->op.value + "' unary mein nahi chalta!");
     }
 
     // Input: `bata()` or `bata("Prompt: ")`
@@ -12248,7 +12944,12 @@ Value Interpreter::evaluate(const Expr *expr)
     // Spread expression: `...x`
     if (auto *sp = dynamic_cast<const SpreadExpr *>(expr))
     {
-        return evaluate(sp->expr.get());
+        Value val = evaluate(sp->expr.get());
+        if (val.isPointer())
+        {
+            return dereferencePointerHelper(val);
+        }
+        return val;
     }
 
     // Array literal: `[a, b, c]`
@@ -12537,6 +13238,8 @@ Value Interpreter::evaluate(const Expr *expr)
             if (inst && inst->getClass())
             {
                 auto method = inst->getClass()->findMethod("__la__");
+                if (!method) method = inst->getClass()->findMethod("__khol__");
+                if (!method) method = inst->getClass()->findMethod("__padh__");
                 if (!method) method = inst->getClass()->findMethod("__getitem__");
                 if (method)
                 {
@@ -12665,6 +13368,10 @@ Value Interpreter::evaluate(const Expr *expr)
                 if (!method)
                 {
                     method = inst->getClass()->findMethod("__rakh__");
+                }
+                if (!method)
+                {
+                    method = inst->getClass()->findMethod("__khol__");
                 }
                 if (!method)
                 {

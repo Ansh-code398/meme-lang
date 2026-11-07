@@ -11,3 +11,6 @@ docs/node_modules/
 docs/dist/
 .tijori.json
 benchmarks/data/
+.agents/
+__pycache__/
+*.pyc

@@ -1,0 +1,10 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Use After Move Error
+// EXPECT_ERROR: Pehli fursat mein nikal
+// ==============================================================================
+
+pakad heera = "RareDiamond";
+pakad naya_malik = rawana heera;
+
+// Illegal access to moved slot
+dikha heera;

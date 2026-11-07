@@ -1,0 +1,500 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Tier 5 Adversarial Coverage Hardening
+// Coverage:
+//   - Section 1: Deep Pointer Indirection Chain Mutation (4-level, 5-level, rebind)
+//   - Section 2: Struct Field Pointers in Nested Containers (2D arrays, maps, structs)
+//   - Section 3: Move Semantics Inside Loops & Conditional Branches (jabtak, dekh/warna)
+//   - Section 4: Try/Catch Recovery on Memory Violations (panga/lafda recovery & resurrection)
+//   - Section 5: Drop Cascades in Graphs (hierarchical trees, 2-node and 3-node cyclic rings)
+//   - Section 6: Function Pointer Mutation & Scope Escape (in-place swap, returned pointers)
+// Invariant: Strictly 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Tier 5 Adversarial Pointers & Memory Safety ===";
+
+// Test helper: assertion with reporting
+jugaad sahi_hai(cond: sach, test_name: bol) {
+    dekh !cond {
+        dikha f"[FAIL] {test_name}: Condition is false";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ==============================================================================
+// SECTION 1: Deep Pointer Indirection Chain Mutation (T5_IND_*)
+// ==============================================================================
+
+// 1.1: 4-Level indirection read and write
+pakad num1 = 111;
+pakad p_1 = &num1;
+pakad pp_1 = &p_1;
+pakad ppp_1 = &pp_1;
+pakad pppp_1 = &ppp_1;
+
+pakad read1 = ****pppp_1;
+sahi_hai(read1 == 111, "T5_IND_4level_read");
+****pppp_1 = 444;
+sahi_hai(num1 == 444, "T5_IND_4level_write_target");
+pakad read1_after = ****pppp_1;
+sahi_hai(read1_after == 444, "T5_IND_4level_write_deref");
+
+// 1.2: 5-Level indirection read and write
+pakad num2 = 500;
+pakad p5_1 = &num2;
+pakad p5_2 = &p5_1;
+pakad p5_3 = &p5_2;
+pakad p5_4 = &p5_3;
+pakad p5_5 = &p5_4;
+
+pakad read2 = *****p5_5;
+sahi_hai(read2 == 500, "T5_IND_5level_read");
+*****p5_5 = 9999;
+sahi_hai(num2 == 9999, "T5_IND_5level_write_target");
+pakad read2_after = *****p5_5;
+sahi_hai(read2_after == 9999, "T5_IND_5level_write_deref");
+
+// 1.3: Intermediate pointer rebind: redirecting pointer at level 1 changes level 2 target
+pakad slot_x = 10;
+pakad slot_y = 20;
+pakad p_target = &slot_x;
+pakad pp_slot = &p_target;
+
+*pp_slot = &slot_y;
+**pp_slot = 30;
+
+sahi_hai(slot_x == 10, "T5_IND_rebind_original_slot_unchanged");
+sahi_hai(slot_y == 30, "T5_IND_rebind_new_target_mutated");
+pakad p_target_val = *p_target;
+sahi_hai(p_target_val == 30, "T5_IND_rebind_p_target_reflects_new_value");
+
+// 1.4: Aliased deep pointers targeting the same slot
+pakad shared_core = 700;
+pakad q1 = &shared_core;
+pakad qq1 = &q1;
+pakad qqq1 = &qq1;
+
+pakad q2 = &shared_core;
+pakad qq2 = &q2;
+pakad qqq2 = &qq2;
+
+***qqq1 = 850;
+pakad read_chain2 = ***qqq2;
+sahi_hai(read_chain2 == 850, "T5_IND_aliased_read_through_second_chain");
+sahi_hai(shared_core == 850, "T5_IND_aliased_read_target");
+
+// 1.5: Dereference in compound arithmetic expressions
+pakad base_a = 5;
+pakad base_b = 10;
+pakad pa = &base_a;
+pakad pb = &base_b;
+pakad ppa = &pa;
+pakad ppb = &pb;
+pakad sum_result = **ppa * 10 + **ppb * 2;
+sahi_hai(sum_result == 70, "T5_IND_deref_in_arithmetic_expr");
+
+
+// ==============================================================================
+// SECTION 2: Struct Field Pointers in Nested Containers (T5_NEST_*)
+// ==============================================================================
+
+biradari CellItem {
+    jugaad shuru(val: ank, tag: bol) {
+        khud.val = val;
+        khud.tag = tag;
+    }
+}
+
+// 2.1: Struct field pointer inside nested 2D list
+pakad grid = [
+    [CellItem(10, "c00"), CellItem(20, "c01")],
+    [CellItem(30, "c10"), CellItem(40, "c11")]
+];
+pakad p_cell = &grid[1][0].val;
+pakad p_cell_read = *p_cell;
+sahi_hai(p_cell_read == 30, "T5_NEST_struct_field_in_2d_list_read");
+*p_cell = 333;
+sahi_hai(grid[1][0].val == 333, "T5_NEST_struct_field_in_2d_list_write_target");
+pakad p_cell_after = *p_cell;
+sahi_hai(p_cell_after == 333, "T5_NEST_struct_field_in_2d_list_write_deref");
+
+// 2.2: Array element pointer inside struct field inside dictionary/map
+biradari InventoryRecord {
+    jugaad shuru(items) {
+        khud.items = items;
+    }
+}
+pakad vault_map = {
+    "sectionA": InventoryRecord([100, 200, 300]),
+    "sectionB": InventoryRecord([400, 500, 600])
+};
+pakad p_item = &vault_map["sectionB"].items[1];
+pakad p_item_val = *p_item;
+sahi_hai(p_item_val == 500, "T5_NEST_array_elem_in_struct_in_map_read");
+*p_item = 888;
+sahi_hai(vault_map["sectionB"].items[1] == 888, "T5_NEST_array_elem_in_struct_in_map_write");
+
+// 2.3: Deep indirection pointer to struct field
+biradari PlayerScore {
+    jugaad shuru(s: ank) { khud.s = s; }
+}
+pakad player = PlayerScore(75);
+pakad p_score = &player.s;
+pakad pp_score = &p_score;
+pakad ppp_score = &pp_score;
+***ppp_score = 150;
+sahi_hai(player.s == 150, "T5_NEST_deep_indirection_to_struct_field");
+
+// 2.4: Nested structs (struct inside struct) field pointer
+biradari InnerConfig {
+    jugaad shuru(timeout: ank) { khud.timeout = timeout; }
+}
+biradari OuterConfig {
+    jugaad shuru(inner) { khud.inner = inner; }
+}
+pakad cfg = OuterConfig(InnerConfig(30));
+pakad p_timeout = &cfg.inner.timeout;
+pakad timeout_val = *p_timeout;
+sahi_hai(timeout_val == 30, "T5_NEST_pointer_to_nested_struct_field_read");
+*p_timeout = 60;
+sahi_hai(cfg.inner.timeout == 60, "T5_NEST_pointer_to_nested_struct_field_write");
+
+// 2.5: In-place array elements swap via element pointers
+pakad swap_arr = [10, 20];
+pakad p_first = &swap_arr[0];
+pakad p_second = &swap_arr[1];
+pakad temp_v = *p_first;
+*p_first = *p_second;
+*p_second = temp_v;
+sahi_hai(swap_arr[0] == 20, "T5_NEST_pointer_swap_index0");
+sahi_hai(swap_arr[1] == 10, "T5_NEST_pointer_swap_index1");
+
+
+// ==============================================================================
+// SECTION 3: Move Semantics Inside Loops & Conditional Branches (T5_MOVE_*)
+// ==============================================================================
+
+// 3.1: Move inside loop: first iter succeeds, second iter throws caught error
+pakad loop_data = "single_use_token";
+pakad loop_counter = 0;
+pakad iter1_ok = nhi;
+pakad iter2_err_caught = nhi;
+jabtak loop_counter < 2 {
+    loop_counter = loop_counter + 1;
+    panga {
+        pakad dest = rawana loop_data;
+        iter1_ok = han;
+    } lafda (err) {
+        iter2_err_caught = han;
+    }
+}
+sahi_hai(iter1_ok, "T5_MOVE_loop_first_iter_success");
+sahi_hai(iter2_err_caught, "T5_MOVE_loop_second_iter_use_after_move_caught");
+
+// 3.2: Move inside loop with reassignment on each iteration
+pakad dynamic_slot = "initial";
+pakad iter_idx = 0;
+pakad successful_moves = 0;
+jabtak iter_idx < 4 {
+    iter_idx = iter_idx + 1;
+    dynamic_slot = f"packet_{iter_idx}";
+    pakad sink = rawana dynamic_slot;
+    successful_moves = successful_moves + 1;
+}
+sahi_hai(successful_moves == 4, "T5_MOVE_loop_multi_iter_reassign_and_move");
+
+// 3.3: Conditional move on taken branch
+pakad secret_a = "alpha_key";
+pakad should_move_a = han;
+dekh should_move_a {
+    pakad moved_a = rawana secret_a;
+}
+pakad moved_a_caught = nhi;
+panga {
+    pakad illegal_read = secret_a;
+} lafda (err) {
+    moved_a_caught = han;
+}
+sahi_hai(moved_a_caught, "T5_MOVE_conditional_taken_branch_marks_moved");
+
+// 3.4: Conditional move on untaken branch preserves variable
+pakad secret_b = "beta_key";
+pakad should_move_b = nhi;
+dekh should_move_b {
+    pakad moved_b = rawana secret_b;
+} warna {
+    // Untaken branch
+}
+pakad safe_b_read = secret_b;
+sahi_hai(safe_b_read == "beta_key", "T5_MOVE_conditional_untaken_branch_preserves_slot");
+
+// 3.5: Move transfer across 3 levels of nested daayra scopes
+pakad final_owner = nalla;
+daayra {
+    pakad lvl1 = "deep_gem";
+    daayra {
+        pakad lvl2 = rawana lvl1;
+        daayra {
+            pakad lvl3 = rawana lvl2;
+            final_owner = rawana lvl3;
+        }
+    }
+}
+sahi_hai(final_owner == "deep_gem", "T5_MOVE_across_3_nested_daayra_scopes");
+
+
+// ==============================================================================
+// SECTION 4: Try/Catch Recovery on Memory Violations (T5_PANGA_*)
+// ==============================================================================
+
+// 4.1: Recover from use-after-move error
+pakad res_gold = "100kg";
+pakad new_home = rawana res_gold;
+pakad recover_after_move = nhi;
+panga {
+    pakad bad_try = res_gold;
+} lafda (err) {
+    recover_after_move = han;
+}
+sahi_hai(recover_after_move, "T5_PANGA_recover_use_after_move");
+
+// 4.2: Resurrect moved variable by reassignment after catching violation
+res_gold = "200kg_new";
+sahi_hai(res_gold == "200kg_new", "T5_PANGA_resurrect_moved_variable");
+
+// 4.3: Recover from use-after-drop error
+biradari Disposable {
+    jugaad shuru(id: ank) { khud.id = id; }
+}
+pakad d_obj = Disposable(77);
+khatam d_obj;
+pakad recover_after_drop = nhi;
+panga {
+    pakad bad_read = d_obj.id;
+} lafda (err) {
+    recover_after_drop = han;
+}
+sahi_hai(recover_after_drop, "T5_PANGA_recover_use_after_drop");
+
+// 4.4: Recover from double mutable borrow violation
+pakad safe_vault = 10000;
+pakad double_borrow_recovered = nhi;
+panga {
+    pakad m1 = udhaar_badal safe_vault;
+    pakad m2 = udhaar_badal safe_vault;
+} lafda (err) {
+    double_borrow_recovered = han;
+}
+sahi_hai(double_borrow_recovered, "T5_PANGA_recover_double_mutable_borrow");
+
+// 4.5: Outer borrow validity preserved after inner failed borrow attempt
+pakad doc = "LegalCharter";
+pakad reader = udhaar doc;
+panga {
+    pakad illegal_writer = udhaar_badal doc;
+} lafda (err) {
+    // Expected violation caught
+}
+sahi_hai(reader == "LegalCharter", "T5_PANGA_reader_borrow_remains_valid");
+
+pakad move_fails = nhi;
+panga {
+    pakad illegal_mv = rawana doc;
+} lafda (err) {
+    move_fails = han;
+}
+sahi_hai(move_fails, "T5_PANGA_move_fails_while_outer_reader_active");
+
+// 4.6: Null pointer dereference in callee function caught via panga
+jugaad dangerous_deref(p) {
+    pakad v = *p;
+    ye_le v;
+}
+pakad null_caught = nhi;
+panga {
+    dangerous_deref(nalla);
+} lafda (err) {
+    null_caught = han;
+}
+sahi_hai(null_caught, "T5_PANGA_null_deref_in_callee_caught");
+
+
+// ==============================================================================
+// SECTION 5: Drop Cascades in Graphs (T5_DROP_*)
+// ==============================================================================
+
+// 5.1: Hierarchical 3-level tree drop cascade
+pakad tree_drop_log = [];
+
+biradari LeafNode {
+    jugaad shuru(id: bol) { khud.id = id; }
+    jugaad alvida() { tree_drop_log.jod("Leaf:" + khud.id); }
+}
+
+biradari BranchNode {
+    jugaad shuru(id: bol, leafA, leafB) {
+        khud.id = id;
+        khud.leafA = leafA;
+        khud.leafB = leafB;
+    }
+    jugaad alvida() {
+        tree_drop_log.jod("Branch:" + khud.id);
+        khatam khud.leafA;
+        khatam khud.leafB;
+    }
+}
+
+biradari RootNode {
+    jugaad shuru(branch) {
+        khud.branch = branch;
+    }
+    jugaad alvida() {
+        tree_drop_log.jod("Root");
+        khatam khud.branch;
+    }
+}
+
+daayra {
+    pakad l1 = LeafNode("L1");
+    pakad l2 = LeafNode("L2");
+    pakad br = BranchNode("B1", l1, l2);
+    pakad rt = RootNode(br);
+}
+sahi_hai(tree_drop_log.size() == 4, "T5_DROP_tree_cascade_count");
+sahi_hai(tree_drop_log[0] == "Root", "T5_DROP_tree_cascade_root_first");
+sahi_hai(tree_drop_log[1] == "Branch:B1", "T5_DROP_tree_cascade_branch_second");
+sahi_hai(tree_drop_log[2] == "Leaf:L1", "T5_DROP_tree_cascade_leaf1_third");
+sahi_hai(tree_drop_log[3] == "Leaf:L2", "T5_DROP_tree_cascade_leaf2_fourth");
+
+// 5.2: Cyclic 2-node mutual drop without recursion
+pakad mutual_cycle_log = [];
+
+biradari MutualNode {
+    jugaad shuru(label: bol) {
+        khud.label = label;
+        khud.partner = nalla;
+    }
+    jugaad alvida() {
+        mutual_cycle_log.jod(khud.label);
+        dekh khud.partner != nalla {
+            khatam khud.partner;
+        }
+    }
+}
+
+pakad ma = MutualNode("Alpha");
+pakad mb = MutualNode("Beta");
+ma.partner = mb;
+mb.partner = ma;
+khatam ma;
+
+sahi_hai(mutual_cycle_log.size() == 2, "T5_DROP_mutual_cycle_size");
+sahi_hai(mutual_cycle_log[0] == "Alpha", "T5_DROP_mutual_cycle_first");
+sahi_hai(mutual_cycle_log[1] == "Beta", "T5_DROP_mutual_cycle_second");
+
+// 5.3: Cyclic 3-node ring drop without recursion
+pakad ring_cycle_log = [];
+
+biradari RingMember {
+    jugaad shuru(id: bol) {
+        khud.id = id;
+        khud.next = nalla;
+    }
+    jugaad alvida() {
+        ring_cycle_log.jod(khud.id);
+        dekh khud.next != nalla {
+            khatam khud.next;
+        }
+    }
+}
+
+pakad r1 = RingMember("R1");
+pakad r2 = RingMember("R2");
+pakad r3 = RingMember("R3");
+r1.next = r2;
+r2.next = r3;
+r3.next = r1;
+khatam r1;
+
+sahi_hai(ring_cycle_log.size() == 3, "T5_DROP_3node_ring_size");
+sahi_hai(ring_cycle_log[0] == "R1", "T5_DROP_3node_ring_first");
+sahi_hai(ring_cycle_log[1] == "R2", "T5_DROP_3node_ring_second");
+sahi_hai(ring_cycle_log[2] == "R3", "T5_DROP_3node_ring_third");
+
+
+// ==============================================================================
+// SECTION 6: Function Pointer Mutation & Scope Escape (T5_FUNC_*)
+// ==============================================================================
+
+// 6.1: In-place pointer swap in function
+jugaad swap_in_place(p_left, p_right) {
+    pakad temp = *p_left;
+    *p_left = *p_right;
+    *p_right = temp;
+}
+pakad val1 = 11;
+pakad val2 = 99;
+swap_in_place(&val1, &val2);
+sahi_hai(val1 == 99, "T5_FUNC_swap_val1");
+sahi_hai(val2 == 11, "T5_FUNC_swap_val2");
+
+// 6.2: Mutate caller target inside function and return pointer for further mutation
+pakad caller_slot = 50;
+jugaad add_twenty_and_return(ptr) {
+    *ptr = *ptr + 20;
+    ye_le ptr;
+}
+pakad ret_p = add_twenty_and_return(&caller_slot);
+sahi_hai(caller_slot == 70, "T5_FUNC_mutate_inside_callee");
+*ret_p = *ret_p + 30;
+sahi_hai(caller_slot == 100, "T5_FUNC_mutate_via_returned_pointer");
+
+// 6.3: Pointer to function-created primitive variable returned to caller
+jugaad generate_slot_pointer() {
+    pakad inner_num = 450;
+    ye_le &inner_num;
+}
+pakad p_esc = generate_slot_pointer();
+pakad p_esc_val = *p_esc;
+sahi_hai(p_esc_val == 450, "T5_FUNC_read_escaped_primitive_ptr");
+*p_esc = 750;
+pakad p_esc_after = *p_esc;
+sahi_hai(p_esc_after == 750, "T5_FUNC_write_escaped_primitive_ptr");
+
+// 6.4: Pointer to instance field created inside function returned to caller
+biradari Account {
+    jugaad shuru(bal: ank) { khud.balance = bal; }
+}
+jugaad create_account_balance_ptr() {
+    pakad acc = Account(1000);
+    ye_le &acc.balance;
+}
+pakad p_bal = create_account_balance_ptr();
+pakad bal_val = *p_bal;
+sahi_hai(bal_val == 1000, "T5_FUNC_read_escaped_instance_field_ptr");
+*p_bal = 2500;
+pakad bal_after = *p_bal;
+sahi_hai(bal_after == 2500, "T5_FUNC_write_escaped_instance_field_ptr");
+
+// 6.5: Returning double pointer from function
+pakad target_core = 333;
+jugaad make_double_ptr(single_p) {
+    pakad local_pp = single_p;
+    ye_le &local_pp;
+}
+pakad p_core = &target_core;
+pakad pp_res = make_double_ptr(p_core);
+pakad double_ptr_val = **pp_res;
+sahi_hai(double_ptr_val == 333, "T5_FUNC_read_double_ptr_returned");
+**pp_res = 666;
+sahi_hai(target_core == 666, "T5_FUNC_write_double_ptr_returned");
+
+dikha "=== All Tier 5 Adversarial Pointers & Memory Safety Tests Passed! ===";

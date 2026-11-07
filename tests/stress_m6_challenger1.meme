@@ -1,0 +1,360 @@
+// ==============================================================================
+// Challenger 1 (M6): Deep Adversarial Stress Harness for Overloading,
+// Tantrik Operators, Custom Dunders, and Syntax Parity
+// Invariant Check: 0 occurrences of the forbidden word
+// ==============================================================================
+
+pakad total_asserts = 0;
+pakad passed_asserts = 0;
+
+jugaad assert_eq(actual, expected, test_name: bol) {
+    total_asserts = total_asserts + 1;
+    dekh actual != expected {
+        dikha f"[CHALLENGER-FAIL] {test_name}: expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed: {test_name}";
+    }
+    passed_asserts = passed_asserts + 1;
+    dikha f"[CHALLENGER-PASS] {test_name}";
+}
+
+jugaad assert_true(cond, test_name: bol) {
+    total_asserts = total_asserts + 1;
+    dekh !cond {
+        dikha f"[CHALLENGER-FAIL] {test_name}: condition was false";
+        chillao f"Assertion failed: {test_name}";
+    }
+    passed_asserts = passed_asserts + 1;
+    dikha f"[CHALLENGER-PASS] {test_name}";
+}
+
+dikha "=== [CHALLENGER 1] Starting Adversarial Stress Harness ===";
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 1: Arity vs Type Priority & Dynamic (Any) Resolution
+// ------------------------------------------------------------------------------
+// Testing: Arity filter happens FIRST before type distance scoring.
+// Overloads with arity 1, 2, 3 and various type constraints.
+bahuroop jugaad calc(x: ank) -> bol {
+    ye_le f"ARITY_1_INT:{x}";
+}
+
+aur_ek jugaad calc(x: bol) -> bol {
+    ye_le f"ARITY_1_STR:{x}";
+}
+
+aur_ek jugaad calc(x: ank, y: ank) -> bol {
+    ye_le f"ARITY_2_INT_INT:{x + y}";
+}
+
+aur_ek jugaad calc(x: ank, y: bol) -> bol {
+    ye_le f"ARITY_2_INT_STR:{x}_{y}";
+}
+
+aur_ek jugaad calc(x: ank, y: ank, z: ank) -> bol {
+    ye_le f"ARITY_3:{x * y * z}";
+}
+
+// Untyped / Any fallback overload
+bahuroop jugaad smart_fallback(x: ank) -> bol {
+    ye_le f"TYPED_INT:{x}";
+}
+
+aur_ek jugaad smart_fallback(x) -> bol {
+    ye_le f"UNTYPED_FALLBACK:{x}";
+}
+
+assert_eq(calc(42), "ARITY_1_INT:42", "C1_calc_arity_1_int");
+assert_eq(calc("namaste"), "ARITY_1_STR:namaste", "C1_calc_arity_1_str");
+assert_eq(calc(10, 20), "ARITY_2_INT_INT:30", "C1_calc_arity_2_int_int");
+assert_eq(calc(7, "saat"), "ARITY_2_INT_STR:7_saat", "C1_calc_arity_2_int_str");
+assert_eq(calc(2, 3, 4), "ARITY_3:24", "C1_calc_arity_3");
+
+// Verify that exact type match beats untyped (distance 0 vs 2)
+assert_eq(smart_fallback(100), "TYPED_INT:100", "C1_typed_preferred_over_untyped");
+// Verify that non-int falls back cleanly to untyped
+assert_eq(smart_fallback("hello"), "UNTYPED_FALLBACK:hello", "C1_untyped_fallback_for_str");
+assert_eq(smart_fallback([1, 2]), "UNTYPED_FALLBACK:[1, 2]", "C1_untyped_fallback_for_list");
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 2: 3-Level Deep Inheritance Chains with Overloads & Operators
+// ------------------------------------------------------------------------------
+biradari RootEntity {
+    jugaad shuru(id: ank) {
+        khud.id = id;
+    }
+
+    // Tantrik operator jod
+    tantrik + (other) {
+        ye_le RootEntity(khud.id + other.id);
+    }
+
+    // Tantrik operator ghata
+    tantrik - (other) {
+        ye_le RootEntity(khud.id - other.id);
+    }
+
+    // Tantrik operator index
+    tantrik [](idx: ank) {
+        ye_le khud.id * (idx + 1);
+    }
+
+    // Overloaded method in root
+    bahuroop jugaad identify() -> bol {
+        ye_le f"ROOT_NO_ARG:{khud.id}";
+    }
+
+    aur_ek jugaad identify(tag: bol) -> bol {
+        ye_le f"ROOT_TAG:{tag}:{khud.id}";
+    }
+}
+
+// Level 2: Middle extends Root without overriding operators or identify
+biradari MiddleEntity nepo RootEntity {
+    jugaad shuru(id: ank, label: bol) {
+        khud.id = id;
+        khud.label = label;
+    }
+
+    jugaad get_label() -> bol {
+        ye_le khud.label;
+    }
+}
+
+// Level 3: Leaf extends Middle
+biradari LeafEntity nepo MiddleEntity {
+    jugaad shuru(id: ank, label: bol, score: ank) {
+        khud.id = id;
+        khud.label = label;
+        khud.score = score;
+    }
+}
+
+pakad leaf1 = LeafEntity(10, "ALPHA", 100);
+pakad leaf2 = LeafEntity(25, "BETA", 200);
+
+// Verify Level 3 inherits operators defined 2 levels up in RootEntity
+pakad leaf_sum = leaf1 + leaf2;
+assert_eq(leaf_sum.id, 35, "C2_deep_inheritance_operator_add");
+
+pakad leaf_diff = leaf2 - leaf1;
+assert_eq(leaf_diff.id, 15, "C2_deep_inheritance_operator_sub");
+
+// Verify Level 3 inherits index operator from RootEntity
+assert_eq(leaf1[0], 10, "C2_deep_inheritance_index_0");
+assert_eq(leaf1[2], 30, "C2_deep_inheritance_index_2");
+
+// Verify Level 3 inherits overloaded methods from RootEntity
+assert_eq(leaf1.identify(), "ROOT_NO_ARG:10", "C2_deep_inheritance_overload_0_arg");
+assert_eq(leaf1.identify("CHECK"), "ROOT_TAG:CHECK:10", "C2_deep_inheritance_overload_1_arg");
+assert_eq(leaf1.get_label(), "ALPHA", "C2_deep_inheritance_middle_method");
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 3: Closures Capturing Overloaded Environments & Mutating State
+// ------------------------------------------------------------------------------
+jugaad create_overloaded_accumulator(base_multiplier: ank) {
+    pakad history = [];
+    pakad call_total = 0;
+
+    ye_le jugaad(val: ank) {
+        call_total = call_total + 1;
+        // Invoke overloaded calc with typed parameter
+        pakad formatted = calc(val);
+        history = history + [formatted];
+        ye_le f"ACC#{call_total}:{formatted}";
+    };
+}
+
+pakad acc = create_overloaded_accumulator(5);
+assert_eq(acc(50), "ACC#1:ARITY_1_INT:50", "C3_closure_captured_overload_int");
+assert_eq(acc(70), "ACC#2:ARITY_1_INT:70", "C3_closure_captured_overload_int_2");
+
+// Dynamic runtime dispatch through variable / higher-order function
+jugaad dynamic_caller(fn_target, arg) {
+    ye_le fn_target(arg);
+}
+assert_eq(dynamic_caller(calc, 123), "ARITY_1_INT:123", "C3_dynamic_runtime_dispatch_int");
+assert_eq(dynamic_caller(calc, "dynamic_str"), "ARITY_1_STR:dynamic_str", "C3_dynamic_runtime_dispatch_str");
+assert_eq(dynamic_caller(smart_fallback, [9, 8]), "UNTYPED_FALLBACK:[9, 8]", "C3_dynamic_runtime_dispatch_fallback");
+
+// Closure inside loop repeatedly resolving overloads
+pakad results = [];
+ghoom i andar [1, 2, 3] {
+    pakad step_fn = jugaad(n: ank) {
+        ye_le calc(n * 10);
+    };
+    results = results + [step_fn(i)];
+}
+assert_eq(results[0], "ARITY_1_INT:10", "C3_loop_closure_overload_1");
+assert_eq(results[1], "ARITY_1_INT:20", "C3_loop_closure_overload_2");
+assert_eq(results[2], "ARITY_1_INT:30", "C3_loop_closure_overload_3");
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 4: Custom Dunders Defined Directly (__jod__, __ghata__, __ulta__, __khol__)
+// ------------------------------------------------------------------------------
+// Verify that naming methods directly as __jod__, __ghata__, __ulta__, __khol__
+// hooks into the language's +, -, unary -, and [] operators!
+biradari RawDunderClass {
+    jugaad shuru(val: ank) {
+        khud.val = val;
+        khud.storage = [val, val * 2, val * 3];
+    }
+
+    // Direct __jod__ instead of 'tantrik +'
+    jugaad __jod__(other) {
+        ye_le RawDunderClass(khud.val + other.val + 1000);
+    }
+
+    // Direct __ghata__ instead of 'tantrik -'
+    jugaad __ghata__(other) {
+        ye_le RawDunderClass(khud.val - other.val - 500);
+    }
+
+    // Direct __ulta__ instead of 'tantrik - ()'
+    jugaad __ulta__() {
+        ye_le RawDunderClass(-khud.val);
+    }
+
+    // Direct __khol__ for indexing read
+    jugaad __khol__(idx: ank) {
+        ye_le khud.storage[idx] + 999;
+    }
+}
+
+pakad rd1 = RawDunderClass(50);
+pakad rd2 = RawDunderClass(20);
+
+// Binary + calling direct __jod__
+pakad rd_sum = rd1 + rd2;
+assert_eq(rd_sum.val, 1070, "C4_direct_dunder_jod_binary_add"); // 50 + 20 + 1000
+
+// Binary - calling direct __ghata__
+pakad rd_sub = rd1 - rd2;
+assert_eq(rd_sub.val, -470, "C4_direct_dunder_ghata_binary_sub"); // 50 - 20 - 500
+
+// Unary - calling direct __ulta__
+pakad rd_neg = -rd1;
+assert_eq(rd_neg.val, -50, "C4_direct_dunder_ulta_unary_neg");
+
+// Index read [] calling direct __khol__
+assert_eq(rd1[0], 1049, "C4_direct_dunder_khol_index_0"); // 50 + 999
+assert_eq(rd1[1], 1099, "C4_direct_dunder_khol_index_1"); // 100 + 999
+assert_eq(rd1[2], 1149, "C4_direct_dunder_khol_index_2"); // 150 + 999
+
+// Dual __khol__ overload (1-arg getter, 2-arg setter)
+biradari DualKholBox {
+    jugaad shuru() {
+        khud.items = [11, 22, 33];
+    }
+    bahuroop jugaad __khol__(idx: ank) {
+        ye_le khud.items[idx];
+    }
+    aur_ek jugaad __khol__(idx: ank, val: ank) {
+        khud.items[idx] = val;
+    }
+}
+
+pakad dkb = DualKholBox();
+assert_eq(dkb[1], 22, "C4_dual_khol_getter_overload");
+dkb[1] = 888;
+assert_eq(dkb[1], 888, "C4_dual_khol_setter_overload");
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 5: Boundary Error Catching (panga/lafda) & State Recovery
+// ------------------------------------------------------------------------------
+// Test 5.1: Arity error caught and state intact
+pakad arity_caught = nhi;
+panga {
+    calc(1, 2, 3, 4, 5); // No 5-arg overload exists
+} lafda (e) {
+    arity_caught = han;
+}
+assert_true(arity_caught, "C5_panga_lafda_arity_mismatch");
+
+// Test 5.2: Type error caught when no matching overload exists
+pakad type_caught = nhi;
+panga {
+    calc([1, 2, 3]); // List argument not supported by calc
+} lafda (e) {
+    type_caught = han;
+}
+assert_true(type_caught, "C5_panga_lafda_type_mismatch");
+
+// Test 5.3: Verify state and subsequent calls remain functional after caught errors
+assert_eq(calc(99), "ARITY_1_INT:99", "C5_state_recovery_after_caught_errors");
+
+// Test 5.4: Operator on mismatched instance type caught
+pakad op_err = nhi;
+panga {
+    pakad invalid = leaf1 + "NotAnEntity";
+} lafda (e) {
+    op_err = han;
+}
+assert_true(op_err, "C5_panga_lafda_operator_operand_mismatch");
+
+// ------------------------------------------------------------------------------
+// TEST SUITE 6: English vs Desi Syntax Parity for Operators & Overloads
+// ------------------------------------------------------------------------------
+// Using English keywords: 'operator', 'overload', 'return', 'fn', 'class', 'extends'
+class EnglishOpVector {
+    fn init(x: ank, y: ank) {
+        self.x = x;
+        self.y = y;
+    }
+
+    operator + (other) {
+        return EnglishOpVector(self.x + other.x, self.y + other.y);
+    }
+
+    op - (other) {
+        return EnglishOpVector(self.x - other.x, self.y - other.y);
+    }
+
+    operator == (other) {
+        return self.x == other.x && self.y == other.y;
+    }
+
+    operator - () {
+        return EnglishOpVector(-self.x, -self.y);
+    }
+
+    operator [] (idx: ank) {
+        if (idx == 0) {
+            return self.x;
+        }
+        return self.y;
+    }
+}
+
+overload fn eng_dispatcher(v: EnglishOpVector) -> ank {
+    return v.x * 10 + v.y;
+}
+
+overload fn eng_dispatcher(n: ank) -> ank {
+    return n * 100;
+}
+
+let ev1 = EnglishOpVector(3, 4);
+let ev2 = EnglishOpVector(1, 2);
+
+let ev_sum = ev1 + ev2;
+assert_eq(ev_sum.x, 4, "C6_english_syntax_operator_add_x");
+assert_eq(ev_sum.y, 6, "C6_english_syntax_operator_add_y");
+
+let ev_sub = ev1 - ev2;
+assert_eq(ev_sub.x, 2, "C6_english_syntax_op_sub_x");
+assert_eq(ev_sub.y, 2, "C6_english_syntax_op_sub_y");
+
+assert_true(ev1 == EnglishOpVector(3, 4), "C6_english_syntax_operator_eq");
+assert_true(ev1 != ev2, "C6_english_syntax_operator_neq_derived");
+
+let ev_neg = -ev1;
+assert_eq(ev_neg.x, -3, "C6_english_syntax_unary_neg_x");
+assert_eq(ev_neg.y, -4, "C6_english_syntax_unary_neg_y");
+
+assert_eq(ev1[0], 3, "C6_english_syntax_index_0");
+assert_eq(ev1[1], 4, "C6_english_syntax_index_1");
+
+assert_eq(eng_dispatcher(ev1), 34, "C6_english_overload_dispatch_custom_type");
+assert_eq(eng_dispatcher(5), 500, "C6_english_overload_dispatch_primitive_type");
+
+dikha f"=== [CHALLENGER 1] All {passed_asserts}/{total_asserts} Adversarial Checks Passed! ===";

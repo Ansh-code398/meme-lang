@@ -1,0 +1,215 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Rust-Inspired Memory Management (Tiers 1 & 2)
+// Coverage:
+//   - Tier 1: Move semantics (`rawana`, `move`), Ownership (`malik`, `own`)
+//   - Tier 1: Mutability (`badal`/`mut`, `atal`/`const`), Drop (`khatam`/`drop`)
+//   - Tier 1: Scoped block (`daayra`/`scope`), Shared borrows (`udhaar`)
+//   - Tier 2: Boundary errors: use-after-move, use-after-drop, immutable mutation,
+//             double mutable borrow, move-while-borrowed.
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Memory Safety (Tiers 1 & 2) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Explicit Move Semantics (`rawana`)
+// ------------------------------------------------------------------------------
+pakad heera = "Kohinoor";
+pakad naya_malik = rawana heera;
+assert_eq(naya_malik, "Kohinoor", "T1_mem_rawana_move_value_transferred");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: English Move Syntax (`move`)
+// ------------------------------------------------------------------------------
+let document = "SecretBlueprint";
+let recipient = move document;
+assert_eq(recipient, "SecretBlueprint", "T1_mem_english_move_value_transferred");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Ownership Qualifiers (`malik` & `own`)
+// ------------------------------------------------------------------------------
+biradari Tijori {
+    jugaad shuru(gold: ank) {
+        khud.gold = gold;
+    }
+}
+
+pakad malik safeA = Tijori(500);
+assert_eq(safeA.gold, 500, "T1_mem_ownership_desi_malik");
+
+let own safeB = Tijori(1000);
+assert_eq(safeB.gold, 1000, "T1_mem_ownership_english_own");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Mutability Qualifiers (`badal` / `mut`)
+// ------------------------------------------------------------------------------
+pakad badal dynamic_score = 10;
+dynamic_score = dynamic_score + 20;
+assert_eq(dynamic_score, 30, "T1_mem_mutability_badal_allowed");
+
+let mut dynamic_counter = 100;
+dynamic_counter = dynamic_counter * 2;
+assert_eq(dynamic_counter, 200, "T1_mem_mutability_english_mut_allowed");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Immutable / Constant Qualifiers (`atal` / `const`)
+// ------------------------------------------------------------------------------
+pakad atal SAMAJ_KA_NIYAM = 42;
+assert_eq(SAMAJ_KA_NIYAM, 42, "T1_mem_immutable_atal_read");
+
+let const MAX_CAPACITY = 999;
+assert_eq(MAX_CAPACITY, 999, "T1_mem_immutable_english_const_read");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Explicit Drop (`khatam` & `drop`)
+// ------------------------------------------------------------------------------
+pakad dropped_log = [];
+
+biradari ResourceHandle {
+    jugaad shuru(id: bol) {
+        khud.id = id;
+    }
+
+    jugaad alvida() {
+        dropped_log.jod(khud.id);
+    }
+}
+
+pakad res1 = ResourceHandle("Res_Alpha");
+khatam res1;
+assert_eq(dropped_log.size() > 0, han, "T1_mem_explicit_drop_khatam_invoked");
+assert_eq(dropped_log[0], "Res_Alpha", "T1_mem_explicit_drop_correct_instance");
+
+let res2 = ResourceHandle("Res_Beta");
+drop res2;
+assert_eq(dropped_log.size() >= 2, han, "T1_mem_english_drop_invoked");
+assert_eq(dropped_log[1], "Res_Beta", "T1_mem_english_drop_correct_instance");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Lexical Scope Blocks (`daayra` & `scope`)
+// ------------------------------------------------------------------------------
+pakad scope_dropped = nhi;
+
+biradari ScopeTracker {
+    jugaad alvida() {
+        scope_dropped = han;
+    }
+}
+
+daayra {
+    pakad temp_scoped_obj = ScopeTracker();
+    assert_eq(scope_dropped, nhi, "T1_mem_scope_daayra_alive_inside");
+}
+assert_eq(scope_dropped, han, "T1_mem_scope_daayra_dropped_on_exit");
+
+pakad eng_scope_dropped = nhi;
+biradari EngScopeTracker {
+    jugaad alvida() {
+        eng_scope_dropped = han;
+    }
+}
+
+scope {
+    let eng_temp = EngScopeTracker();
+    assert_eq(eng_scope_dropped, nhi, "T1_mem_scope_english_alive_inside");
+}
+assert_eq(eng_scope_dropped, han, "T1_mem_scope_english_dropped_on_exit");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Shared Borrowing (`udhaar`)
+// ------------------------------------------------------------------------------
+pakad original_book = "Mahabharat";
+pakad reader1 = udhaar original_book;
+pakad reader2 = udhaar original_book;
+assert_eq(reader1, "Mahabharat", "T1_mem_shared_borrow_reader1");
+assert_eq(reader2, "Mahabharat", "T1_mem_shared_borrow_reader2");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Use After Move Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad use_after_move_caught = nhi;
+panga {
+    // Attempting to read moved variable `heera`
+    pakad illegal_access = heera;
+} lafda (err) {
+    use_after_move_caught = han;
+    dikha "Caught expected use-after-move error:", err;
+}
+assert_eq(use_after_move_caught, han, "T2_boundary_err_use_after_move");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Use After English Move Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad use_after_english_move_caught = nhi;
+panga {
+    // Attempting to read moved variable `document`
+    pakad illegal_doc = document;
+} lafda (err) {
+    use_after_english_move_caught = han;
+    dikha "Caught expected english use-after-move error:", err;
+}
+assert_eq(use_after_english_move_caught, han, "T2_boundary_err_english_use_after_move");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Use After Drop Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad use_after_drop_caught = nhi;
+panga {
+    // Attempting to access dropped variable `res1`
+    pakad bad_handle = res1.id;
+} lafda (err) {
+    use_after_drop_caught = han;
+    dikha "Caught expected use-after-drop error:", err;
+}
+assert_eq(use_after_drop_caught, han, "T2_boundary_err_use_after_drop");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Mutation of Immutable (`atal`) Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad atal_mutation_caught = nhi;
+panga {
+    SAMAJ_KA_NIYAM = 99;
+} lafda (err) {
+    atal_mutation_caught = han;
+    dikha "Caught expected atal mutation error:", err;
+}
+assert_eq(atal_mutation_caught, han, "T2_boundary_err_atal_mutation");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Double Mutable Borrow Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad double_borrow_caught = nhi;
+pakad bank_vault = 1000;
+panga {
+    pakad mut1 = udhaar_badal bank_vault;
+    pakad mut2 = udhaar_badal bank_vault;
+} lafda (err) {
+    double_borrow_caught = han;
+    dikha "Caught expected double mutable borrow error:", err;
+}
+assert_eq(double_borrow_caught, han, "T2_boundary_err_double_mutable_borrow");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - BOUNDARY ERROR: Move While Borrowed Caught via Panga/Lafda
+// ------------------------------------------------------------------------------
+pakad move_while_borrowed_caught = nhi;
+pakad active_ledger = "MarchTransactions";
+panga {
+    pakad audit_borrow = udhaar active_ledger;
+    pakad illegal_move = rawana active_ledger;
+} lafda (err) {
+    move_while_borrowed_caught = han;
+    dikha "Caught expected move-while-borrowed error:", err;
+}
+assert_eq(move_while_borrowed_caught, han, "T2_boundary_err_move_while_borrowed");
+
+dikha "=== All Memory Safety Tests (Tiers 1 & 2) Completed Successfully! ===";

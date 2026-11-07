@@ -11,6 +11,19 @@
 
 inline Value add(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        long long lhs = std::get<long long>(a.data);
+        long long rhs = std::get<long long>(b.data);
+        long long result = 0;
+        if (__builtin_add_overflow(lhs, rhs, &result))
+        {
+            throw std::runtime_error(
+                "25 din mein paisa double karte-karte integer overflow ho gaya! Aukaat ke bahar chala gaya jod.");
+        }
+        return Value(result);
+    }
+
     Value da = a.deref();
     Value db = b.deref();
 
@@ -121,6 +134,19 @@ inline Value add(const Value &a, const Value &b)
 
 inline Value subtract(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        long long lhs = std::get<long long>(a.data);
+        long long rhs = std::get<long long>(b.data);
+        long long result = 0;
+        if (__builtin_sub_overflow(lhs, rhs, &result))
+        {
+            throw std::runtime_error(
+                "Ghatate-ghatate patal lok pahunch gaye! Integer underflow/overflow ho gaya.");
+        }
+        return Value(result);
+    }
+
     Value da = a.deref();
     Value db = b.deref();
 
@@ -184,6 +210,19 @@ inline Value subtract(const Value &a, const Value &b)
 
 inline Value multiply(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        long long lhs = std::get<long long>(a.data);
+        long long rhs = std::get<long long>(b.data);
+        long long result = 0;
+        if (__builtin_mul_overflow(lhs, rhs, &result))
+        {
+            throw std::runtime_error(
+                "Hisab-kitab aukaat ke bahar! Guna (*) karte-karte integer overflow ho gaya.");
+        }
+        return Value(result);
+    }
+
     Value da = a.deref();
     Value db = b.deref();
 
@@ -306,6 +345,23 @@ inline Value multiply(const Value &a, const Value &b)
 
 inline Value divide(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        long long rhs = std::get<long long>(b.data);
+        if (rhs == 0)
+        {
+            throw std::runtime_error(
+                "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+        }
+        long long lhs = std::get<long long>(a.data);
+        if (lhs == std::numeric_limits<long long>::min() && rhs == -1)
+        {
+            throw std::runtime_error(
+                "Integer overflow ho gaya! Is hisaab ko sambhalne ki aukaat nahi hai.");
+        }
+        return Value(lhs / rhs);
+    }
+
     Value da = a.deref();
     Value db = b.deref();
 
@@ -343,6 +399,16 @@ inline Value divide(const Value &a, const Value &b)
 
 inline Value modulo(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        long long rhs = std::get<long long>(b.data);
+        if (rhs == 0)
+        {
+            throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
+        }
+        return Value(std::get<long long>(a.data) % rhs);
+    }
+
     Value da = a.deref();
     Value db = b.deref();
 
@@ -408,6 +474,10 @@ inline Value notEqual(const Value &a, const Value &b)
 
 inline Value lessThan(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        return Value(std::get<long long>(a.data) < std::get<long long>(b.data));
+    }
     Value da = a.deref();
     Value db = b.deref();
     if (da.isNumeric() && db.isNumeric())
@@ -432,6 +502,10 @@ inline Value lessThan(const Value &a, const Value &b)
 
 inline Value lessThanEqual(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        return Value(std::get<long long>(a.data) <= std::get<long long>(b.data));
+    }
     Value da = a.deref();
     Value db = b.deref();
     if (da.isNumeric() && db.isNumeric())
@@ -456,6 +530,10 @@ inline Value lessThanEqual(const Value &a, const Value &b)
 
 inline Value greaterThan(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        return Value(std::get<long long>(a.data) > std::get<long long>(b.data));
+    }
     Value da = a.deref();
     Value db = b.deref();
     if (da.isNumeric() && db.isNumeric())
@@ -480,6 +558,10 @@ inline Value greaterThan(const Value &a, const Value &b)
 
 inline Value greaterThanEqual(const Value &a, const Value &b)
 {
+    if (std::holds_alternative<long long>(a.data) && std::holds_alternative<long long>(b.data))
+    {
+        return Value(std::get<long long>(a.data) >= std::get<long long>(b.data));
+    }
     Value da = a.deref();
     Value db = b.deref();
     if (da.isNumeric() && db.isNumeric())

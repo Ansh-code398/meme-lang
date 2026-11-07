@@ -182,7 +182,7 @@ Value valMul(const Value& a, const Value& b) {
 
 Value valDiv(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
-        if (b.numVal == 0.0) throw runtime_error("Bhai zero se divide karega? Math ro rahi hai kone mein!");
+        if (b.numVal == 0.0) throw runtime_error("zero se divide karega? Math ro rahi hai kone mein!");
         double res = a.numVal / b.numVal;
         bool flt = a.isFloat || b.isFloat || (floor(res) != res);
         return Value(res, flt);
@@ -193,7 +193,7 @@ Value valDiv(const Value& a, const Value& b) {
 Value valMod(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
         long long ib = (long long)b.numVal;
-        if (ib == 0) throw runtime_error("Zero se modulo nahi hota bhai!");
+        if (ib == 0) throw runtime_error("Zero se modulo nahi hota dost!");
         return Value((long long)a.numVal % ib);
     }
     throw runtime_error("Invalid operands for % operator");

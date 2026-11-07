@@ -1,0 +1,227 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Cross-Feature Combinations (Tier 3)
+// Coverage:
+//   - Pairwise interactions across Overloading, Pointers, and Memory Safety:
+//     1. Overloaded functions taking pointer parameters vs value parameters
+//     2. Operator overloading on owned/moved structs (malik + tantrik + rawana)
+//     3. Pointer dereference write inside operator overload methods
+//     4. Pointers to borrowed variables (udhaar + patta)
+//     5. Moving a pointer variable (rawana &x) and checking pointee validity
+//     6. Explicit drop (khatam) on instances with overloaded operators
+//     7. Scoped blocks (daayra) with local pointers and overloaded functions
+//     8. Class combining method overloads and operator overloads
+//     9. Chained operator evaluations with moved temporaries
+//     10. Interplay between mutable borrow and dereference writing
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Cross-Feature Combinations (Tier 3) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// COMBO 1: Overloaded Functions Disambiguating Value vs Pointer Parameter
+// ------------------------------------------------------------------------------
+bahuroop jugaad mutate_or_copy(x: ank) -> ank {
+    ye_le x * 2;
+}
+
+bahuroop jugaad mutate_or_copy(p: patta[ank]) -> ank {
+    *p = *p * 10;
+    ye_le *p;
+}
+
+pakad val_sample = 25;
+pakad copy_res = mutate_or_copy(val_sample);
+assert_eq(copy_res, 50, "T3_combo_overload_val_param_result");
+assert_eq(val_sample, 25, "T3_combo_overload_val_param_leaves_original");
+
+pakad ptr_res = mutate_or_copy(&val_sample);
+assert_eq(ptr_res, 250, "T3_combo_overload_ptr_param_result");
+assert_eq(val_sample, 250, "T3_combo_overload_ptr_param_mutates_original");
+
+// ------------------------------------------------------------------------------
+// COMBO 2: Operator Overloading on Owned Struct + Move Semantics
+// ------------------------------------------------------------------------------
+biradari ComplexNum {
+    jugaad shuru(r: ank, i: ank) {
+        khud.r = r;
+        khud.i = i;
+    }
+
+    tantrik + (other: ComplexNum) -> ComplexNum {
+        ye_le ComplexNum(khud.r + other.r, khud.i + other.i);
+    }
+}
+
+pakad malik c1 = ComplexNum(3, 4);
+pakad c2 = ComplexNum(1, 2);
+pakad c_sum = c1 + c2;
+assert_eq(c_sum.r, 4, "T3_combo_owned_operator_add_real");
+assert_eq(c_sum.i, 6, "T3_combo_owned_operator_add_imag");
+
+// Move ownership of c1
+pakad c1_relocated = rawana c1;
+assert_eq(c1_relocated.r, 3, "T3_combo_owned_moved_instance_valid");
+
+pakad access_moved_c1_caught = nhi;
+panga {
+    pakad bad_calc = c1 + c2;
+} lafda (err) {
+    access_moved_c1_caught = han;
+    dikha "Caught expected operator call on moved instance:", err;
+}
+assert_eq(access_moved_c1_caught, han, "T3_combo_moved_instance_operator_prevented");
+
+// ------------------------------------------------------------------------------
+// COMBO 3: Pointer Dereference Write Inside Custom Operator Overload
+// ------------------------------------------------------------------------------
+biradari PointerBackedBuffer {
+    jugaad shuru(initial_slot) {
+        khud.slot_ptr = &initial_slot;
+    }
+
+    tantrik [](offset: ank) {
+        ye_le *(khud.slot_ptr);
+    }
+
+    tantrik []=(offset: ank, new_val) {
+        *(khud.slot_ptr) = new_val;
+    }
+}
+
+pakad backing_data = 1000;
+pakad buff = PointerBackedBuffer(backing_data);
+assert_eq(buff[0], 1000, "T3_combo_deref_inside_operator_read");
+
+buff[0] = 5000;
+assert_eq(buff[0], 5000, "T3_combo_deref_inside_operator_write_read");
+assert_eq(backing_data, 5000, "T3_combo_deref_inside_operator_mutates_source");
+
+// ------------------------------------------------------------------------------
+// COMBO 4: Pointers to Borrowed Variables
+// ------------------------------------------------------------------------------
+pakad master_value = 999;
+pakad b_view = udhaar master_value;
+pakad p_view = &master_value;
+
+assert_eq(*p_view, b_view, "T3_combo_ptr_to_borrowed_var_reads_equal");
+
+// ------------------------------------------------------------------------------
+// COMBO 5: Moving a Pointer Variable vs Moving the Pointee
+// ------------------------------------------------------------------------------
+pakad stationary_target = 8888;
+pakad ptr_orig = &stationary_target;
+pakad ptr_transferred = rawana ptr_orig;
+
+assert_eq(*ptr_transferred, 8888, "T3_combo_moved_ptr_reads_correctly");
+
+pakad read_moved_ptr_caught = nhi;
+panga {
+    pakad bad_read = *ptr_orig;
+} lafda (err) {
+    read_moved_ptr_caught = han;
+    dikha "Caught expected read of moved pointer:", err;
+}
+assert_eq(read_moved_ptr_caught, han, "T3_combo_moved_ptr_use_prevented");
+
+// ------------------------------------------------------------------------------
+// COMBO 6: Explicit Drop (khatam) on Struct with Overloaded Operators
+// ------------------------------------------------------------------------------
+pakad destroyed_op_instances = 0;
+
+biradari OpDropTracker {
+    jugaad shuru(id: ank) {
+        khud.id = id;
+    }
+
+    tantrik == (other: OpDropTracker) -> sach {
+        ye_le khud.id == other.id;
+    }
+
+    jugaad alvida() {
+        destroyed_op_instances = destroyed_op_instances + 1;
+    }
+}
+
+pakad odt1 = OpDropTracker(10);
+pakad odt2 = OpDropTracker(10);
+assert_eq(odt1 == odt2, han, "T3_combo_drop_operator_eq_before_drop");
+
+khatam odt1;
+assert_eq(destroyed_op_instances, 1, "T3_combo_drop_invoked_destructor");
+
+pakad eq_after_drop_caught = nhi;
+panga {
+    pakad bad_eq = (odt1 == odt2);
+} lafda (err) {
+    eq_after_drop_caught = han;
+    dikha "Caught expected operator on dropped instance:", err;
+}
+assert_eq(eq_after_drop_caught, han, "T3_combo_dropped_instance_operator_prevented");
+
+// ------------------------------------------------------------------------------
+// COMBO 7: Scoped Block (`daayra`) with Local Pointers and Overloads
+// ------------------------------------------------------------------------------
+pakad outer_acc = 0;
+
+daayra {
+    pakad local_num = 15;
+    pakad p_local = &local_num;
+    pakad doubled = mutate_or_copy(p_local);
+    outer_acc = doubled;
+}
+assert_eq(outer_acc, 150, "T3_combo_scoped_block_pointers_and_overloads");
+
+// ------------------------------------------------------------------------------
+// COMBO 8: Class Combining Method Overloading & Operator Overloading
+// ------------------------------------------------------------------------------
+biradari AdvancedAccount {
+    jugaad shuru(bal: ank) {
+        khud.bal = bal;
+    }
+
+    bahuroop jugaad deposit(amt: ank) {
+        khud.bal = khud.bal + amt;
+    }
+
+    aur_ek jugaad deposit(amt: ank, note: bol) {
+        khud.bal = khud.bal + amt;
+    }
+
+    tantrik + (other: AdvancedAccount) -> AdvancedAccount {
+        ye_le AdvancedAccount(khud.bal + other.bal);
+    }
+}
+
+pakad acc1 = AdvancedAccount(500);
+pakad acc2 = AdvancedAccount(300);
+acc1.deposit(100);
+acc1.deposit(50, "Salary bonus");
+assert_eq(acc1.bal, 650, "T3_combo_class_method_overload_execution");
+
+pakad acc_combined = acc1 + acc2;
+assert_eq(acc_combined.bal, 950, "T3_combo_class_operator_overload_execution");
+
+// ------------------------------------------------------------------------------
+// COMBO 9: Chained Operator Evaluation with Intermediates
+// ------------------------------------------------------------------------------
+pakad c_res = (ComplexNum(1, 1) + ComplexNum(2, 2)) + ComplexNum(3, 3);
+assert_eq(c_res.r, 6, "T3_combo_chained_operator_real");
+assert_eq(c_res.i, 6, "T3_combo_chained_operator_imag");
+
+// ------------------------------------------------------------------------------
+// COMBO 10: Mutable Borrow and Dereference Writing Consistency
+// ------------------------------------------------------------------------------
+pakad state_counter = 42;
+pakad mut_ref = udhaar_badal state_counter;
+assert_eq(mut_ref, 42, "T3_combo_mut_borrow_initial_value");
+
+dikha "=== All Cross-Feature Combination Tests (Tier 3) Completed Successfully! ===";

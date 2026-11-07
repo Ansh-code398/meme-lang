@@ -1,0 +1,35 @@
+// Benchmark: Sieve of Eratosthenes in MEMElang
+bula "samay" jaise samay;
+bula "itertools" jaise itertools;
+
+jugaad sieve(n) {
+    pakad is_prime = itertools.repeat(han, n + 1);
+    is_prime[0] = nhi;
+    is_prime[1] = nhi;
+
+    pakad p = 2;
+    jabtak p * p <= n {
+        dekh is_prime[p] {
+            pakad m = p * p;
+            jabtak m <= n {
+                is_prime[m] = nhi;
+                m = m + p;
+            }
+        }
+        p = p + 1;
+    }
+
+    pakad count = 0;
+    ghoom prime mein is_prime {
+        dekh prime {
+            count = count + 1;
+        }
+    }
+    ye_le count;
+}
+
+pakad start = samay.ab();
+pakad total = sieve(100000);
+pakad elapsed = (samay.ab() - start) * 1000.0;
+
+dikha f"MEMElang | Primes up to 100000: {total} | Time: {point_wala(elapsed)}ms";

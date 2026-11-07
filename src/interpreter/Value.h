@@ -7,6 +7,9 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <sstream>
+#include <functional>
+#include <cstdint>
 #include "Callable.h"
 
 class Instance;
@@ -16,6 +19,7 @@ struct MemeMap;
 struct MemeBytes;
 struct MemeSet;
 struct MemeTuple;
+struct Pointer;
 std::string instanceToString(const std::shared_ptr<Instance> &instance);
 std::string listToString(const std::shared_ptr<MemeList> &list);
 std::string mapToString(const std::shared_ptr<MemeMap> &map);
@@ -41,6 +45,81 @@ struct Reference
     uint64_t borrowId = 0;
 };
 
+struct Pointer
+{
+    uintptr_t address = 0;
+    bool isMut = true;
+    Value *rawAddress = nullptr;
+    std::string varName;
+    std::shared_ptr<Environment> env;
+    std::shared_ptr<Instance> instance;
+    std::string fieldName;
+    std::function<Value()> customGetter = nullptr;
+    std::function<void(Value)> customSetter = nullptr;
+
+    Pointer() : address(0), isMut(true), rawAddress(nullptr) {}
+
+    explicit Pointer(uintptr_t addr, bool isMut = true)
+        : address(addr), isMut(isMut), rawAddress(nullptr) {}
+
+    Pointer(Value *raw, bool isMut = true, std::string name = "")
+        : address(reinterpret_cast<uintptr_t>(raw)),
+          isMut(isMut),
+          rawAddress(raw),
+          varName(std::move(name)) {}
+
+    Pointer(std::shared_ptr<Environment> env, std::string varName, bool isMut = true, Value *raw = nullptr)
+        : address(raw ? reinterpret_cast<uintptr_t>(raw) : 0),
+          isMut(isMut),
+          rawAddress(raw),
+          varName(std::move(varName)),
+          env(std::move(env)) {}
+
+    Pointer(std::shared_ptr<Instance> inst, std::string fieldName, bool isMut = true, Value *raw = nullptr)
+        : address(raw ? reinterpret_cast<uintptr_t>(raw) : 0),
+          isMut(isMut),
+          rawAddress(raw),
+          instance(std::move(inst)),
+          fieldName(std::move(fieldName)) {}
+
+    bool isNull() const
+    {
+        return address == 0 && rawAddress == nullptr && !customGetter &&
+               (env == nullptr || varName.empty()) &&
+               (instance == nullptr || fieldName.empty());
+    }
+
+    uintptr_t getAddress() const
+    {
+        if (address != 0) return address;
+        if (rawAddress != nullptr) return reinterpret_cast<uintptr_t>(rawAddress);
+        return 0;
+    }
+
+    std::string toString() const
+    {
+        if (isNull() || getAddress() == 0)
+        {
+            return "patta[0x0]";
+        }
+        std::stringstream ss;
+        ss << "patta[0x" << std::hex << getAddress() << "]";
+        return ss.str();
+    }
+
+    bool operator==(const Pointer &other) const
+    {
+        if (isNull() && other.isNull()) return true;
+        if (isNull() || other.isNull()) return false;
+        return getAddress() == other.getAddress();
+    }
+
+    bool operator!=(const Pointer &other) const
+    {
+        return !(*this == other);
+    }
+};
+
 using ValueVariant = std::variant<
     std::monostate,              // kuch_nhi / nalla
     long long,                   // int / long
@@ -54,6 +133,7 @@ using ValueVariant = std::variant<
     std::shared_ptr<Callable>,   // function / class / method
     std::shared_ptr<Instance>,   // object instance
     std::shared_ptr<Reference>,  // udhaar / udhaar_badal (boxed for compact 32-byte Value)
+    std::shared_ptr<Pointer>,    // patta / thikana / ptr (boxed for compact 32-byte Value)
     std::shared_ptr<MemeList>,   // list / array
     std::shared_ptr<MemeMap>,    // map / dict / khata
     std::shared_ptr<MemeBytes>,  // raw bytes buffer
@@ -100,11 +180,59 @@ struct Value
     Value(std::shared_ptr<Instance> v) : data(std::move(v)) {}
     Value(Reference v) : data(std::make_shared<Reference>(std::move(v))) {}
     Value(std::shared_ptr<Reference> v) : data(std::move(v)) {}
+    Value(Pointer v) : data(std::make_shared<Pointer>(std::move(v))) {}
+    Value(std::shared_ptr<Pointer> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeList> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeMap> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeBytes> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeSet> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeTuple> v) : data(std::move(v)) {}
+
+    static Value pointer(std::shared_ptr<Pointer> ptr)
+    {
+        return Value(std::move(ptr));
+    }
+
+    static Value pointer(Pointer ptr)
+    {
+        return Value(std::make_shared<Pointer>(std::move(ptr)));
+    }
+
+    static Value nullPointer(bool isMut = false)
+    {
+        return Value(std::make_shared<Pointer>(0, isMut));
+    }
+
+    bool isPointer() const
+    {
+        if (isReference()) return deref().isPointer();
+        return std::holds_alternative<std::shared_ptr<Pointer>>(data);
+    }
+
+    std::shared_ptr<Pointer> asPointer() const
+    {
+        if (isReference()) return deref().asPointer();
+        if (!std::holds_alternative<std::shared_ptr<Pointer>>(data))
+        {
+            throw std::runtime_error("Doglapan! Expected pointer value but got " + typeName());
+        }
+        return std::get<std::shared_ptr<Pointer>>(data);
+    }
+
+    std::shared_ptr<Pointer> getPointer() const
+    {
+        return asPointer();
+    }
+
+    bool pointerEquals(const Value &other) const
+    {
+        if (!isPointer() || !other.isPointer()) return false;
+        auto pa = asPointer();
+        auto pb = other.asPointer();
+        if (pa == pb) return true;
+        if (!pa || !pb) return false;
+        return *pa == *pb;
+    }
 
     bool isReference() const
     {
@@ -113,7 +241,8 @@ struct Value
 
     bool isNil() const
     {
-        return std::holds_alternative<std::monostate>(deref().data);
+        if (isReference()) return deref().isNil();
+        return std::holds_alternative<std::monostate>(data);
     }
 
     bool isNull() const
@@ -133,15 +262,15 @@ struct Value
 
     bool isPrimitive() const
     {
-        Value d = deref();
-        return std::holds_alternative<std::monostate>(d.data) ||
-               std::holds_alternative<long long>(d.data) ||
-               std::holds_alternative<int>(d.data) ||
-               std::holds_alternative<uint8_t>(d.data) ||
-               std::holds_alternative<double>(d.data) ||
-               std::holds_alternative<float>(d.data) ||
-               std::holds_alternative<char>(d.data) ||
-               std::holds_alternative<bool>(d.data);
+        if (isReference()) return deref().isPrimitive();
+        return std::holds_alternative<std::monostate>(data) ||
+               std::holds_alternative<long long>(data) ||
+               std::holds_alternative<int>(data) ||
+               std::holds_alternative<uint8_t>(data) ||
+               std::holds_alternative<double>(data) ||
+               std::holds_alternative<float>(data) ||
+               std::holds_alternative<char>(data) ||
+               std::holds_alternative<bool>(data);
     }
 
     bool isMoveType() const
@@ -151,150 +280,173 @@ struct Value
 
     bool isInstance() const
     {
-        return std::holds_alternative<std::shared_ptr<Instance>>(deref().data);
+        if (isReference()) return deref().isInstance();
+        return std::holds_alternative<std::shared_ptr<Instance>>(data);
     }
 
     std::shared_ptr<Instance> getInstance() const
     {
-        return std::get<std::shared_ptr<Instance>>(deref().data);
+        if (isReference()) return deref().getInstance();
+        return std::get<std::shared_ptr<Instance>>(data);
     }
 
     bool isList() const
     {
-        return std::holds_alternative<std::shared_ptr<MemeList>>(deref().data);
+        if (isReference()) return deref().isList();
+        return std::holds_alternative<std::shared_ptr<MemeList>>(data);
     }
 
     std::shared_ptr<MemeList> getList() const
     {
-        return std::get<std::shared_ptr<MemeList>>(deref().data);
+        if (isReference()) return deref().getList();
+        return std::get<std::shared_ptr<MemeList>>(data);
     }
 
     bool isMap() const
     {
-        return std::holds_alternative<std::shared_ptr<MemeMap>>(deref().data);
+        if (isReference()) return deref().isMap();
+        return std::holds_alternative<std::shared_ptr<MemeMap>>(data);
     }
 
     std::shared_ptr<MemeMap> getMap() const
     {
-        return std::get<std::shared_ptr<MemeMap>>(deref().data);
+        if (isReference()) return deref().getMap();
+        return std::get<std::shared_ptr<MemeMap>>(data);
     }
 
     bool isBytes() const
     {
-        return std::holds_alternative<std::shared_ptr<MemeBytes>>(deref().data);
+        if (isReference()) return deref().isBytes();
+        return std::holds_alternative<std::shared_ptr<MemeBytes>>(data);
     }
 
     std::shared_ptr<MemeBytes> getBytes() const
     {
-        return std::get<std::shared_ptr<MemeBytes>>(deref().data);
+        if (isReference()) return deref().getBytes();
+        return std::get<std::shared_ptr<MemeBytes>>(data);
     }
 
     bool isSet() const
     {
-        return std::holds_alternative<std::shared_ptr<MemeSet>>(deref().data);
+        if (isReference()) return deref().isSet();
+        return std::holds_alternative<std::shared_ptr<MemeSet>>(data);
     }
 
     std::shared_ptr<MemeSet> getSet() const
     {
-        return std::get<std::shared_ptr<MemeSet>>(deref().data);
+        if (isReference()) return deref().getSet();
+        return std::get<std::shared_ptr<MemeSet>>(data);
     }
 
     bool isTuple() const
     {
-        return std::holds_alternative<std::shared_ptr<MemeTuple>>(deref().data);
+        if (isReference()) return deref().isTuple();
+        return std::holds_alternative<std::shared_ptr<MemeTuple>>(data);
     }
 
     std::shared_ptr<MemeTuple> getTuple() const
     {
-        return std::get<std::shared_ptr<MemeTuple>>(deref().data);
+        if (isReference()) return deref().getTuple();
+        return std::get<std::shared_ptr<MemeTuple>>(data);
     }
 
     bool isByte() const
     {
-        return std::holds_alternative<uint8_t>(deref().data);
+        if (isReference()) return deref().isByte();
+        return std::holds_alternative<uint8_t>(data);
     }
 
     bool isInt32() const
     {
-        return std::holds_alternative<int>(deref().data);
+        if (isReference()) return deref().isInt32();
+        return std::holds_alternative<int>(data);
     }
 
     bool isInt64() const
     {
-        return std::holds_alternative<long long>(deref().data);
+        if (isReference()) return deref().isInt64();
+        return std::holds_alternative<long long>(data);
     }
 
     bool isFloat() const
     {
-        return std::holds_alternative<float>(deref().data);
+        if (isReference()) return deref().isFloat();
+        return std::holds_alternative<float>(data);
     }
 
     bool isDouble() const
     {
-        return std::holds_alternative<double>(deref().data);
+        if (isReference()) return deref().isDouble();
+        return std::holds_alternative<double>(data);
     }
 
     bool isChar() const
     {
-        return std::holds_alternative<char>(deref().data);
+        if (isReference()) return deref().isChar();
+        return std::holds_alternative<char>(data);
     }
 
     bool isString() const
     {
-        return std::holds_alternative<std::string>(deref().data);
+        if (isReference()) return deref().isString();
+        return std::holds_alternative<std::string>(data);
     }
 
     bool isBool() const
     {
-        return std::holds_alternative<bool>(deref().data);
+        if (isReference()) return deref().isBool();
+        return std::holds_alternative<bool>(data);
     }
 
     bool isInteger() const
     {
-        Value d = deref();
-        return std::holds_alternative<long long>(d.data) ||
-               std::holds_alternative<int>(d.data) ||
-               std::holds_alternative<uint8_t>(d.data) ||
-               std::holds_alternative<char>(d.data);
+        if (isReference()) return deref().isInteger();
+        return std::holds_alternative<long long>(data) ||
+               std::holds_alternative<int>(data) ||
+               std::holds_alternative<uint8_t>(data) ||
+               std::holds_alternative<char>(data);
     }
 
     bool isNumeric() const
     {
-        Value d = deref();
-        return isInteger() ||
-               std::holds_alternative<double>(d.data) ||
-               std::holds_alternative<float>(d.data);
+        if (isReference()) return deref().isNumeric();
+        return std::holds_alternative<long long>(data) ||
+               std::holds_alternative<int>(data) ||
+               std::holds_alternative<uint8_t>(data) ||
+               std::holds_alternative<char>(data) ||
+               std::holds_alternative<double>(data) ||
+               std::holds_alternative<float>(data);
     }
 
     bool isCallable() const
     {
-        Value d = deref();
-        return std::holds_alternative<std::shared_ptr<Callable>>(d.data);
+        if (isReference()) return deref().isCallable();
+        return std::holds_alternative<std::shared_ptr<Callable>>(data);
     }
 
     std::shared_ptr<Callable> getCallable() const
     {
-        Value d = deref();
-        return std::get<std::shared_ptr<Callable>>(d.data);
+        if (isReference()) return deref().getCallable();
+        return std::get<std::shared_ptr<Callable>>(data);
     }
 
     long long asInt() const
     {
-        Value d = deref();
-        if (std::holds_alternative<long long>(d.data))
-            return std::get<long long>(d.data);
-        if (std::holds_alternative<int>(d.data))
-            return static_cast<long long>(std::get<int>(d.data));
-        if (std::holds_alternative<uint8_t>(d.data))
-            return static_cast<long long>(std::get<uint8_t>(d.data));
-        if (std::holds_alternative<char>(d.data))
-            return static_cast<long long>(static_cast<unsigned char>(std::get<char>(d.data)));
-        if (std::holds_alternative<double>(d.data))
-            return static_cast<long long>(std::get<double>(d.data));
-        if (std::holds_alternative<float>(d.data))
-            return static_cast<long long>(std::get<float>(d.data));
-        if (std::holds_alternative<bool>(d.data))
-            return std::get<bool>(d.data) ? 1 : 0;
+        if (isReference()) return deref().asInt();
+        if (std::holds_alternative<long long>(data))
+            return std::get<long long>(data);
+        if (std::holds_alternative<int>(data))
+            return static_cast<long long>(std::get<int>(data));
+        if (std::holds_alternative<uint8_t>(data))
+            return static_cast<long long>(std::get<uint8_t>(data));
+        if (std::holds_alternative<char>(data))
+            return static_cast<long long>(static_cast<unsigned char>(std::get<char>(data)));
+        if (std::holds_alternative<double>(data))
+            return static_cast<long long>(std::get<double>(data));
+        if (std::holds_alternative<float>(data))
+            return static_cast<long long>(std::get<float>(data));
+        if (std::holds_alternative<bool>(data))
+            return std::get<bool>(data) ? 1 : 0;
         return 0;
     }
 
@@ -310,21 +462,21 @@ struct Value
 
     double asDouble() const
     {
-        Value d = deref();
-        if (std::holds_alternative<double>(d.data))
-            return std::get<double>(d.data);
-        if (std::holds_alternative<float>(d.data))
-            return static_cast<double>(std::get<float>(d.data));
-        if (std::holds_alternative<long long>(d.data))
-            return static_cast<double>(std::get<long long>(d.data));
-        if (std::holds_alternative<int>(d.data))
-            return static_cast<double>(std::get<int>(d.data));
-        if (std::holds_alternative<uint8_t>(d.data))
-            return static_cast<double>(std::get<uint8_t>(d.data));
-        if (std::holds_alternative<char>(d.data))
-            return static_cast<double>(static_cast<unsigned char>(std::get<char>(d.data)));
-        if (std::holds_alternative<bool>(d.data))
-            return std::get<bool>(d.data) ? 1.0 : 0.0;
+        if (isReference()) return deref().asDouble();
+        if (std::holds_alternative<double>(data))
+            return std::get<double>(data);
+        if (std::holds_alternative<float>(data))
+            return static_cast<double>(std::get<float>(data));
+        if (std::holds_alternative<long long>(data))
+            return static_cast<double>(std::get<long long>(data));
+        if (std::holds_alternative<int>(data))
+            return static_cast<double>(std::get<int>(data));
+        if (std::holds_alternative<uint8_t>(data))
+            return static_cast<double>(std::get<uint8_t>(data));
+        if (std::holds_alternative<char>(data))
+            return static_cast<double>(static_cast<unsigned char>(std::get<char>(data)));
+        if (std::holds_alternative<bool>(data))
+            return std::get<bool>(data) ? 1.0 : 0.0;
         return 0.0;
     }
 
@@ -335,12 +487,12 @@ struct Value
 
     char asChar() const
     {
-        Value d = deref();
-        if (std::holds_alternative<char>(d.data))
-            return std::get<char>(d.data);
-        if (std::holds_alternative<std::string>(d.data))
+        if (isReference()) return deref().asChar();
+        if (std::holds_alternative<char>(data))
+            return std::get<char>(data);
+        if (std::holds_alternative<std::string>(data))
         {
-            const auto &s = std::get<std::string>(d.data);
+            const auto &s = std::get<std::string>(data);
             return s.empty() ? '\0' : s[0];
         }
         return static_cast<char>(asInt() & 0xFF);
@@ -368,6 +520,7 @@ struct Value
                 [](const std::shared_ptr<Callable> &) -> std::string { return "function"; },
                 [](const std::shared_ptr<Instance> &) -> std::string { return "object"; },
                 [](const std::shared_ptr<Reference> &r) -> std::string { return (r && r->isMutable) ? "udhaar_badal" : "udhaar"; },
+                [](const std::shared_ptr<Pointer> &) -> std::string { return "patta"; },
                 [](const std::shared_ptr<MemeList> &) -> std::string { return "list"; },
                 [](const std::shared_ptr<MemeMap> &) -> std::string { return "khata"; },
                 [](const std::shared_ptr<MemeBytes> &) -> std::string { return "bytes"; },
@@ -408,6 +561,9 @@ struct Value
                 },
                 [](const std::shared_ptr<Reference> &) -> std::string {
                     return "<reference>";
+                },
+                [](const std::shared_ptr<Pointer> &v) -> std::string {
+                    return v ? v->toString() : "patta[0x0]";
                 },
                 [](const std::shared_ptr<MemeList> &v) -> std::string {
                     return listToString(v);
@@ -586,6 +742,14 @@ struct MemeSet
 
 inline bool Value::isTruthy() const
 {
+    if (std::holds_alternative<bool>(data))
+    {
+        return std::get<bool>(data);
+    }
+    if (std::holds_alternative<long long>(data))
+    {
+        return std::get<long long>(data) != 0;
+    }
     if (isReference())
     {
         return deref().isTruthy();
@@ -604,6 +768,9 @@ inline bool Value::isTruthy() const
             [](const std::shared_ptr<Callable> &v) -> bool { return v != nullptr; },
             [](const std::shared_ptr<Instance> &v) -> bool { return v != nullptr; },
             [](const std::shared_ptr<Reference> &) -> bool { return true; },
+            [](const std::shared_ptr<Pointer> &v) -> bool {
+                return v != nullptr && !v->isNull() && v->getAddress() != 0;
+            },
             [](const std::shared_ptr<MemeList> &v) -> bool { return v != nullptr && !v->elements.empty(); },
             [](const std::shared_ptr<MemeMap> &v) -> bool { return v != nullptr && !v->entries.empty(); },
             [](const std::shared_ptr<MemeBytes> &v) -> bool { return v != nullptr && !v->data.empty(); },

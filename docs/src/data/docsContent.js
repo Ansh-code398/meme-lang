@@ -1460,7 +1460,7 @@ dikha "k2 coins:", k2.coins; // 500`
       {
         type: 'code',
         title: 'borrowing.meme',
-        code: `pakad hero = "Munna Bhai";
+        code: `pakad hero = "Munna Don";
 
 // 1. Shared Borrowing:
 pakad r1 = udhaar hero;
@@ -1540,12 +1540,12 @@ dikha "Scope ended cleanly!";`
           ['Dangling reference escape', 'Baburao ka chashma! Local variable \'<name>\' ka udhaar wapas nahi bhej sakte!', 'Hera Pheri (Baburao)'],
           ['Integer overflow in +', '25 din mein paisa double karte-karte integer overflow ho gaya!', 'Phir Hera Pheri'],
           ['Negative string repeat', 'Delulu is not the solulu! String ko negative baar kaise multiply karoge?', 'Gen-Z Internet Slang'],
-          ['Divide by zero', 'Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!', 'Hera Pheri (Babu Bhaiya)'],
+          ['Divide by zero', 'Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!', 'Hera Pheri (Baburao)'],
           ['Type mismatch in comparison', 'Seb ko santre se mat tolo! \'<t1>\' aur \'<t2>\' ko compare nahi kar sakte!', 'Desi Idiom'],
           ['Calling non-callable', 'Beta, tumse na ho payega! \'<val>\' koi jugaad (function) thodi hai!', 'Gangs of Wasseypur (Ramadhir)'],
           ['Calling nalla (null)', 'Jugaad toh \'nalla\' (null) nikla! Khali cheez ko call kaise karoge?', 'Mumbai Slang'],
           ['Arity mismatch', 'Gaddari korbe! Jugaad ne <N> arguments maange the, aur tumne <M> chipka diye!', 'Viral Bengali Meme'],
-          ['Missing object property', 'Khopdi tod saale ka! \'<class>\' biradari ke paas \'<prop>\' naam ka kuch nahi hai!', 'Hera Pheri (Babu Bhaiya)'],
+          ['Missing object property', 'Khopdi tod saale ka! \'<class>\' biradari ke paas \'<prop>\' naam ka kuch nahi hai!', 'Hera Pheri (Baburao)'],
           ['Non-class superclass', 'Fake nepotism! \'<parent>\' koi biradari (class) nahi hai!', 'Bollywood Nepotism Debate']
         ]
       },
@@ -1557,7 +1557,7 @@ dikha "Scope ended cleanly!";`
       {
         type: 'code',
         title: 'trigger_error.meme',
-        code: `// Try running this to see Babu Bhaiya's zero division error!
+        code: `// Try running this to see Baburao's zero division error!
 pakad ans = 100 / 0;
 dikha ans;`
       }
@@ -2583,7 +2583,7 @@ pakad shahar = pooch("Kaunse shahar se ho? ");
 pakad umar = pooch("Aapki umar kitni hai? ");
 
 dikha "";
-dikha "Swagat hai", naam, "bhai from", shahar + "!";
+dikha "Swagat hai", naam, "dost from", shahar + "!";
 dikha "5 saal baad aapki umar hogi:", bina_point(umar) + 5;`
   },
   {
@@ -2660,7 +2660,7 @@ kid.interview(); // Defined on StarKid`
     description: 'Uncomment any line to trigger iconic meme error dialogues',
     code: `// Uncomment ONE line at a time to test meme errors:
 
-// 1. Babu Bhaiya divide by zero:
+// 1. Baburao divide by zero:
 dikha 100 / 0;
 
 // 2. Rasode mein kaun tha (undeclared variable):
@@ -2687,7 +2687,7 @@ pakad safe_copy = nakal(secret);
 dikha "Safe copy cloned:", safe_copy;
 
 // 2. Shared Borrowing (udhaar)
-pakad hero = "Majnu Bhai";
+pakad hero = "Majnu Seth";
 pakad r1 = udhaar hero;
 pakad r2 = udhaar hero;
 dikha "Shared read 1:", r1;

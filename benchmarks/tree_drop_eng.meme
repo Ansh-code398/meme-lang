@@ -1,0 +1,49 @@
+import "samay" as samay;
+
+class TreeNode {
+    kar init(val, left, right) {
+        this.val = val;
+        this.left = left;
+        this.right = right;
+    }
+
+    kar drop() {
+        if this.left != null {
+            drop this.left;
+        }
+        if this.right != null {
+            drop this.right;
+        }
+    }
+}
+
+fn build_tree(depth) {
+    if depth <= 0 {
+        return null;
+    }
+    let left = build_tree(depth - 1);
+    let right = build_tree(depth - 1);
+    return TreeNode(1, left, right);
+}
+
+fn sum_tree(node) {
+    if node == null {
+        return 0;
+    }
+    return node.val + sum_tree(node.left) + sum_tree(node.right);
+}
+
+fn bench_tree_drop(depth) {
+    let total = 0;
+    scope {
+        let root = build_tree(depth);
+        total = sum_tree(root);
+    }
+    return total;
+}
+
+let start = samay.ab();
+let result = bench_tree_drop(14);
+let elapsed = (samay.ab() - start) * 1000.0;
+
+print f"MEMElang | Tree Drop (depth 14) | Result: {result} | Time: {point_wala(elapsed)}ms";

@@ -275,6 +275,63 @@ public:
     }
 };
 
+class AddressOfExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> operand;
+
+    AddressOfExpr(std::unique_ptr<Expr> operand, int line = 0)
+        : Expr(line), operand(std::move(operand)) {}
+
+    std::string toString() const override
+    {
+        return "&" + (operand ? operand->toString() : "");
+    }
+};
+
+class DerefExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> operand;
+
+    DerefExpr(std::unique_ptr<Expr> operand, int line = 0)
+        : Expr(line), operand(std::move(operand)) {}
+
+    std::string toString() const override
+    {
+        return "*" + (operand ? operand->toString() : "");
+    }
+};
+
+class DerefAssignExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> pointer;
+    std::unique_ptr<Expr> value;
+
+    DerefAssignExpr(std::unique_ptr<Expr> pointer, std::unique_ptr<Expr> value, int line = 0)
+        : Expr(line), pointer(std::move(pointer)), value(std::move(value)) {}
+
+    std::string toString() const override
+    {
+        return "*" + (pointer ? pointer->toString() : "") + " = " + (value ? value->toString() : "");
+    }
+};
+
+class MoveExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> operand;
+
+    MoveExpr(std::unique_ptr<Expr> operand, int line = 0)
+        : Expr(line), operand(std::move(operand)) {}
+
+    std::string toString() const override
+    {
+        return "rawana " + (operand ? operand->toString() : "");
+    }
+};
+
 class ArrayLiteralExpr : public Expr
 {
 public:
@@ -459,21 +516,33 @@ public:
     std::string name;
     std::unique_ptr<Expr> initializer; // nullptr if uninitialized (defaults to kuch_nhi)
     std::shared_ptr<Type> typeAnnotation; // nullptr if untyped
+    bool isOwned = false;
+    bool isMut = false;
+    bool isConst = false;
 
     VarDeclStmt(const std::string &name,
                 std::unique_ptr<Expr> initializer = nullptr,
                 std::shared_ptr<Type> typeAnnotation = nullptr,
-                int line = 0)
-        : Stmt(line), name(name), initializer(std::move(initializer)), typeAnnotation(std::move(typeAnnotation)) {}
+                int line = 0,
+                bool isOwned = false,
+                bool isMut = false,
+                bool isConst = false)
+        : Stmt(line), name(name), initializer(std::move(initializer)),
+          typeAnnotation(std::move(typeAnnotation)),
+          isOwned(isOwned), isMut(isMut), isConst(isConst) {}
 
     VarDeclStmt(const std::string &name,
                 std::unique_ptr<Expr> initializer,
                 int line)
-        : VarDeclStmt(name, std::move(initializer), nullptr, line) {}
+        : VarDeclStmt(name, std::move(initializer), nullptr, line, false, false, false) {}
 
     std::string toString() const override
     {
-        std::string res = "le " + name;
+        std::string res = "le ";
+        if (isOwned) res += "malik ";
+        if (isMut) res += "badal ";
+        if (isConst) res += "atal ";
+        res += name;
         if (typeAnnotation)
         {
             res += ": " + typeAnnotation->toString();
@@ -617,6 +686,32 @@ public:
     }
 };
 
+class ScopeBlockStmt : public BlockStmt
+{
+public:
+    ScopeBlockStmt(std::vector<std::unique_ptr<Stmt>> statements, int line = 0)
+        : BlockStmt(std::move(statements), line) {}
+
+    std::string toString() const override
+    {
+        return "daayra " + BlockStmt::toString();
+    }
+};
+
+class DropStmt : public Stmt
+{
+public:
+    std::unique_ptr<Expr> expr;
+
+    DropStmt(std::unique_ptr<Expr> expr, int line = 0)
+        : Stmt(line), expr(std::move(expr)) {}
+
+    std::string toString() const override
+    {
+        return "khatam " + (expr ? expr->toString() : "") + ";";
+    }
+};
+
 // 5. If / Else-If / Else Statement: `dekh cond { ... } warna dekh cond2 { ... } warna { ... }`
 class IfStmt : public Stmt
 {
@@ -741,15 +836,17 @@ public:
     std::unique_ptr<Stmt> body;
     std::shared_ptr<Type> returnTypeAnnotation;
     bool isAsync = false;
+    bool isOverload = false;
 
     FuncDeclStmt(const std::string &name,
                  std::vector<FuncParam> paramList,
                  std::unique_ptr<Stmt> body,
                  std::shared_ptr<Type> returnTypeAnnotation,
                  bool isAsync,
-                 int line = 0)
+                 int line = 0,
+                 bool isOverload = false)
         : Stmt(line), name(name), paramList(std::move(paramList)), body(std::move(body)),
-          returnTypeAnnotation(std::move(returnTypeAnnotation)), isAsync(isAsync)
+          returnTypeAnnotation(std::move(returnTypeAnnotation)), isAsync(isAsync), isOverload(isOverload)
     {
         for (const auto &p : this->paramList)
         {
@@ -762,20 +859,20 @@ public:
                  std::unique_ptr<Stmt> body,
                  std::shared_ptr<Type> returnTypeAnnotation,
                  int line)
-        : FuncDeclStmt(name, std::move(paramList), std::move(body), std::move(returnTypeAnnotation), false, line) {}
+        : FuncDeclStmt(name, std::move(paramList), std::move(body), std::move(returnTypeAnnotation), false, line, false) {}
 
     FuncDeclStmt(const std::string &name,
                  std::vector<FuncParam> paramList,
                  std::unique_ptr<Stmt> body,
                  int line)
-        : FuncDeclStmt(name, std::move(paramList), std::move(body), nullptr, false, line) {}
+        : FuncDeclStmt(name, std::move(paramList), std::move(body), nullptr, false, line, false) {}
 
     FuncDeclStmt(const std::string &name,
                  std::vector<std::string> oldParams,
                  std::unique_ptr<Stmt> body,
                  int line = 0)
         : Stmt(line), name(name), params(std::move(oldParams)), body(std::move(body)),
-          returnTypeAnnotation(nullptr), isAsync(false)
+          returnTypeAnnotation(nullptr), isAsync(false), isOverload(false)
     {
         for (const auto &p : this->params)
         {
@@ -829,6 +926,28 @@ public:
         }
         result += ") " + (body ? body->toString() : "{}");
         return result;
+    }
+};
+
+class OperatorDeclStmt : public FuncDeclStmt
+{
+public:
+    std::string opSymbol;
+    bool isUnary = false;
+
+    OperatorDeclStmt(const std::string &opSymbol,
+                     const std::string &methodName,
+                     std::vector<FuncParam> paramList,
+                     std::unique_ptr<Stmt> body,
+                     std::shared_ptr<Type> returnTypeAnnotation,
+                     bool isUnary,
+                     int line = 0)
+        : FuncDeclStmt(methodName, std::move(paramList), std::move(body), std::move(returnTypeAnnotation), false, line, true),
+          opSymbol(opSymbol), isUnary(isUnary) {}
+
+    std::string toString() const override
+    {
+        return "tantrik " + opSymbol + "(" + (paramList.empty() ? "" : "...") + ") { ... }";
     }
 };
 
@@ -1097,6 +1216,38 @@ public:
 
     Parser(const std::vector<Token> &tokens) : tokens(tokens), current(0) {}
 
+    bool isPotentialTagName(const Token &tok) const
+    {
+        if (tok.type == TokenType::END_OF_FILE || tok.type == TokenType::ERROR) return false;
+        if (tok.value.empty()) return false;
+        char c = tok.value[0];
+        return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
+    }
+
+    bool isIdentifierOrVal(const Token &tok) const
+    {
+        return tok.type == TokenType::IDENTIFIER ||
+               (tok.type == TokenType::DEREF && tok.value == "val") ||
+               (tok.type == TokenType::ADDRESS_OF && (tok.value == "ptr" || tok.value == "addr")) ||
+               (tok.type == TokenType::UDHAAR && tok.value == "ref") ||
+               (tok.type == TokenType::UDHAAR_BADAL && tok.value == "mut_ref");
+    }
+
+    bool isFunctionName(const Token &tok) const
+    {
+        return tok.type == TokenType::IDENTIFIER ||
+               tok.type == TokenType::DROP ||
+               (tok.type == TokenType::DEREF && (tok.value == "val" || tok.value == "deref")) ||
+               (tok.type == TokenType::ADDRESS_OF && (tok.value == "ptr" || tok.value == "addr"));
+    }
+
+    bool canStartUnaryOperand(const Token &tok) const
+    {
+        return tok.type == TokenType::IDENTIFIER ||
+               tok.type == TokenType::ADDRESS_OF ||
+               tok.type == TokenType::DEREF;
+    }
+
     // Parse an entire program (list of statements until END_OF_FILE)
     std::vector<std::unique_ptr<Stmt>> parseProgram()
     {
@@ -1123,7 +1274,32 @@ public:
         switch (peek().type)
         {
         case TokenType::LE:
+        case TokenType::OWNED:
+        case TokenType::MUT:
+        case TokenType::CONST:
             return parseVarDecl();
+        case TokenType::OVERLOAD:
+        {
+            current++; // consume 'bahuroop' / 'aur_ek' / 'overload' / 'multimethod'
+            checkNotError();
+            bool isAsync = false;
+            if (peek().type == TokenType::ASYNC)
+            {
+                isAsync = true;
+                current++;
+                checkNotError();
+            }
+            if (peek().type == TokenType::KAR)
+            {
+                current++;
+                checkNotError();
+            }
+            return parseFuncDeclStmt(isAsync, true);
+        }
+        case TokenType::DROP:
+            return parseDropStmt();
+        case TokenType::SCOPE:
+            return parseScopeBlockStmt();
         case TokenType::DIKHA:
             if (peekNext().type == TokenType::DOT)
             {
@@ -1144,7 +1320,7 @@ public:
         case TokenType::CHAL:
             return parseContinueStmt();
         case TokenType::KAR:
-            if (peekNext().type == TokenType::IDENTIFIER)
+            if (isFunctionName(peekNext()))
             {
                 return parseFuncDeclStmt();
             }
@@ -1156,11 +1332,11 @@ public:
         case TokenType::ASYNC:
         {
             current++; // consume 'async' / 'side_mein'
-            if (peek().type == TokenType::KAR && peekNext().type == TokenType::IDENTIFIER)
+            if (peek().type == TokenType::KAR && isFunctionName(peekNext()))
             {
                 return parseFuncDeclStmt(true);
             }
-            if (peek().type == TokenType::IDENTIFIER && peekNext().type == TokenType::OPEN_PAREN)
+            if (isFunctionName(peek()) && peekNext().type == TokenType::OPEN_PAREN)
             {
                 return parseFuncDeclStmt(true);
             }
@@ -1274,6 +1450,76 @@ public:
                 retType = parseTypeExpression();
             }
             return Type::Function(std::move(paramTypes), retType);
+        }
+
+        if (token.type == TokenType::MULTIPLY)
+        {
+            current++; // consume '*'
+            bool isMut = false;
+            if (peek().type == TokenType::MUT ||
+                (peek().type == TokenType::IDENTIFIER && (peek().value == "badal" || peek().value == "mut")))
+            {
+                isMut = true;
+                current++;
+            }
+            else if (peek().type == TokenType::CONST ||
+                     (peek().type == TokenType::IDENTIFIER && (peek().value == "atal" || peek().value == "const")))
+            {
+                isMut = false;
+                current++;
+            }
+            auto pointeeType = parseTypeExpression();
+            return Type::pointer(pointeeType, isMut);
+        }
+
+        if (token.type == TokenType::ADDRESS_OF ||
+            (token.type == TokenType::IDENTIFIER &&
+             (token.value == "patta" || token.value == "thikana" || token.value == "addr" || token.value == "ptr" || token.value == "pointer")))
+        {
+            current++; // consume type token
+            checkNotError();
+            if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+            {
+                current++; // consume '['
+                bool isMut = false;
+                if (peek().type == TokenType::MUT ||
+                    (peek().type == TokenType::IDENTIFIER && (peek().value == "badal" || peek().value == "mut")))
+                {
+                    isMut = true;
+                    current++;
+                }
+                else if (peek().type == TokenType::CONST ||
+                         (peek().type == TokenType::IDENTIFIER && (peek().value == "atal" || peek().value == "const")))
+                {
+                    isMut = false;
+                    current++;
+                }
+                auto pointeeType = parseTypeExpression();
+                checkNotError();
+                if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                {
+                    errorAt(peek(), "Pointer type mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+                }
+                current++; // consume ']'
+                return Type::pointer(pointeeType, isMut);
+            }
+            if (token.type == TokenType::ADDRESS_OF &&
+                (peek().type == TokenType::MUT ||
+                 (peek().type == TokenType::IDENTIFIER && (peek().value == "badal" || peek().value == "mut"))))
+            {
+                current++;
+                auto pointeeType = parseTypeExpression();
+                return Type::pointer(pointeeType, true);
+            }
+            if (token.type == TokenType::ADDRESS_OF &&
+                peek().type != TokenType::SEMICOLON && peek().type != TokenType::ASSIGN &&
+                peek().type != TokenType::COMMA && peek().type != TokenType::CLOSE_PAREN &&
+                peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::COLON)
+            {
+                auto pointeeType = parseTypeExpression();
+                return Type::pointer(pointeeType, false);
+            }
+            return Type::pointer(Type::Any(), false);
         }
 
         if (token.type != TokenType::IDENTIFIER)
@@ -1454,8 +1700,26 @@ public:
     std::unique_ptr<Stmt> parseVarDecl()
     {
         int line = peek().line;
-        current++; // consume 'le'
-        checkNotError();
+        if (peek().type == TokenType::LE)
+        {
+            current++; // consume 'le'
+            checkNotError();
+        }
+
+        bool isOwned = false;
+        bool isMut = false;
+        bool isConst = false;
+
+        while (peek().type == TokenType::OWNED ||
+               peek().type == TokenType::MUT ||
+               peek().type == TokenType::CONST)
+        {
+            if (peek().type == TokenType::OWNED) isOwned = true;
+            else if (peek().type == TokenType::MUT) isMut = true;
+            else if (peek().type == TokenType::CONST) isConst = true;
+            current++;
+            checkNotError();
+        }
 
         if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
         {
@@ -1476,7 +1740,7 @@ public:
                     current++; // consume '*'
                     checkNotError();
                 }
-                if (peek().type != TokenType::IDENTIFIER)
+                if (!isIdentifierOrVal(peek()))
                 {
                     errorAt(peek(), "Destructuring mein variable ka naam chahiye! Mila: '" + peek().value + "'");
                 }
@@ -1528,7 +1792,7 @@ public:
             while (peek().type != TokenType::CLOSE_BRACE && peek().type != TokenType::END_OF_FILE)
             {
                 checkNotError();
-                if (peek().type != TokenType::IDENTIFIER)
+                if (!isIdentifierOrVal(peek()))
                 {
                     errorAt(peek(), "Map destructuring mein variable ka naam chahiye! Mila: '" + peek().value + "'");
                 }
@@ -1568,7 +1832,7 @@ public:
             return std::make_unique<MapDestructureStmt>(std::move(keys), std::move(initializer), line);
         }
 
-        if (peek().type != TokenType::IDENTIFIER)
+        if (!isIdentifierOrVal(peek()))
         {
             errorAt(peek(),
                 "Hawa pakdoge kya? 'pakad' ke baad variable ka naam toh likho! "
@@ -1595,7 +1859,7 @@ public:
         }
 
         consumeSemicolon();
-        return std::make_unique<VarDeclStmt>(varName, std::move(initializer), typeAnnotation, line);
+        return std::make_unique<VarDeclStmt>(varName, std::move(initializer), typeAnnotation, line, isOwned, isMut, isConst);
     }
 
     bool isArrayDestructureAhead()
@@ -1807,6 +2071,34 @@ public:
         return std::make_unique<BlockStmt>(std::move(statements), openBraceLine);
     }
 
+    std::unique_ptr<Stmt> parseScopeBlockStmt()
+    {
+        int line = peek().line;
+        current++; // consume 'daayra' / 'scope' / 'seema' / 'elaqa' / 'lifetime'
+        checkNotError();
+
+        if (peek().type != TokenType::OPEN_BRACE)
+        {
+            errorAt(peek(),
+                "Daayra (scope) ke baad block '{' lagana padta hai! Mila: '" + peek().value + "'");
+        }
+
+        auto block = parseBlockStmt();
+        auto *b = static_cast<BlockStmt *>(block.get());
+        return std::make_unique<ScopeBlockStmt>(std::move(b->statements), line);
+    }
+
+    std::unique_ptr<Stmt> parseDropStmt()
+    {
+        int line = peek().line;
+        current++; // consume 'khatam' / 'drop' / 'visarjan' / 'dispose' / 'alvida'
+        checkNotError();
+
+        auto expr = parseAssignment();
+        consumeSemicolon();
+        return std::make_unique<DropStmt>(std::move(expr), line);
+    }
+
     // 4. `dekh cond { ... } warna dekh cond2 { ... } warna { ... }` or `agar ... warna ...` / `if ... elif ... else`
     std::unique_ptr<Stmt> parseIfStmt()
     {
@@ -1899,7 +2191,7 @@ public:
     }
 
     // 9. `kar funcName(a, b = 10, *rest) { ... }`
-    std::unique_ptr<Stmt> parseFuncDeclStmt(bool isAsync = false)
+    std::unique_ptr<Stmt> parseFuncDeclStmt(bool isAsync = false, bool isOverload = false)
     {
         int line = peek().line;
         if (peek().type == TokenType::KAR)
@@ -1908,7 +2200,7 @@ public:
             checkNotError();
         }
 
-        if (peek().type != TokenType::IDENTIFIER)
+        if (!isFunctionName(peek()))
         {
             errorAt(peek(),
                 "Bina naam ka jugaad? 'jugaad' ke baad function ka naam toh de! Mila: '" + peek().value + "'");
@@ -1942,7 +2234,7 @@ public:
         }
 
         std::unique_ptr<Stmt> body = parseBlockStmt();
-        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, isAsync, line);
+        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, isAsync, line, isOverload);
     }
 
     // 10. `ghoom i se 1 se 10 { ... }` (optional step: `ghoom i se 1 se 10 se 2 { ... }`)
@@ -1952,7 +2244,7 @@ public:
         current++; // consume 'ghoom'
         checkNotError();
 
-        if (peek().type != TokenType::IDENTIFIER)
+        if (!isIdentifierOrVal(peek()))
         {
             errorAt(peek(),
                 "Kisko ghumana hai? 'ghuma' ke baad loop variable ka naam toh likh! Mila: '" + peek().value + "'");
@@ -2042,13 +2334,36 @@ public:
         while (peek().type != TokenType::CLOSE_BRACE && peek().type != TokenType::END_OF_FILE)
         {
             checkNotError();
-            if (peek().type != TokenType::KAR)
+            if (peek().type == TokenType::OPERATOR)
+            {
+                methods.push_back(parseOperatorDeclStmt());
+            }
+            else if (peek().type == TokenType::OVERLOAD)
+            {
+                current++; // consume 'bahuroop' / 'overload'
+                checkNotError();
+                if (peek().type == TokenType::KAR)
+                {
+                    current++;
+                }
+                auto method = parseFuncDeclStmt(false, true);
+                methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
+            }
+            else if (peek().type == TokenType::KAR)
+            {
+                auto method = parseFuncDeclStmt();
+                methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
+            }
+            else if (isFunctionName(peek()) && peekNext().type == TokenType::OPEN_PAREN)
+            {
+                auto method = parseFuncDeclStmt();
+                methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
+            }
+            else
             {
                 errorAt(peek(),
-                    "Biradari ke andar sirf methods ('jugaad naam() { ... }') chalte hain! Ye '" + peek().value + "' kahan se aaya?");
+                    "Biradari ke andar sirf methods ('jugaad naam() { ... }') ya operators ('tantrik + (...) { ... }') chalte hain! Ye '" + peek().value + "' kahan se aaya?");
             }
-            auto method = parseFuncDeclStmt();
-            methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
         }
 
         if (peek().type == TokenType::END_OF_FILE)
@@ -2059,6 +2374,131 @@ public:
         current++; // consume '}'
 
         return std::make_unique<ClassDeclStmt>(className, superclass, std::move(methods), line);
+    }
+
+    std::unique_ptr<FuncDeclStmt> parseOperatorDeclStmt()
+    {
+        int line = peek().line;
+        current++; // consume 'tantrik' / 'kriya' / 'operator' / 'op'
+        checkNotError();
+
+        std::string opSymbol = "";
+        std::string methodName = "";
+
+        // 1. Bracket indexing: '[]' and '[]='
+        if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+        {
+            current++; // consume '['
+            checkNotError();
+            if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                errorAt(peek(), "Operator '[]' mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+            }
+            current++; // consume ']'
+            checkNotError();
+            if (peek().type == TokenType::ASSIGN)
+            {
+                current++; // consume '='
+                opSymbol = "[]=";
+                methodName = "__daal__";
+            }
+            else
+            {
+                opSymbol = "[]";
+                methodName = "__la__";
+            }
+        }
+        // 2. Binary / Unary arithmetic and comparison operators
+        else if (peek().type == TokenType::PLUS)
+        {
+            current++; opSymbol = "+"; methodName = "__jod__";
+        }
+        else if (peek().type == TokenType::MINUS)
+        {
+            current++; opSymbol = "-";
+        }
+        else if (peek().type == TokenType::MULTIPLY)
+        {
+            current++; opSymbol = "*"; methodName = "__guna__";
+        }
+        else if (peek().type == TokenType::DIVIDE)
+        {
+            current++; opSymbol = "/"; methodName = "__bhaag__";
+        }
+        else if (peek().type == TokenType::MOD)
+        {
+            current++; opSymbol = "%"; methodName = "__bacha__";
+        }
+        else if (peek().type == TokenType::EQUAL)
+        {
+            current++; opSymbol = "=="; methodName = "__barabar__";
+        }
+        else if (peek().type == TokenType::NOT_EQUAL)
+        {
+            current++; opSymbol = "!="; methodName = "__alag__";
+        }
+        else if (peek().type == TokenType::LESS_THAN)
+        {
+            current++; opSymbol = "<"; methodName = "__chota__";
+        }
+        else if (peek().type == TokenType::LESS_THAN_EQUAL)
+        {
+            current++; opSymbol = "<="; methodName = "__chota_barabar__";
+        }
+        else if (peek().type == TokenType::GREATER_THAN)
+        {
+            current++; opSymbol = ">"; methodName = "__bada__";
+        }
+        else if (peek().type == TokenType::GREATER_THAN_EQUAL)
+        {
+            current++; opSymbol = ">="; methodName = "__bada_barabar__";
+        }
+        else if (peek().type == TokenType::IDENTIFIER)
+        {
+            methodName = peek().value;
+            opSymbol = methodName;
+            current++;
+        }
+        else
+        {
+            errorAt(peek(), "Tantrik operator overload mein valid operator chahiye! Mila: '" + peek().value + "'");
+        }
+
+        checkNotError();
+        if (peek().type != TokenType::OPEN_PAREN)
+        {
+            errorAt(peek(), "Operator '" + opSymbol + "' ke baad '(' lagana zaroori hai! Mila: '" + peek().value + "'");
+        }
+        current++; // consume '('
+
+        std::vector<FuncParam> params = parseParameterList(opSymbol);
+        consumeCloseParen("operator '" + opSymbol + "' ke parameters");
+
+        bool isUnary = false;
+        if (opSymbol == "-")
+        {
+            if (params.empty())
+            {
+                isUnary = true;
+                methodName = "__ulta__";
+            }
+            else
+            {
+                methodName = "__ghata__";
+            }
+        }
+
+        std::shared_ptr<Type> returnType = nullptr;
+        checkNotError();
+        if (peek().type == TokenType::COLON || peek().type == TokenType::THIN_ARROW || peek().type == TokenType::ARROW)
+        {
+            current++; // consume ':', '->', or '=>'
+            returnType = parseTypeExpression();
+        }
+
+        std::unique_ptr<Stmt> body = parseBlockStmt();
+
+        return std::make_unique<OperatorDeclStmt>(opSymbol, methodName, std::move(params), std::move(body), returnType, isUnary, line);
     }
 
     // 12. `panga { ... } lafda err { ... } [pakka { ... }]`
@@ -2422,7 +2862,7 @@ public:
     // and assignments are disallowed inside sub-expressions, conditions, or argument lists.
     std::unique_ptr<Expr> parseAssignment()
     {
-        bool startsWithBareIdentifier = (peek().type == TokenType::IDENTIFIER);
+        bool startsWithBareIdentifier = isIdentifierOrVal(peek());
         std::unique_ptr<Expr> expr = parseTernary();
 
         if (peek().type == TokenType::ASSIGN)
@@ -2447,6 +2887,11 @@ public:
             if (auto *idx = dynamic_cast<IndexExpr *>(expr.get()))
             {
                 return std::make_unique<IndexAssignExpr>(std::move(idx->target), std::move(idx->index), std::move(value), eqLine);
+            }
+
+            if (auto *deref = dynamic_cast<DerefExpr *>(expr.get()))
+            {
+                return std::make_unique<DerefAssignExpr>(std::move(deref->operand), std::move(value), eqLine);
             }
 
             if (auto *arr = dynamic_cast<ArrayLiteralExpr *>(expr.get()))
@@ -2586,6 +3031,13 @@ public:
 
         if (peek().type == TokenType::UDHAAR)
         {
+            if (peek().value == "ref")
+            {
+                if (current + 1 >= tokens.size() || !canStartUnaryOperand(tokens[current + 1]))
+                {
+                    return parseCall();
+                }
+            }
             Token op = peek();
             current++;
             std::unique_ptr<Expr> operand = parseUnary();
@@ -2594,6 +3046,13 @@ public:
 
         if (peek().type == TokenType::UDHAAR_BADAL)
         {
+            if (peek().value == "mut_ref")
+            {
+                if (current + 1 >= tokens.size() || !canStartUnaryOperand(tokens[current + 1]))
+                {
+                    return parseCall();
+                }
+            }
             Token op = peek();
             current++;
             std::unique_ptr<Expr> operand = parseUnary();
@@ -2622,6 +3081,44 @@ public:
             current++;
             std::unique_ptr<Expr> operand = parseUnary();
             return std::make_unique<AwaitExpr>(std::move(operand), op.line);
+        }
+
+        if (peek().type == TokenType::ADDRESS_OF)
+        {
+            if (peek().value == "ptr" || peek().value == "addr")
+            {
+                if (current + 1 >= tokens.size() || !canStartUnaryOperand(tokens[current + 1]))
+                {
+                    return parseCall();
+                }
+            }
+            Token op = peek();
+            current++;
+            std::unique_ptr<Expr> operand = parseUnary();
+            return std::make_unique<AddressOfExpr>(std::move(operand), op.line);
+        }
+
+        if (peek().type == TokenType::DEREF || peek().type == TokenType::MULTIPLY)
+        {
+            if (peek().type == TokenType::DEREF && peek().value == "val")
+            {
+                if (current + 1 >= tokens.size() || !canStartUnaryOperand(tokens[current + 1]))
+                {
+                    return parseCall();
+                }
+            }
+            Token op = peek();
+            current++;
+            std::unique_ptr<Expr> operand = parseUnary();
+            return std::make_unique<DerefExpr>(std::move(operand), op.line);
+        }
+
+        if (peek().type == TokenType::MOVE)
+        {
+            Token op = peek();
+            current++;
+            std::unique_ptr<Expr> operand = parseUnary();
+            return std::make_unique<MoveExpr>(std::move(operand), op.line);
         }
 
         return parseCall();
@@ -2688,14 +3185,6 @@ public:
         }
 
         return expr;
-    }
-
-    bool isPotentialTagName(const Token &tok) const
-    {
-        if (tok.type == TokenType::END_OF_FILE || tok.type == TokenType::ERROR) return false;
-        if (tok.value.empty()) return false;
-        char c = tok.value[0];
-        return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
     }
 
     bool isJsxElementAhead() const
@@ -3146,7 +3635,7 @@ public:
                 checkNotError();
 
                 std::string funcName = "";
-                if (peek().type == TokenType::IDENTIFIER)
+                if (isFunctionName(peek()))
                 {
                     funcName = peek().value;
                     current++;
@@ -3261,7 +3750,7 @@ public:
             checkNotError();
 
             std::string funcName = "";
-            if (peek().type == TokenType::IDENTIFIER)
+            if (isFunctionName(peek()))
             {
                 funcName = peek().value;
                 current++; // consume optional function name
@@ -3304,6 +3793,104 @@ public:
             std::string name = token.value;
             current++;
             return std::make_unique<IdentifierExpr>(name, line);
+        }
+
+        case TokenType::DEREF:
+        {
+            if (token.value == "val")
+            {
+                if (peekNext().type == TokenType::ARROW)
+                {
+                    int arrowLine = token.line;
+                    std::string paramName = token.value;
+                    current++; // consume identifier
+                    current++; // consume '=>'
+
+                    std::vector<FuncParam> params;
+                    params.push_back(FuncParam{paramName, nullptr, false});
+
+                    std::unique_ptr<Stmt> body;
+                    checkNotError();
+                    if (peek().type == TokenType::OPEN_BRACE)
+                    {
+                        body = parseBlockStmt();
+                    }
+                    else
+                    {
+                        int exprLine = peek().line;
+                        auto expr = parseTernary();
+                        std::vector<std::unique_ptr<Stmt>> stmts;
+                        stmts.push_back(std::make_unique<ReturnStmt>(std::move(expr), exprLine));
+                        body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
+                    }
+
+                    auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), nullptr, false, arrowLine);
+                    return std::make_unique<LambdaExpr>(decl, arrowLine);
+                }
+
+                current++;
+                return std::make_unique<IdentifierExpr>(token.value, token.line);
+            }
+            errorAt(token, "Unexpected dereference operator in expression!");
+        }
+
+        case TokenType::UDHAAR:
+        {
+            if (token.value == "ref")
+            {
+                current++;
+                return std::make_unique<IdentifierExpr>(token.value, token.line);
+            }
+            errorAt(token, "Unexpected borrow operator in expression!");
+        }
+
+        case TokenType::UDHAAR_BADAL:
+        {
+            if (token.value == "mut_ref")
+            {
+                current++;
+                return std::make_unique<IdentifierExpr>(token.value, token.line);
+            }
+            errorAt(token, "Unexpected mutable borrow operator in expression!");
+        }
+
+        case TokenType::ADDRESS_OF:
+        {
+            if (token.value == "ptr" || token.value == "addr")
+            {
+                if (peekNext().type == TokenType::ARROW)
+                {
+                    int arrowLine = token.line;
+                    std::string paramName = token.value;
+                    current++; // consume identifier
+                    current++; // consume '=>'
+
+                    std::vector<FuncParam> params;
+                    params.push_back(FuncParam{paramName, nullptr, false});
+
+                    std::unique_ptr<Stmt> body;
+                    checkNotError();
+                    if (peek().type == TokenType::OPEN_BRACE)
+                    {
+                        body = parseBlockStmt();
+                    }
+                    else
+                    {
+                        int exprLine = peek().line;
+                        auto expr = parseTernary();
+                        std::vector<std::unique_ptr<Stmt>> stmts;
+                        stmts.push_back(std::make_unique<ReturnStmt>(std::move(expr), exprLine));
+                        body = std::make_unique<BlockStmt>(std::move(stmts), exprLine);
+                    }
+
+                    auto decl = std::make_shared<FuncDeclStmt>("", std::move(params), std::move(body), nullptr, false, arrowLine);
+                    return std::make_unique<LambdaExpr>(decl, arrowLine);
+                }
+
+                current++;
+                return std::make_unique<IdentifierExpr>(token.value, token.line);
+            }
+            errorAt(token, "Unexpected address-of operator in expression!");
         }
 
         case TokenType::IDENTIFIER:
@@ -3852,7 +4439,7 @@ private:
                 checkNotError();
             }
 
-            if (peek().type != TokenType::IDENTIFIER)
+            if (!isIdentifierOrVal(peek()))
             {
                 errorAt(peek(), "Ye kaisa ulta-pulta parameter naam hai: '" + peek().value + "'? Sahi naam rakho!");
             }
@@ -3899,7 +4486,7 @@ private:
             {
                 current++; // consume ','
                 checkNotError();
-                if (peek().type != TokenType::IDENTIFIER && peek().type != TokenType::MULTIPLY)
+                if (!isIdentifierOrVal(peek()) && peek().type != TokenType::MULTIPLY)
                 {
                     errorAt(peek(), "',' lagaya hai toh aage parameter ka naam bhi likho, suspense mat banao!");
                 }

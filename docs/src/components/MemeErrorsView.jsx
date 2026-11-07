@@ -4,17 +4,17 @@ import { runMemeCode } from '../wasm/memeRunner';
 
 const ERROR_CATALOG = [
   {
-    title: "Babu Bhaiya Divide By Zero",
+    title: "Baburao Divide By Zero",
     scenario: "Division by 0 (e.g. 10 / 0)",
     quote: "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!",
-    origin: "Hera Pheri (Babu Bhaiya)",
+    origin: "Hera Pheri (Baburao)",
     category: "Arithmetic",
     code: `pakad a = 10;
 pakad b = 0;
 dikha a / b;`
   },
   {
-    title: "Babu Bhaiya Modulo By Zero",
+    title: "Baburao Modulo By Zero",
     scenario: "Modulo by 0 (e.g. 15 % 0)",
     quote: "0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!",
     origin: "School Trauma / Hera Pheri",
@@ -44,7 +44,7 @@ dikha a;`
     title: "Control Uday Control",
     scenario: "Using single '=' inside an if condition",
     quote: "Control Uday, control! 'dekh' mein '=' (assign) nahi, '==' (compare) lagta hai!",
-    origin: "Majnu Bhai / Uday Shetty (Welcome)",
+    origin: "Majnu Seth / Uday Shetty (Welcome)",
     category: "Syntax",
     code: `pakad x = 5;
 dekh x = 10 {
@@ -133,7 +133,7 @@ x();`
     title: "Khopdi Tod Saale Ka (Missing OOP Property)",
     scenario: "Accessing a non-existent method or property on an object",
     quote: "Khopdi tod saale ka! 'Influencer' biradari ke paas 'humble' naam ka kuch nahi hai!",
-    origin: "Babu Bhaiya (Hera Pheri)",
+    origin: "Baburao (Hera Pheri)",
     category: "OOP",
     code: `biradari Influencer {
     jugaad shuru(naam) {
@@ -266,7 +266,7 @@ export default function MemeErrorsView({ onOpenInPlayground }) {
           <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search meme errors (e.g. babu bhaiya, divide)..."
+            placeholder="Search meme errors (e.g. baburao, divide)..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-10 pr-4 py-2 text-sm text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-500 transition-colors"

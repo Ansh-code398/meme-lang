@@ -1,0 +1,10 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Mutating Through Const Pointer
+// EXPECT_ERROR: Shanti gadadhari Bheem
+// ==============================================================================
+
+pakad atal FIXED_NUM = 100;
+pakad p = &FIXED_NUM;
+
+// Attempting to mutate through pointer to const
+*p = 200;

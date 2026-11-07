@@ -1,0 +1,215 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Dual-Lexicon & Keyword Aliases Equivalence (Tiers 1 & 2)
+// Coverage:
+//   - Systematic parity verification between Desi meme keywords and English aliases
+//   - Overloading: bahuroop, aur_ek, ek_aur vs overload, multimethod
+//   - Operators: tantrik, kriya vs operator, op
+//   - Address-of: &, patta, thikana vs addr, address_of, ptr
+//   - Dereference: *, asli, dekh_patta, uthha vs deref, val, dereference
+//   - Move: rawana, khisko, chal_nikal vs move
+//   - Ownership: malik, kabza, malkiyat vs own, owned, owner
+//   - Mutability: badal, badlo vs mut, mutable
+//   - Constant: atal, sthir vs const, immut
+//   - Drop: khatam, alvida, visarjan vs drop, dispose
+//   - Scope: daayra, seema, elaqa vs scope, lifetime
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Keyword Aliases Equivalence (Tiers 1 & 2) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TEST 1: Overload Aliases Parity
+// ------------------------------------------------------------------------------
+bahuroop jugaad alias_sum(a: ank) -> ank { ye_le a; }
+aur_ek jugaad alias_sum(a: ank, b: ank) -> ank { ye_le a + b; }
+ek_aur jugaad alias_sum(a: ank, b: ank, c: ank) -> ank { ye_le a + b + c; }
+
+assert_eq(alias_sum(10), 10, "T1_alias_overload_desi_bahuroop");
+assert_eq(alias_sum(10, 20), 30, "T1_alias_overload_desi_aur_ek");
+assert_eq(alias_sum(10, 20, 30), 60, "T1_alias_overload_desi_ek_aur");
+
+overload fn eng_alias_sum(a: int) -> int { return a; }
+overload fn eng_alias_sum(a: int, b: int) -> int { return a + b; }
+multimethod fn eng_alias_sum(a: int, b: int, c: int) -> int { return a + b + c; }
+
+assert_eq(eng_alias_sum(5), 5, "T1_alias_overload_english_overload_1");
+assert_eq(eng_alias_sum(5, 15), 20, "T1_alias_overload_english_overload_2");
+assert_eq(eng_alias_sum(5, 15, 25), 45, "T1_alias_overload_english_multimethod");
+
+// ------------------------------------------------------------------------------
+// TEST 2: Operator Aliases Parity (tantrik, kriya, operator, op)
+// ------------------------------------------------------------------------------
+biradari DesiNum {
+    jugaad shuru(v: ank) { khud.v = v; }
+    tantrik + (other: DesiNum) -> DesiNum { ye_le DesiNum(khud.v + other.v); }
+    kriya * (other: DesiNum) -> DesiNum { ye_le DesiNum(khud.v * other.v); }
+}
+
+pakad dn1 = DesiNum(7);
+pakad dn2 = DesiNum(6);
+assert_eq((dn1 + dn2).v, 13, "T1_alias_operator_desi_tantrik_add");
+assert_eq((dn1 * dn2).v, 42, "T1_alias_operator_desi_kriya_mul");
+
+class EngNum {
+    fn init(v: int) { this.v = v; }
+    operator + (other: EngNum) -> EngNum { return EngNum(this.v + other.v); }
+    op * (other: EngNum) -> EngNum { return EngNum(this.v * other.v); }
+}
+
+let en1 = EngNum(7);
+let en2 = EngNum(6);
+assert_eq((en1 + en2).v, 13, "T1_alias_operator_english_operator_add");
+assert_eq((en1 * en2).v, 42, "T1_alias_operator_english_op_mul");
+
+// ------------------------------------------------------------------------------
+// TEST 3: Address-Of Aliases Parity (&, patta, thikana, addr, address_of, ptr)
+// ------------------------------------------------------------------------------
+pakad root_num = 100;
+pakad p_sym = &root_num;
+pakad p_patta = patta root_num;
+pakad p_thikana = thikana root_num;
+let p_addr = addr root_num;
+let p_addrof = address_of root_num;
+let p_ptr = ptr root_num;
+
+assert_eq(*p_sym, 100, "T1_alias_addrof_symbolic");
+assert_eq(*p_patta, 100, "T1_alias_addrof_patta");
+assert_eq(*p_thikana, 100, "T1_alias_addrof_thikana");
+assert_eq(*p_addr, 100, "T1_alias_addrof_addr");
+assert_eq(*p_addrof, 100, "T1_alias_addrof_address_of");
+assert_eq(*p_ptr, 100, "T1_alias_addrof_ptr");
+
+// ------------------------------------------------------------------------------
+// TEST 4: Dereference Aliases Parity (*, asli, dekh_patta, uthha, deref, val, dereference)
+// ------------------------------------------------------------------------------
+assert_eq(*p_sym, 100, "T1_alias_deref_symbolic");
+assert_eq(asli p_sym, 100, "T1_alias_deref_asli");
+assert_eq(dekh_patta p_sym, 100, "T1_alias_deref_dekh_patta");
+assert_eq(uthha p_sym, 100, "T1_alias_deref_uthha");
+assert_eq(deref p_sym, 100, "T1_alias_deref_deref");
+assert_eq(val p_sym, 100, "T1_alias_deref_val");
+assert_eq(dereference p_sym, 100, "T1_alias_deref_dereference");
+
+// ------------------------------------------------------------------------------
+// TEST 5: Move Aliases Parity (rawana, khisko, chal_nikal, move)
+// ------------------------------------------------------------------------------
+pakad m_item1 = "FirstParcel";
+pakad m_dest1 = rawana m_item1;
+assert_eq(m_dest1, "FirstParcel", "T1_alias_move_rawana");
+
+pakad m_item2 = "SecondParcel";
+pakad m_dest2 = khisko m_item2;
+assert_eq(m_dest2, "SecondParcel", "T1_alias_move_khisko");
+
+pakad m_item3 = "ThirdParcel";
+pakad m_dest3 = chal_nikal m_item3;
+assert_eq(m_dest3, "ThirdParcel", "T1_alias_move_chal_nikal");
+
+let m_item4 = "FourthParcel";
+let m_dest4 = move m_item4;
+assert_eq(m_dest4, "FourthParcel", "T1_alias_move_english_move");
+
+// ------------------------------------------------------------------------------
+// TEST 6: Ownership Aliases Parity (malik, kabza, malkiyat, own, owned, owner)
+// ------------------------------------------------------------------------------
+pakad malik o1 = 10;
+pakad kabza o2 = 20;
+pakad malkiyat o3 = 30;
+let own o4 = 40;
+let owned o5 = 50;
+let owner o6 = 60;
+
+assert_eq(o1, 10, "T1_alias_own_malik");
+assert_eq(o2, 20, "T1_alias_own_kabza");
+assert_eq(o3, 30, "T1_alias_own_malkiyat");
+assert_eq(o4, 40, "T1_alias_own_english_own");
+assert_eq(o5, 50, "T1_alias_own_english_owned");
+assert_eq(o6, 60, "T1_alias_own_english_owner");
+
+// ------------------------------------------------------------------------------
+// TEST 7: Mutability Aliases Parity (badal, badlo, mut, mutable)
+// ------------------------------------------------------------------------------
+pakad badal mut1 = 1; mut1 = mut1 + 1;
+pakad badlo mut2 = 1; mut2 = mut2 + 2;
+let mut mut3 = 1; mut3 = mut3 + 3;
+let mutable mut4 = 1; mut4 = mut4 + 4;
+
+assert_eq(mut1, 2, "T1_alias_mut_badal");
+assert_eq(mut2, 3, "T1_alias_mut_badlo");
+assert_eq(mut3, 4, "T1_alias_mut_english_mut");
+assert_eq(mut4, 5, "T1_alias_mut_english_mutable");
+
+// ------------------------------------------------------------------------------
+// TEST 8: Constant / Immutable Aliases Parity (atal, sthir, const, immut)
+// ------------------------------------------------------------------------------
+pakad atal c1 = 101;
+pakad sthir c2 = 102;
+let const c3 = 103;
+let immut c4 = 104;
+
+assert_eq(c1, 101, "T1_alias_const_atal");
+assert_eq(c2, 102, "T1_alias_const_sthir");
+assert_eq(c3, 103, "T1_alias_const_english_const");
+assert_eq(c4, 104, "T1_alias_const_english_immut");
+
+// ------------------------------------------------------------------------------
+// TEST 9: Drop Aliases Parity (khatam, alvida, visarjan, drop, dispose)
+// ------------------------------------------------------------------------------
+pakad drop_counts = 0;
+biradari DummyUnit {
+    jugaad alvida() {
+        drop_counts = drop_counts + 1;
+    }
+}
+
+pakad d1 = DummyUnit(); khatam d1;
+pakad d2 = DummyUnit(); visarjan d2;
+let d3 = DummyUnit(); drop d3;
+let d4 = DummyUnit(); dispose d4;
+
+assert_eq(drop_counts, 4, "T1_alias_drop_all_variants_invoked");
+
+// ------------------------------------------------------------------------------
+// TEST 10: Scope Aliases Parity (daayra, seema, elaqa, scope, lifetime)
+// ------------------------------------------------------------------------------
+pakad scope_stage = 0;
+
+daayra {
+    scope_stage = scope_stage + 1;
+}
+seema {
+    scope_stage = scope_stage + 1;
+}
+elaqa {
+    scope_stage = scope_stage + 1;
+}
+scope {
+    scope_stage = scope_stage + 1;
+}
+lifetime {
+    scope_stage = scope_stage + 1;
+}
+assert_eq(scope_stage, 5, "T1_alias_scope_all_variants_executed");
+
+// ------------------------------------------------------------------------------
+// TEST 11: Seamless Mixed-Lexicon Pipeline
+// ------------------------------------------------------------------------------
+overload fn mix_calc(a: int) -> int { return a * 2; }
+bahuroop jugaad mix_calc(a: ank, b: ank) -> ank { ye_le a + b; }
+
+let mut pipeline_val = 50;
+pakad ptr_pipe = patta pipeline_val;
+*ptr_pipe = mix_calc(val ptr_pipe);
+pipeline_val = mix_calc(pipeline_val, 10);
+assert_eq(pipeline_val, 110, "T1_alias_mixed_lexicon_pipeline_output");
+
+dikha "=== All Keyword Aliases Tests (Tiers 1 & 2) Completed Successfully! ===";
