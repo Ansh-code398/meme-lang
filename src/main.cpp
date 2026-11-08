@@ -27,6 +27,7 @@
 #include "interpreter/Signals.h"
 #include "ui/DevServerState.h"
 #include "ui/NativeDesktopWindow.h"
+#include "compiler/NativeCompiler.h"
 
 static void printBanner()
 {
@@ -47,7 +48,9 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " setup                     Link 'meme' CLI globally into PATH (alias: link)\n";
     std::cout << "  " << prog << " run <script>              Run a script defined in tapri.json\n";
     std::cout << "  " << prog << " test [dir]                Run test runner on *_test.meme files\n";
-    std::cout << "  " << prog << " pakao <file> ...          Compile to native Flutter / macOS targets\n";
+    std::cout << "  " << prog << " compile <file> [-o bin]   Ahead-Of-Time (AOT) compile to native machine binary\n";
+    std::cout << "  " << prog << " --native <file> [args]    Compile and run immediately at 100% native CPU speed\n";
+    std::cout << "  " << prog << " pakao <file> ...          Alias for compile (Cook/bake to native binary)\n";
     std::cout << "  " << prog << " --parse-only <file>       Parse and typecheck file without executing\n";
     std::cout << "  " << prog << " -h, --help                Show this help message\n";
 }
@@ -1565,21 +1568,37 @@ static void handleTest(int argc, char *argv[])
     }
 }
 
-static void handlePakao(int argc, char *argv[])
+static void handleCompile(int argc, char *argv[])
 {
     if (argc < 3)
     {
-        std::cout << formatRichText("[peela]Usage:[/] ./meme pakao <file.meme> [--target=flutter|--target=native-macos]\n");
+        std::cout << formatRichText("[peela]Usage:[/] ./meme compile <file.meme> [-o output_binary] [--target=native|flutter|native-macos] [--keep-cpp] [-v]\n");
         return;
     }
     std::string file = argv[2];
-    std::string target = "flutter";
+    std::string target = "native";
+    std::string outputPath = "";
+    bool keepCpp = false;
+    bool verbose = false;
+
     for (int i = 3; i < argc; ++i)
     {
         std::string a = argv[i];
-        if (a.rfind("--target=", 0) == 0)
+        if ((a == "-o" || a == "--output") && i + 1 < argc)
+        {
+            outputPath = argv[++i];
+        }
+        else if (a.rfind("--target=", 0) == 0)
         {
             target = a.substr(9);
+        }
+        else if (a == "--keep-cpp")
+        {
+            keepCpp = true;
+        }
+        else if (a == "-v" || a == "--verbose")
+        {
+            verbose = true;
         }
     }
 
@@ -1612,6 +1631,27 @@ static void handlePakao(int argc, char *argv[])
         std::cout << formatRichText("[hara bold]✔ Pak gaya:[/] Generated native macOS target at " + macOut + " successfully!\n");
         return;
     }
+
+    if (outputPath.empty())
+    {
+        outputPath = stem;
+    }
+
+    CompileOptions options;
+    options.outputPath = outputPath;
+    options.optimize = true;
+    options.keepCppSource = keepCpp;
+    options.verbose = verbose;
+
+    std::cout << formatRichText("[asmani bold]⚡ Compiling " + file + " to native binary (" + outputPath + ")...[/]\n");
+    CompileResult res = NativeCompiler::compileFile(file, options);
+    if (!res.success)
+    {
+        std::cout << formatRichText("[laal bold]❌ Native compilation failed:\n" + res.errorMessage + "[/]\n");
+        std::exit(1);
+    }
+
+    std::cout << formatRichText("[hara bold]✔ Pak gaya:[/] Generated native machine binary at [bold]" + res.binaryPath + "[/] (" + std::to_string(static_cast<int>(res.compileTimeMs)) + "ms)\n");
 }
 
 static bool runSource(const std::string &source, Interpreter &interpreter)
@@ -1784,10 +1824,25 @@ int main(int argc, char *argv[])
             handleTest(argc, argv);
             return 0;
         }
-        else if (arg1 == "pakao")
+        else if (arg1 == "pakao" || arg1 == "compile" || arg1 == "build")
         {
-            handlePakao(argc, argv);
+            handleCompile(argc, argv);
             return 0;
+        }
+        else if (arg1 == "--native")
+        {
+            if (argc < 3)
+            {
+                printUsage(argv[0]);
+                return 1;
+            }
+            std::string file = argv[2];
+            std::vector<std::string> nativeArgs;
+            for (int i = 3; i < argc; ++i)
+            {
+                nativeArgs.push_back(argv[i]);
+            }
+            return NativeCompiler::runNative(file, nativeArgs);
         }
         else if (arg1 == "-e")
         {

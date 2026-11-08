@@ -9,9 +9,9 @@ ifeq ($(UNAME_S),Darwin)
     MM_OBJS = $(MM_SRCS:.mm=.o)
 endif
 
-SRCS = src/main.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp
+SRCS = src/main.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp
 OBJS = $(SRCS:.cpp=.o) $(MM_OBJS)
-HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h)
+HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h) $(wildcard src/compiler/*.h)
 TARGET = meme
 
 all: $(TARGET)
@@ -26,7 +26,7 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 test:
-	$(CXX) $(CXXFLAGS) src/tests/test_suite.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp $(MM_SRCS) -o test_runner $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) src/tests/test_suite.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp $(MM_SRCS) -o test_runner $(LDFLAGS)
 	./test_runner
 	rm -f test_runner
 
