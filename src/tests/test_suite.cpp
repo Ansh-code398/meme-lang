@@ -1419,7 +1419,69 @@ void testRichDikhaStdlibAndExpandedMethods()
     }
     assert(caughtExit);
 
-    // 8. Implicit Typed Declarations
+    // 8. Dikha statement options: end/ant, sep/alag, color/rang, bina_line
+    std::string dikhaOpts = R"raw(
+        dikha "Hello", end=" ";
+        dikha "World";
+        dikha "A", "B", "C", sep=" - ";
+        dikha 1, 2, 3, alag=":";
+        dikha "Test", ant="!\n";
+        dikha "NoLine" bina_line;
+        dikha "Appended";
+        dikha "Styled", rang="laal";
+        dikha "Truecolor", color="#ff5500";
+    )raw";
+    std::string outDikhaOpts = runAndCapture(dikhaOpts);
+    assert(outDikhaOpts.find("Hello World\n") != std::string::npos);
+    assert(outDikhaOpts.find("A - B - C\n") != std::string::npos);
+    assert(outDikhaOpts.find("1:2:3\n") != std::string::npos);
+    assert(outDikhaOpts.find("Test!\n") != std::string::npos);
+    assert(outDikhaOpts.find("NoLineAppended\n") != std::string::npos);
+    assert(outDikhaOpts.find("\033[31mStyled\033[0m\n") != std::string::npos);
+    assert(outDikhaOpts.find("\033[38;2;255;85;0mTruecolor\033[0m\n") != std::string::npos);
+
+    // 9. Rich tags: badges, truecolors, styles, backgrounds
+    std::string richBadges = R"raw(
+        dikha "[success] Done";
+        dikha "[error] Fail";
+        dikha "[warn] Watchout";
+        dikha "[info] Notice";
+        dikha "[#00ff00 mota]GreenBold[/]";
+        dikha "[bg:neela safed]BlueBg[/]";
+    )raw";
+    std::string outBadges = runAndCapture(richBadges);
+    assert(outBadges.find("\033[1;32m[SUCCESS]\033[0m Done\n") != std::string::npos);
+    assert(outBadges.find("\033[1;31m[ERROR]\033[0m Fail\n") != std::string::npos);
+    assert(outBadges.find("\033[1;33m[WARN]\033[0m Watchout\n") != std::string::npos);
+    assert(outBadges.find("\033[1;36m[INFO]\033[0m Notice\n") != std::string::npos);
+    assert(outBadges.find("\033[38;2;0;255;0m\033[1mGreenBold\033[0m") != std::string::npos);
+    assert(outBadges.find("\033[44m\033[37mBlueBg\033[0m") != std::string::npos);
+
+    // 10. Dikha module builtin methods
+    std::string dikhaModule = R"raw(
+        dikha.laal("Alert!");
+        dikha.hara("Passed!");
+        dikha.success("Great job!");
+        dikha.error("Bad job!");
+        dikha.warn("Caution!");
+        dikha.info("Info msg");
+        dikha.line(10, "=");
+        dikha.raw("Raw [laal]Text[/]");
+        dikha.bina_line("PartA");
+        dikha "PartB";
+    )raw";
+    std::string outDikhaMod = runAndCapture(dikhaModule);
+    assert(outDikhaMod.find("\033[31mAlert!\033[0m\n") != std::string::npos);
+    assert(outDikhaMod.find("\033[32mPassed!\033[0m\n") != std::string::npos);
+    assert(outDikhaMod.find("\033[1;32m[SUCCESS]\033[0m Great job!\n") != std::string::npos);
+    assert(outDikhaMod.find("\033[1;31m[ERROR]\033[0m Bad job!\n") != std::string::npos);
+    assert(outDikhaMod.find("\033[1;33m[WARN]\033[0m Caution!\n") != std::string::npos);
+    assert(outDikhaMod.find("\033[1;36m[INFO]\033[0m Info msg\n") != std::string::npos);
+    assert(outDikhaMod.find("==========\n") != std::string::npos);
+    assert(outDikhaMod.find("Raw [laal]Text[/]\n") != std::string::npos);
+    assert(outDikhaMod.find("PartAPartB\n") != std::string::npos);
+
+    // 11. Implicit Typed Declarations
     std::string implicitTypes = R"raw(
         x: ank = 100
         msg: bol = "MEMElang"

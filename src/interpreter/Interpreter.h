@@ -149,6 +149,7 @@ public:
 std::string stripAnsi(const std::string &str);
 size_t visibleLength(const std::string &str);
 std::string formatRichText(const std::string &input, bool useAnsi = true);
+std::string resolveStyleAnsi(const std::string &styleStr);
 std::string renderUiScreen(const Value &screen, const std::string &title = "");
 
 #endif

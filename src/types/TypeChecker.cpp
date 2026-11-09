@@ -619,6 +619,9 @@ void TypeChecker::checkStmt(const Stmt *stmt, std::shared_ptr<TypeEnvironment> e
         {
             checkExpr(arg.get(), env);
         }
+        if (p->endExpr) checkExpr(p->endExpr.get(), env);
+        if (p->sepExpr) checkExpr(p->sepExpr.get(), env);
+        if (p->styleExpr) checkExpr(p->styleExpr.get(), env);
         return;
     }
 

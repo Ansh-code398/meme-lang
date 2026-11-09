@@ -157,6 +157,7 @@ def main():
         "scenarios": TESTS_E2E_DIR / "test_scenarios.meme",
         "tier5_adversarial_overloading": TESTS_E2E_DIR / "test_adversarial_overloading.meme",
         "tier5_adversarial_pointers": TESTS_E2E_DIR / "test_tier5_adversarial_pointers_memory.meme",
+        "dikha_improvements": TESTS_E2E_DIR / "test_dikha_improvements.meme",
     }
 
     # If --list requested, inspect files and print catalog

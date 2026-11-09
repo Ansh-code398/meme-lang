@@ -268,12 +268,24 @@ public:
         }
 
         if (auto *p = dynamic_cast<const PrintStmt *>(stmt)) {
-            out << indent() << "print_dikha(";
-            for (size_t i = 0; i < p->args.size(); ++i) {
-                if (i > 0) out << ", ";
-                out << generateExpr(p->args[i].get());
+            bool hasCustom = p->endExpr != nullptr || p->sepExpr != nullptr || p->styleExpr != nullptr || p->noNewline;
+            if (!hasCustom) {
+                out << indent() << "print_dikha(";
+                for (size_t i = 0; i < p->args.size(); ++i) {
+                    if (i > 0) out << ", ";
+                    out << generateExpr(p->args[i].get());
+                }
+                out << ");\n";
+            } else {
+                std::string endExprStr = p->endExpr ? generateExpr(p->endExpr.get()) : (p->noNewline ? "std::string(\"\")" : "std::string(\"\\n\")");
+                std::string sepExprStr = p->sepExpr ? generateExpr(p->sepExpr.get()) : "std::string(\" \")";
+                std::string styleExprStr = p->styleExpr ? generateExpr(p->styleExpr.get()) : "std::string(\"\")";
+                out << indent() << "print_dikha_opts(" << endExprStr << ", " << sepExprStr << ", " << styleExprStr;
+                for (size_t i = 0; i < p->args.size(); ++i) {
+                    out << ", " << generateExpr(p->args[i].get());
+                }
+                out << ");\n";
             }
-            out << ");\n";
             return;
         }
 

@@ -640,14 +640,31 @@ public:
     }
 };
 
-// 3. Print Statement: `dikha a, b;`
+// 3. Print Statement: `dikha a, b;` with optional options (end/ant, sep/alag, color/rang, bina_line)
 class PrintStmt : public Stmt
 {
 public:
     std::vector<std::unique_ptr<Expr>> args;
+    std::unique_ptr<Expr> endExpr = nullptr;
+    std::unique_ptr<Expr> sepExpr = nullptr;
+    std::unique_ptr<Expr> styleExpr = nullptr;
+    bool noNewline = false;
 
     PrintStmt(std::vector<std::unique_ptr<Expr>> args, int line = 0)
         : Stmt(line), args(std::move(args)) {}
+
+    PrintStmt(std::vector<std::unique_ptr<Expr>> args,
+              std::unique_ptr<Expr> endExpr,
+              std::unique_ptr<Expr> sepExpr,
+              std::unique_ptr<Expr> styleExpr,
+              bool noNewline = false,
+              int line = 0)
+        : Stmt(line),
+          args(std::move(args)),
+          endExpr(std::move(endExpr)),
+          sepExpr(std::move(sepExpr)),
+          styleExpr(std::move(styleExpr)),
+          noNewline(noNewline) {}
 
     std::string toString() const override
     {
@@ -657,6 +674,25 @@ public:
             if (i > 0)
                 result += ", ";
             result += args[i]->toString();
+        }
+        if (sepExpr)
+        {
+            if (!args.empty()) result += ", ";
+            result += "sep=" + sepExpr->toString();
+        }
+        if (endExpr)
+        {
+            if (!args.empty() || sepExpr) result += ", ";
+            result += "end=" + endExpr->toString();
+        }
+        if (styleExpr)
+        {
+            if (!args.empty() || sepExpr || endExpr) result += ", ";
+            result += "color=" + styleExpr->toString();
+        }
+        if (noNewline)
+        {
+            result += " bina_line";
         }
         result += ";";
         return result;
@@ -2026,12 +2062,90 @@ public:
         }
 
         std::vector<std::unique_ptr<Expr>> args;
-        args.push_back(parseTernary());
-        rejectAssignment("dikha");
-        parseRemainingCommaArgs(args, "dikha");
+        std::unique_ptr<Expr> endExpr = nullptr;
+        std::unique_ptr<Expr> sepExpr = nullptr;
+        std::unique_ptr<Expr> styleExpr = nullptr;
+        bool noNewline = false;
+
+        auto isNamedOption = [](const std::string &val) {
+            return val == "end" || val == "ant" || val == "khatam" ||
+                   val == "sep" || val == "alag" || val == "judo" ||
+                   val == "color" || val == "rang" || val == "style";
+        };
+
+        while (peek().type != TokenType::SEMICOLON && peek().type != TokenType::END_OF_FILE)
+        {
+            if (peek().type == TokenType::IDENTIFIER && (peek().value == "bina_line" || peek().value == "no_newline"))
+            {
+                current++;
+                noNewline = true;
+                if (peek().type == TokenType::COMMA)
+                {
+                    current++;
+                }
+                continue;
+            }
+
+            if ((peek().type == TokenType::IDENTIFIER || peek().type == TokenType::DROP) && peekNext().type == TokenType::ASSIGN)
+            {
+                std::string optName = peek().value;
+                if (isNamedOption(optName))
+                {
+                    current += 2; // consume optName and '='
+                    auto expr = parseTernary();
+                    if (optName == "end" || optName == "ant" || optName == "khatam")
+                    {
+                        endExpr = std::move(expr);
+                    }
+                    else if (optName == "sep" || optName == "alag" || optName == "judo")
+                    {
+                        sepExpr = std::move(expr);
+                    }
+                    else if (optName == "color" || optName == "rang" || optName == "style")
+                    {
+                        styleExpr = std::move(expr);
+                    }
+                    if (peek().type == TokenType::COMMA)
+                    {
+                        current++;
+                    }
+                    continue;
+                }
+            }
+
+            args.push_back(parseTernary());
+            rejectAssignment("dikha");
+
+            if (peek().type == TokenType::IDENTIFIER && (peek().value == "bina_line" || peek().value == "no_newline"))
+            {
+                current++;
+                noNewline = true;
+            }
+
+            if (peek().type == TokenType::COMMA)
+            {
+                current++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (peek().type == TokenType::IDENTIFIER && (peek().value == "bina_line" || peek().value == "no_newline"))
+        {
+            current++;
+            noNewline = true;
+        }
+
+        if (args.empty() && !endExpr && !sepExpr && !styleExpr && !noNewline)
+        {
+            errorAt(line,
+                "'dikha' ke baad kuch toh likh! Khali ';' mein Mr. India dikhaun kya?");
+        }
 
         consumeSemicolon();
-        return std::make_unique<PrintStmt>(std::move(args), line);
+        return std::make_unique<PrintStmt>(std::move(args), std::move(endExpr), std::move(sepExpr), std::move(styleExpr), noNewline, line);
     }
 
     // 3. `{ stmt1; stmt2; }` (No trailing semicolon)

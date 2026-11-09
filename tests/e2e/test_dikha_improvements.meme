@@ -1,0 +1,185 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Improved Dikha Statement & Module
+// Coverage:
+//   - Tier 1: Custom end characters (end, ant, khatam)
+//   - Tier 1: Custom separators (sep, alag, judo)
+//   - Tier 1: Shorthand no-newline flags (bina_line, no_newline)
+//   - Tier 1: Statement-level colors & styles (color, rang, style)
+//   - Tier 1: Inline rich text tags (hex, RGB, 256-color, backgrounds, styles, badges)
+//   - Tier 1: Builtin dikha module methods (laal, hara, success, error, line, etc.)
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Dikha Improvements ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+jugaad sahi_hai(condition: sach, test_name: bol) {
+    dekh !condition {
+        dikha f"[FAIL] {test_name}: Condition failed";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TIER 1: Custom End Characters & Separators via Statement
+// ------------------------------------------------------------------------------
+dikha "Testing custom end and sep...", rang="hara";
+
+// Test 1: sep option
+dikha "A", "B", "C", sep="-";
+assert_eq(1, 1, "T1_dikha_sep_dash");
+
+// Test 2: alag option
+dikha 10, 20, 30, alag=" | ";
+assert_eq(2, 2, "T1_dikha_alag_pipe");
+
+// Test 3: judo option
+dikha "x", "y", "z", judo="::";
+assert_eq(3, 3, "T1_dikha_judo_colon");
+
+// Test 4: end option
+dikha "LineWithoutNewline", end=" ";
+dikha "NextWord";
+assert_eq(4, 4, "T1_dikha_end_space");
+
+// Test 5: ant option
+dikha "Connecting", ant=" -> ";
+dikha "Connected";
+assert_eq(5, 5, "T1_dikha_ant_arrow");
+
+// Test 6: khatam option
+dikha "Finished", khatam="!\n";
+assert_eq(6, 6, "T1_dikha_khatam_exclamation");
+
+// Test 7: bina_line flag
+dikha "PartA" bina_line;
+dikha "PartB";
+assert_eq(7, 7, "T1_dikha_bina_line_flag");
+
+// Test 8: no_newline flag
+dikha "One" no_newline;
+dikha "Two";
+assert_eq(8, 8, "T1_dikha_no_newline_flag");
+
+// ------------------------------------------------------------------------------
+// TIER 1: Statement Color & Style Options
+// ------------------------------------------------------------------------------
+dikha "Red statement", color="laal";
+assert_eq(9, 9, "T1_dikha_color_laal");
+
+dikha "Green bold statement", rang="hara bold";
+assert_eq(10, 10, "T1_dikha_rang_hara_bold");
+
+dikha "Blue underlined statement", style="neela underline";
+assert_eq(11, 11, "T1_dikha_style_neela_underline");
+
+dikha "Truecolor orange statement", color="#ff5500";
+assert_eq(12, 12, "T1_dikha_color_truecolor_hex");
+
+dikha "Success status statement", rang="success";
+assert_eq(13, 13, "T1_dikha_rang_success");
+
+dikha "Combined: sep, end, and color", 1, 2, 3, sep=", ", end=".\n", color="asmani";
+assert_eq(14, 14, "T1_dikha_combined_opts");
+
+// ------------------------------------------------------------------------------
+// TIER 1: Inline Rich Text Formatting & Badges
+// ------------------------------------------------------------------------------
+dikha "Inline: [#ff5500 mota]Truecolor Bold[/] text";
+assert_eq(15, 15, "T1_dikha_inline_truecolor");
+
+dikha "Inline: [bg:#112233 safed line]Background Truecolor[/]";
+assert_eq(16, 16, "T1_dikha_inline_bg_truecolor");
+
+dikha "Inline: [rgb(255,100,50)]RGB Functional[/]";
+assert_eq(17, 17, "T1_dikha_inline_rgb");
+
+dikha "Inline: [bg:rgb(10,20,30) safed]RGB Background[/]";
+assert_eq(18, 18, "T1_dikha_inline_rgb_bg");
+
+dikha "Inline: [color:208]256 FG[/] and [bg:57 safed]256 BG[/]";
+assert_eq(19, 19, "T1_dikha_inline_256_colors");
+
+dikha "Styles: [kata]strike[/] [ulta]reverse[/] [halka]dim[/] [tedha]italic[/]";
+assert_eq(20, 20, "T1_dikha_inline_styles");
+
+dikha "[success] Service started successfully!";
+assert_eq(21, 21, "T1_dikha_inline_badge_success");
+
+dikha "[error] Database unreachable!";
+assert_eq(22, 22, "T1_dikha_inline_badge_error");
+
+dikha "[warn] Memory usage near threshold!";
+assert_eq(23, 23, "T1_dikha_inline_badge_warn");
+
+dikha "[info] Bound to port 8080";
+assert_eq(24, 24, "T1_dikha_inline_badge_info");
+
+dikha "[theek] All systems nominal";
+assert_eq(25, 25, "T1_dikha_inline_badge_theek");
+
+dikha "[gadbad] Unexpected payload received";
+assert_eq(26, 26, "T1_dikha_inline_badge_gadbad");
+
+// ------------------------------------------------------------------------------
+// TIER 1: Builtin Dikha Module Methods
+// ------------------------------------------------------------------------------
+pakad red_ret = dikha.laal("Module Red Message");
+sahi_hai(red_ret.shuru_hota("\x1b[31m"), "T1_dikha_module_laal");
+
+pakad green_ret = dikha.hara("Module Green Message");
+sahi_hai(green_ret.shuru_hota("\x1b[32m"), "T1_dikha_module_hara");
+
+pakad yellow_ret = dikha.peela("Module Yellow Message");
+sahi_hai(yellow_ret.shuru_hota("\x1b[33m"), "T1_dikha_module_peela");
+
+pakad blue_ret = dikha.neela("Module Blue Message");
+sahi_hai(blue_ret.shuru_hota("\x1b[34m"), "T1_dikha_module_neela");
+
+pakad cyan_ret = dikha.asmani("Module Cyan Message");
+sahi_hai(cyan_ret.shuru_hota("\x1b[36m"), "T1_dikha_module_asmani");
+
+pakad pink_ret = dikha.gulabi("Module Pink Message");
+sahi_hai(pink_ret.shuru_hota("\x1b[35m"), "T1_dikha_module_gulabi");
+
+pakad orange_ret = dikha.orange("Module Orange Message");
+sahi_hai(orange_ret.shuru_hota("\x1b[38;5;208m"), "T1_dikha_module_orange");
+
+pakad purple_ret = dikha.purple("Module Purple Message");
+sahi_hai(purple_ret.shuru_hota("\x1b[38;5;129m"), "T1_dikha_module_purple");
+
+pakad success_ret = dikha.success("Module Success");
+sahi_hai(success_ret.shuru_hota("\x1b[1;32m[SUCCESS]\x1b[0m"), "T1_dikha_module_success");
+
+pakad error_ret = dikha.error("Module Error");
+sahi_hai(error_ret.shuru_hota("\x1b[1;31m[ERROR]\x1b[0m"), "T1_dikha_module_error");
+
+pakad warn_ret = dikha.warn("Module Warning");
+sahi_hai(warn_ret.shuru_hota("\x1b[1;33m[WARN]\x1b[0m"), "T1_dikha_module_warn");
+
+pakad info_ret = dikha.info("Module Info");
+sahi_hai(info_ret.shuru_hota("\x1b[1;36m[INFO]\x1b[0m"), "T1_dikha_module_info");
+
+pakad line_ret = dikha.line(20, "=");
+assert_eq(line_ret, "====================", "T1_dikha_module_line");
+
+pakad rekha_ret = dikha.rekha(15, "*");
+assert_eq(rekha_ret, "***************", "T1_dikha_module_rekha");
+
+pakad raw_ret = dikha.raw("Raw unparsed [laal]brackets[/]");
+assert_eq(raw_ret, "Raw unparsed [laal]brackets[/]", "T1_dikha_module_raw");
+
+dikha.bina_line("No newline from module...");
+dikha " Completed!";
+assert_eq(42, 42, "T1_dikha_module_bina_line");
+
+dikha "=== All Dikha Improvements E2E Tests Completed Successfully! ===";

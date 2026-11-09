@@ -82,6 +82,7 @@ std::string stripAnsi(const std::string &str)
 }
 
 static const std::unordered_map<std::string, std::string> RICH_TAGS = {
+    // Standard Colors
     {"laal", "\033[31m"},
     {"red", "\033[31m"},
     {"hara", "\033[32m"},
@@ -99,6 +100,38 @@ static const std::unordered_map<std::string, std::string> RICH_TAGS = {
     {"white", "\033[37m"},
     {"kala", "\033[30m"},
     {"black", "\033[30m"},
+    {"gray", "\033[90m"},
+    {"grey", "\033[90m"},
+    {"dhundhla", "\033[90m"},
+    {"orange", "\033[38;5;208m"},
+    {"santre", "\033[38;5;208m"},
+    {"purple", "\033[38;5;129m"},
+    {"jamuni", "\033[38;5;129m"},
+
+    // Bright Colors
+    {"bright_red", "\033[91m"},
+    {"bright_laal", "\033[91m"},
+    {"chamkila_laal", "\033[91m"},
+    {"bright_green", "\033[92m"},
+    {"bright_hara", "\033[92m"},
+    {"chamkila_hara", "\033[92m"},
+    {"bright_yellow", "\033[93m"},
+    {"bright_peela", "\033[93m"},
+    {"chamkila_peela", "\033[93m"},
+    {"bright_blue", "\033[94m"},
+    {"bright_neela", "\033[94m"},
+    {"chamkila_neela", "\033[94m"},
+    {"bright_magenta", "\033[95m"},
+    {"bright_pink", "\033[95m"},
+    {"chamkila_gulabi", "\033[95m"},
+    {"bright_cyan", "\033[96m"},
+    {"bright_asmani", "\033[96m"},
+    {"chamkila_asmani", "\033[96m"},
+    {"bright_white", "\033[97m"},
+    {"bright_safed", "\033[97m"},
+    {"chamkila_safed", "\033[97m"},
+
+    // Text Styles
     {"mota", "\033[1m"},
     {"bold", "\033[1m"},
     {"halka", "\033[2m"},
@@ -107,10 +140,249 @@ static const std::unordered_map<std::string, std::string> RICH_TAGS = {
     {"italic", "\033[3m"},
     {"line", "\033[4m"},
     {"underline", "\033[4m"},
+    {"blink", "\033[5m"},
+    {"chamak", "\033[5m"},
+    {"ulta", "\033[7m"},
+    {"reverse", "\033[7m"},
+    {"invert", "\033[7m"},
+    {"kata", "\033[9m"},
+    {"strikethrough", "\033[9m"},
+    {"strike", "\033[9m"},
+
+    // Resets
     {"/", "\033[0m"},
     {"reset", "\033[0m"},
     {"saaf", "\033[0m"}
 };
+
+static bool parseHexColor(const std::string &str, int &r, int &g, int &b)
+{
+    if (str.empty() || str[0] != '#') return false;
+    if (str.size() == 7)
+    {
+        for (size_t i = 1; i < 7; ++i)
+        {
+            if (!std::isxdigit(static_cast<unsigned char>(str[i]))) return false;
+        }
+        r = std::stoi(str.substr(1, 2), nullptr, 16);
+        g = std::stoi(str.substr(3, 2), nullptr, 16);
+        b = std::stoi(str.substr(5, 2), nullptr, 16);
+        return true;
+    }
+    else if (str.size() == 4)
+    {
+        for (size_t i = 1; i < 4; ++i)
+        {
+            if (!std::isxdigit(static_cast<unsigned char>(str[i]))) return false;
+        }
+        r = std::stoi(std::string(2, str[1]), nullptr, 16);
+        g = std::stoi(std::string(2, str[2]), nullptr, 16);
+        b = std::stoi(std::string(2, str[3]), nullptr, 16);
+        return true;
+    }
+    return false;
+}
+
+static bool parseRgbColor(const std::string &str, int &r, int &g, int &b)
+{
+    if (str.size() < 7) return false;
+    if (str.rfind("rgb(", 0) != 0 || str.back() != ')') return false;
+    std::string inner = str.substr(4, str.size() - 5);
+    std::stringstream ss(inner);
+    std::string p1, p2, p3;
+    if (!std::getline(ss, p1, ',') || !std::getline(ss, p2, ',') || !std::getline(ss, p3, ',')) return false;
+    try {
+        r = std::stoi(p1);
+        g = std::stoi(p2);
+        b = std::stoi(p3);
+    } catch (...) {
+        return false;
+    }
+    return (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255);
+}
+
+static bool parse256Color(const std::string &str, int &code)
+{
+    if (str.empty()) return false;
+    for (char c : str)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+    }
+    try {
+        code = std::stoi(str);
+    } catch (...) {
+        return false;
+    }
+    return (code >= 0 && code <= 255);
+}
+
+static bool isBadgeTag(const std::string &w, std::string &outBadge)
+{
+    if (w == "success" || w == "theek")
+    {
+        outBadge = "\033[1;32m[SUCCESS]\033[0m";
+        return true;
+    }
+    if (w == "error" || w == "galat" || w == "gadbad")
+    {
+        outBadge = "\033[1;31m[ERROR]\033[0m";
+        return true;
+    }
+    if (w == "warn" || w == "warning" || w == "chetavni")
+    {
+        outBadge = "\033[1;33m[WARN]\033[0m";
+        return true;
+    }
+    if (w == "info" || w == "suchna" || w == "jankari")
+    {
+        outBadge = "\033[1;36m[INFO]\033[0m";
+        return true;
+    }
+    return false;
+}
+
+static bool resolveRichWord(const std::string &w, std::string &outAnsi, bool allowStatusAliases = true)
+{
+    auto it = RICH_TAGS.find(w);
+    if (it != RICH_TAGS.end())
+    {
+        outAnsi = it->second;
+        return true;
+    }
+
+    if (allowStatusAliases)
+    {
+        if (w == "success" || w == "theek") { outAnsi = "\033[1;32m"; return true; }
+        if (w == "error" || w == "galat" || w == "gadbad") { outAnsi = "\033[1;31m"; return true; }
+        if (w == "warn" || w == "warning" || w == "chetavni") { outAnsi = "\033[1;33m"; return true; }
+        if (w == "info" || w == "suchna" || w == "jankari") { outAnsi = "\033[1;36m"; return true; }
+    }
+
+    // Hex colors: #RRGGBB, #RGB, fg:#..., bg:#...
+    if (w.rfind("#", 0) == 0)
+    {
+        int r, g, b;
+        if (parseHexColor(w, r, g, b))
+        {
+            outAnsi = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("fg:#", 0) == 0)
+    {
+        int r, g, b;
+        if (parseHexColor(w.substr(3), r, g, b))
+        {
+            outAnsi = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("bg:#", 0) == 0)
+    {
+        int r, g, b;
+        if (parseHexColor(w.substr(3), r, g, b))
+        {
+            outAnsi = "\033[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+
+    // RGB function: rgb(r,g,b), fg:rgb(r,g,b), bg:rgb(r,g,b)
+    if (w.rfind("rgb(", 0) == 0)
+    {
+        int r, g, b;
+        if (parseRgbColor(w, r, g, b))
+        {
+            outAnsi = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("fg:rgb(", 0) == 0)
+    {
+        int r, g, b;
+        if (parseRgbColor(w.substr(3), r, g, b))
+        {
+            outAnsi = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("bg:rgb(", 0) == 0)
+    {
+        int r, g, b;
+        if (parseRgbColor(w.substr(3), r, g, b))
+        {
+            outAnsi = "\033[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+            return true;
+        }
+    }
+
+    // 256 colors: color:N, fg:N, c:N, bg:N
+    if (w.rfind("color:", 0) == 0)
+    {
+        int code;
+        if (parse256Color(w.substr(6), code))
+        {
+            outAnsi = "\033[38;5;" + std::to_string(code) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("fg:", 0) == 0)
+    {
+        int code;
+        if (parse256Color(w.substr(3), code))
+        {
+            outAnsi = "\033[38;5;" + std::to_string(code) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("c:", 0) == 0)
+    {
+        int code;
+        if (parse256Color(w.substr(2), code))
+        {
+            outAnsi = "\033[38;5;" + std::to_string(code) + "m";
+            return true;
+        }
+    }
+    else if (w.rfind("bg:", 0) == 0)
+    {
+        std::string rest = w.substr(3);
+        int code;
+        if (parse256Color(rest, code))
+        {
+            outAnsi = "\033[48;5;" + std::to_string(code) + "m";
+            return true;
+        }
+        static const std::unordered_map<std::string, std::string> BG_MAP = {
+            {"laal", "\033[41m"}, {"red", "\033[41m"},
+            {"hara", "\033[42m"}, {"green", "\033[42m"},
+            {"peela", "\033[43m"}, {"yellow", "\033[43m"},
+            {"neela", "\033[44m"}, {"blue", "\033[44m"},
+            {"gulabi", "\033[45m"}, {"pink", "\033[45m"}, {"magenta", "\033[45m"},
+            {"asmani", "\033[46m"}, {"cyan", "\033[46m"},
+            {"safed", "\033[47m"}, {"white", "\033[47m"},
+            {"kala", "\033[40m"}, {"black", "\033[40m"},
+            {"gray", "\033[100m"}, {"grey", "\033[100m"}, {"dhundhla", "\033[100m"},
+            {"orange", "\033[48;5;208m"}, {"santre", "\033[48;5;208m"},
+            {"purple", "\033[48;5;129m"}, {"jamuni", "\033[48;5;129m"},
+            {"bright_red", "\033[101m"}, {"bright_laal", "\033[101m"},
+            {"bright_green", "\033[102m"}, {"bright_hara", "\033[102m"},
+            {"bright_yellow", "\033[103m"}, {"bright_peela", "\033[103m"},
+            {"bright_blue", "\033[104m"}, {"bright_neela", "\033[104m"},
+            {"bright_magenta", "\033[105m"}, {"bright_pink", "\033[105m"},
+            {"bright_cyan", "\033[106m"}, {"bright_asmani", "\033[106m"},
+            {"bright_white", "\033[107m"}, {"bright_safed", "\033[107m"}
+        };
+        auto bit = BG_MAP.find(rest);
+        if (bit != BG_MAP.end())
+        {
+            outAnsi = bit->second;
+            return true;
+        }
+    }
+
+    return false;
+}
 
 std::string formatRichText(const std::string &input, bool useAnsi)
 {
@@ -130,8 +402,20 @@ std::string formatRichText(const std::string &input, bool useAnsi)
             if (closePos != std::string::npos)
             {
                 std::string tagContent = input.substr(i + 1, closePos - i - 1);
+                
+                // Normalize spaces inside parentheses, e.g. rgb(255, 0, 0)
+                std::string normalizedTag;
+                bool inParens = false;
+                for (char c : tagContent)
+                {
+                    if (c == '(') inParens = true;
+                    else if (c == ')') inParens = false;
+                    if (inParens && std::isspace(static_cast<unsigned char>(c))) continue;
+                    normalizedTag += c;
+                }
+
                 std::vector<std::string> words;
-                std::stringstream ss(tagContent);
+                std::stringstream ss(normalizedTag);
                 std::string word;
                 while (ss >> word)
                 {
@@ -139,21 +423,35 @@ std::string formatRichText(const std::string &input, bool useAnsi)
                     words.push_back(word);
                 }
 
+                if (words.size() == 1)
+                {
+                    std::string badge;
+                    if (isBadgeTag(words[0], badge))
+                    {
+                        result += badge;
+                        i = closePos + 1;
+                        continue;
+                    }
+                }
+
                 bool allValid = !words.empty();
+                std::string combinedAnsi;
                 for (const auto &w : words)
                 {
-                    if (RICH_TAGS.find(w) == RICH_TAGS.end())
+                    std::string wordAnsi;
+                    if (!resolveRichWord(w, wordAnsi, false))
                     {
                         allValid = false;
                         break;
                     }
+                    combinedAnsi += wordAnsi;
                 }
 
                 if (allValid)
                 {
+                    result += combinedAnsi;
                     for (const auto &w : words)
                     {
-                        result += RICH_TAGS.at(w);
                         if (w != "/" && w != "reset" && w != "saaf")
                         {
                             styled = true;
@@ -173,6 +471,45 @@ std::string formatRichText(const std::string &input, bool useAnsi)
     }
 
     return result;
+}
+
+std::string resolveStyleAnsi(const std::string &rawStyle)
+{
+    std::string s = rawStyle;
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+
+    if (s.empty()) return "";
+
+    if (s.front() == '[' && s.back() == ']')
+    {
+        s = s.substr(1, s.size() - 2);
+    }
+
+    std::string normalized;
+    bool inParens = false;
+    for (char c : s)
+    {
+        if (c == '(') inParens = true;
+        else if (c == ')') inParens = false;
+        if (inParens && std::isspace(static_cast<unsigned char>(c))) continue;
+        if (c == ',') { normalized += ' '; continue; }
+        normalized += c;
+    }
+
+    std::stringstream ss(normalized);
+    std::string word;
+    std::string combined;
+    while (ss >> word)
+    {
+        for (char &c : word) c = std::tolower(static_cast<unsigned char>(c));
+        std::string ansi;
+        if (resolveRichWord(word, ansi, true))
+        {
+            combined += ansi;
+        }
+    }
+    return combined;
 }
 
 static int codepointWidth(uint32_t cp)
@@ -4185,12 +4522,119 @@ static std::shared_ptr<MemeMap> createDikhaModule(Interpreter &interpreter)
         return Value(true);
     };
 
+    auto formatArgs = [&interpreter](const std::vector<Value> &args, const std::string &sep = " ", bool rich = true) -> std::string {
+        std::string out;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) out += sep;
+            std::string s = interpreter.stringify(args[i]);
+            out += rich ? formatRichText(s) : s;
+        }
+        return out;
+    };
+
+    auto makeColorFn = [&interpreter, formatArgs](const std::string &ansiCode) {
+        return [&interpreter, formatArgs, ansiCode](Interpreter &, const std::vector<Value> &args) -> Value {
+            std::string text = formatArgs(args, " ", true);
+            std::string res = ansiCode + text + "\033[0m";
+            interpreter.getOutputStream() << res << "\n";
+            return Value(res);
+        };
+    };
+
+    auto makeBadgeFn = [&interpreter, formatArgs](const std::string &badge) {
+        return [&interpreter, formatArgs, badge](Interpreter &, const std::vector<Value> &args) -> Value {
+            std::string text = formatArgs(args, " ", true);
+            std::string res = badge + (text.empty() ? "" : (" " + text));
+            interpreter.getOutputStream() << res << "\n";
+            return Value(res);
+        };
+    };
+
+    auto lineFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        int length = 50;
+        std::string ch = "-";
+        if (!args.empty()) {
+            Value a0 = args[0].deref();
+            if (a0.isNumeric()) length = std::max(0, a0.asInt32());
+            else ch = a0.toString();
+        }
+        if (args.size() > 1) {
+            ch = args[1].deref().toString();
+        }
+        if (ch.empty()) ch = "-";
+        std::string res;
+        while (static_cast<int>(res.size()) < length) {
+            res += ch;
+        }
+        if (static_cast<int>(res.size()) > length) {
+            res = res.substr(0, length);
+        }
+        interpreter.getOutputStream() << res << "\n";
+        return Value(res);
+    };
+
+    auto rawFn = [&interpreter, formatArgs](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string res = formatArgs(args, " ", false);
+        interpreter.getOutputStream() << res << "\n";
+        return Value(res);
+    };
+
+    auto binaLineFn = [&interpreter, formatArgs](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string res = formatArgs(args, " ", true);
+        interpreter.getOutputStream() << res;
+        return Value(res);
+    };
+
     m->set("mez", Value(std::make_shared<NativeMethodCallable>("mez", 1, tableFn)));
     m->set("table", Value(std::make_shared<NativeMethodCallable>("table", 1, tableFn)));
     m->set("dabba", Value(std::make_shared<NativeMethodCallable>("dabba", 1, 2, boxFn)));
     m->set("box", Value(std::make_shared<NativeMethodCallable>("box", 1, 2, boxFn)));
     m->set("saaf", Value(std::make_shared<NativeMethodCallable>("saaf", 0, clearFn)));
     m->set("clear", Value(std::make_shared<NativeMethodCallable>("clear", 0, clearFn)));
+
+    // Color helpers
+    m->set("laal", Value(std::make_shared<NativeMethodCallable>("laal", 0, -1, makeColorFn("\033[31m"))));
+    m->set("red", Value(std::make_shared<NativeMethodCallable>("red", 0, -1, makeColorFn("\033[31m"))));
+    m->set("hara", Value(std::make_shared<NativeMethodCallable>("hara", 0, -1, makeColorFn("\033[32m"))));
+    m->set("green", Value(std::make_shared<NativeMethodCallable>("green", 0, -1, makeColorFn("\033[32m"))));
+    m->set("peela", Value(std::make_shared<NativeMethodCallable>("peela", 0, -1, makeColorFn("\033[33m"))));
+    m->set("yellow", Value(std::make_shared<NativeMethodCallable>("yellow", 0, -1, makeColorFn("\033[33m"))));
+    m->set("neela", Value(std::make_shared<NativeMethodCallable>("neela", 0, -1, makeColorFn("\033[34m"))));
+    m->set("blue", Value(std::make_shared<NativeMethodCallable>("blue", 0, -1, makeColorFn("\033[34m"))));
+    m->set("gulabi", Value(std::make_shared<NativeMethodCallable>("gulabi", 0, -1, makeColorFn("\033[35m"))));
+    m->set("pink", Value(std::make_shared<NativeMethodCallable>("pink", 0, -1, makeColorFn("\033[35m"))));
+    m->set("magenta", Value(std::make_shared<NativeMethodCallable>("magenta", 0, -1, makeColorFn("\033[35m"))));
+    m->set("asmani", Value(std::make_shared<NativeMethodCallable>("asmani", 0, -1, makeColorFn("\033[36m"))));
+    m->set("cyan", Value(std::make_shared<NativeMethodCallable>("cyan", 0, -1, makeColorFn("\033[36m"))));
+    m->set("safed", Value(std::make_shared<NativeMethodCallable>("safed", 0, -1, makeColorFn("\033[37m"))));
+    m->set("white", Value(std::make_shared<NativeMethodCallable>("white", 0, -1, makeColorFn("\033[37m"))));
+    m->set("kala", Value(std::make_shared<NativeMethodCallable>("kala", 0, -1, makeColorFn("\033[30m"))));
+    m->set("black", Value(std::make_shared<NativeMethodCallable>("black", 0, -1, makeColorFn("\033[30m"))));
+    m->set("gray", Value(std::make_shared<NativeMethodCallable>("gray", 0, -1, makeColorFn("\033[90m"))));
+    m->set("grey", Value(std::make_shared<NativeMethodCallable>("grey", 0, -1, makeColorFn("\033[90m"))));
+    m->set("orange", Value(std::make_shared<NativeMethodCallable>("orange", 0, -1, makeColorFn("\033[38;5;208m"))));
+    m->set("purple", Value(std::make_shared<NativeMethodCallable>("purple", 0, -1, makeColorFn("\033[38;5;129m"))));
+    m->set("jamuni", Value(std::make_shared<NativeMethodCallable>("jamuni", 0, -1, makeColorFn("\033[38;5;129m"))));
+
+    // Status badges
+    m->set("success", Value(std::make_shared<NativeMethodCallable>("success", 0, -1, makeBadgeFn("\033[1;32m[SUCCESS]\033[0m"))));
+    m->set("theek", Value(std::make_shared<NativeMethodCallable>("theek", 0, -1, makeBadgeFn("\033[1;32m[SUCCESS]\033[0m"))));
+    m->set("error", Value(std::make_shared<NativeMethodCallable>("error", 0, -1, makeBadgeFn("\033[1;31m[ERROR]\033[0m"))));
+    m->set("galat", Value(std::make_shared<NativeMethodCallable>("galat", 0, -1, makeBadgeFn("\033[1;31m[ERROR]\033[0m"))));
+    m->set("gadbad", Value(std::make_shared<NativeMethodCallable>("gadbad", 0, -1, makeBadgeFn("\033[1;31m[ERROR]\033[0m"))));
+    m->set("warn", Value(std::make_shared<NativeMethodCallable>("warn", 0, -1, makeBadgeFn("\033[1;33m[WARN]\033[0m"))));
+    m->set("warning", Value(std::make_shared<NativeMethodCallable>("warning", 0, -1, makeBadgeFn("\033[1;33m[WARN]\033[0m"))));
+    m->set("chetavni", Value(std::make_shared<NativeMethodCallable>("chetavni", 0, -1, makeBadgeFn("\033[1;33m[WARN]\033[0m"))));
+    m->set("info", Value(std::make_shared<NativeMethodCallable>("info", 0, -1, makeBadgeFn("\033[1;36m[INFO]\033[0m"))));
+    m->set("suchna", Value(std::make_shared<NativeMethodCallable>("suchna", 0, -1, makeBadgeFn("\033[1;36m[INFO]\033[0m"))));
+    m->set("jankari", Value(std::make_shared<NativeMethodCallable>("jankari", 0, -1, makeBadgeFn("\033[1;36m[INFO]\033[0m"))));
+
+    // Utilities
+    m->set("rekha", Value(std::make_shared<NativeMethodCallable>("rekha", 0, 2, lineFn)));
+    m->set("line", Value(std::make_shared<NativeMethodCallable>("line", 0, 2, lineFn)));
+    m->set("raw", Value(std::make_shared<NativeMethodCallable>("raw", 0, -1, rawFn)));
+    m->set("bina_line", Value(std::make_shared<NativeMethodCallable>("bina_line", 0, -1, binaLineFn)));
+    m->set("no_newline", Value(std::make_shared<NativeMethodCallable>("no_newline", 0, -1, binaLineFn)));
 
     return m;
 }
@@ -10867,17 +11311,51 @@ void Interpreter::execute(const Stmt *stmt)
         return;
     }
 
-    // 3. Print statement: `dikha a, b;`
+    // 3. Print statement: `dikha a, b;` with custom options
     if (auto *p = dynamic_cast<const PrintStmt *>(stmt))
     {
+        std::string sep = " ";
+        if (p->sepExpr)
+        {
+            sep = evaluate(p->sepExpr.get()).deref().toString();
+        }
+
+        std::string endChar = p->noNewline ? "" : "\n";
+        if (p->endExpr)
+        {
+            endChar = evaluate(p->endExpr.get()).deref().toString();
+        }
+
+        std::string stylePrefix;
+        std::string styleReset;
+        if (p->styleExpr)
+        {
+            std::string styleStr = evaluate(p->styleExpr.get()).deref().toString();
+            stylePrefix = resolveStyleAnsi(styleStr);
+            if (!stylePrefix.empty())
+            {
+                styleReset = "\033[0m";
+            }
+        }
+
+        if (!stylePrefix.empty())
+        {
+            out << stylePrefix;
+        }
+
         for (size_t i = 0; i < p->args.size(); ++i)
         {
             if (i > 0)
-                out << " ";
+                out << sep;
             Value val = evaluate(p->args[i].get());
             out << formatRichText(stringify(val));
         }
-        out << "\n";
+
+        if (!styleReset.empty())
+        {
+            out << styleReset;
+        }
+        out << endChar;
         return;
     }
 
