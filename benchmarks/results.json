@@ -1,122 +1,1189 @@
 {
-  "JSON Data Analytics (50,000 txns, 6.1 MB)": {
-    "MEMElang": {
-      "mean_ms": 409.28,
-      "median_ms": 408.72,
-      "min_ms": 408.18,
-      "max_ms": 410.93,
-      "stdev_ms": 1.46
-    },
-    "Python 3.14": {
-      "mean_ms": 52.62,
-      "median_ms": 52.67,
-      "min_ms": 52.43,
-      "max_ms": 52.75,
-      "stdev_ms": 0.17
-    },
-    "Node.js v26": {
-      "mean_ms": 38.46,
-      "median_ms": 38.43,
-      "min_ms": 37.79,
-      "max_ms": 39.15,
-      "stdev_ms": 0.68
-    },
-    "Bun v1.4": {
-      "mean_ms": 18.88,
-      "median_ms": 18.55,
-      "min_ms": 18.46,
-      "max_ms": 19.61,
-      "stdev_ms": 0.64
+  "timestamp": "2026-11-11T15:18:15.454797+00:00",
+  "platform": "Darwin arm64",
+  "configuration": {
+    "iterations": 3,
+    "warmup": 1,
+    "workloads": [
+      "fib",
+      "sieve",
+      "math_loop",
+      "tree_drop",
+      "quicksort",
+      "json",
+      "csv"
+    ]
+  },
+  "compilation_speed": {
+    "overall_loc_per_sec": 19.5,
+    "compilation_loc_per_sec": 19.5,
+    "frontend_loc_per_sec": 10220.5,
+    "total_loc": 98,
+    "total_time_sec": 5.025,
+    "workloads": {
+      "small_fib": {
+        "loc": 11,
+        "elapsed_sec": 1.9417165420018137,
+        "loc_per_sec": 5.7,
+        "peak_rss_mb": 145.59,
+        "success": true,
+        "frontend_ast": {
+          "elapsed_sec": 0.015093458001501858,
+          "loc_per_sec": 728.8,
+          "peak_rss_mb": 7.08,
+          "success": true
+        },
+        "self_hosted": {
+          "success": true,
+          "elapsed_sec": 1.63428825000301,
+          "loc_per_sec": 6.7,
+          "peak_rss_mb": 155.16,
+          "frontend_c_elapsed_sec": 0.007119790971046314,
+          "frontend_c_loc_per_sec": 1545.0,
+          "frontend_c_peak_rss_mb": 2.55
+        }
+      },
+      "medium_sieve": {
+        "loc": 29,
+        "elapsed_sec": 1.4190325410163496,
+        "loc_per_sec": 20.4,
+        "peak_rss_mb": 148.45,
+        "success": true,
+        "frontend_ast": {
+          "elapsed_sec": 0.017215416999533772,
+          "loc_per_sec": 1684.5,
+          "peak_rss_mb": 7.14,
+          "success": true
+        },
+        "self_hosted": {
+          "success": true,
+          "elapsed_sec": 2.29884920900804,
+          "loc_per_sec": 12.6,
+          "peak_rss_mb": 147.17,
+          "frontend_c_elapsed_sec": 0.010430207999888808,
+          "frontend_c_loc_per_sec": 2780.4,
+          "frontend_c_peak_rss_mb": 3.05
+        }
+      },
+      "medium_quicksort": {
+        "loc": 58,
+        "elapsed_sec": 1.6639382080174983,
+        "loc_per_sec": 34.9,
+        "peak_rss_mb": 162.08,
+        "success": true,
+        "frontend_ast": {
+          "elapsed_sec": 0.01303187501616776,
+          "loc_per_sec": 4450.6,
+          "peak_rss_mb": 7.2,
+          "success": true
+        },
+        "self_hosted": {
+          "success": true,
+          "elapsed_sec": 1.6515035839984193,
+          "loc_per_sec": 35.1,
+          "peak_rss_mb": 156.86,
+          "frontend_c_elapsed_sec": 0.011905459017725661,
+          "frontend_c_loc_per_sec": 4871.7,
+          "frontend_c_peak_rss_mb": 4.16
+        }
+      },
+      "macro_compiler": {
+        "loc": 1528,
+        "elapsed_sec": 1.8528781249769963,
+        "loc_per_sec": 0.0,
+        "peak_rss_mb": 0.0,
+        "success": false,
+        "frontend_ast": {
+          "elapsed_sec": 0.021270208002533764,
+          "loc_per_sec": 71837.6,
+          "peak_rss_mb": 9.91,
+          "success": true
+        },
+        "self_hosted": {
+          "success": true,
+          "elapsed_sec": 6.487367875000928,
+          "loc_per_sec": 235.5,
+          "peak_rss_mb": 351.92,
+          "frontend_c_elapsed_sec": 0.12963654199847952,
+          "frontend_c_loc_per_sec": 11786.8,
+          "frontend_c_peak_rss_mb": 61.38
+        }
+      }
     }
   },
-  "CSV Financial Processing (100,000 rows, 4.3 MB)": {
-    "MEMElang": {
-      "mean_ms": 1263.34,
-      "median_ms": 1259.64,
-      "min_ms": 1249.35,
-      "max_ms": 1281.04,
-      "stdev_ms": 16.17
+  "compilation_loc_per_sec": 19.5,
+  "throughput": {
+    "fib": {
+      "interpreted": {
+        "mean_sec": 2.912754,
+        "median_sec": 2.95377,
+        "min_sec": 2.75087,
+        "max_sec": 3.033622,
+        "stdev_sec": 0.14577,
+        "ops_per_sec": 0.34,
+        "peak_rss_mb": 8.28
+      },
+      "native_cpp": {
+        "mean_sec": 0.007072,
+        "median_sec": 0.006751,
+        "min_sec": 0.006296,
+        "max_sec": 0.008171,
+        "stdev_sec": 0.000978,
+        "ops_per_sec": 141.39,
+        "peak_rss_mb": 1.45,
+        "speedup_vs_interpreted": 411.87
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.005898,
+        "median_sec": 0.005526,
+        "min_sec": 0.005411,
+        "max_sec": 0.006755,
+        "stdev_sec": 0.000745,
+        "ops_per_sec": 169.56,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 493.85
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005158,
+        "median_sec": 0.005244,
+        "min_sec": 0.004937,
+        "max_sec": 0.005293,
+        "stdev_sec": 0.000193,
+        "ops_per_sec": 193.87,
+        "peak_rss_mb": 1.58
+      },
+      "baseline_python": {
+        "mean_sec": 0.019865,
+        "median_sec": 0.019987,
+        "min_sec": 0.017458,
+        "max_sec": 0.022148,
+        "stdev_sec": 0.002347,
+        "ops_per_sec": 50.34,
+        "peak_rss_mb": 10.55
+      },
+      "baseline_node": {
+        "mean_sec": 0.04036,
+        "median_sec": 0.040388,
+        "min_sec": 0.035988,
+        "max_sec": 0.044703,
+        "stdev_sec": 0.004358,
+        "ops_per_sec": 24.78,
+        "peak_rss_mb": 51.38
+      }
     },
-    "Python 3.14": {
-      "mean_ms": 96.44,
-      "median_ms": 96.51,
-      "min_ms": 95.5,
-      "max_ms": 97.3,
-      "stdev_ms": 0.9
+    "sieve": {
+      "interpreted": {
+        "mean_sec": 0.482912,
+        "median_sec": 0.481208,
+        "min_sec": 0.480418,
+        "max_sec": 0.487111,
+        "stdev_sec": 0.003658,
+        "ops_per_sec": 2.07,
+        "peak_rss_mb": 11.38
+      },
+      "native_cpp": {
+        "mean_sec": 0.005819,
+        "median_sec": 0.005937,
+        "min_sec": 0.005232,
+        "max_sec": 0.006287,
+        "stdev_sec": 0.000538,
+        "ops_per_sec": 171.86,
+        "peak_rss_mb": 1.61,
+        "speedup_vs_interpreted": 82.99
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.005903,
+        "median_sec": 0.005889,
+        "min_sec": 0.005373,
+        "max_sec": 0.006446,
+        "stdev_sec": 0.000537,
+        "ops_per_sec": 169.42,
+        "peak_rss_mb": 1.61,
+        "speedup_vs_interpreted": 81.81
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005886,
+        "median_sec": 0.00481,
+        "min_sec": 0.004573,
+        "max_sec": 0.008276,
+        "stdev_sec": 0.002073,
+        "ops_per_sec": 169.89,
+        "peak_rss_mb": 1.72
+      },
+      "baseline_python": {
+        "mean_sec": 0.020053,
+        "median_sec": 0.020121,
+        "min_sec": 0.019642,
+        "max_sec": 0.020397,
+        "stdev_sec": 0.000382,
+        "ops_per_sec": 49.87,
+        "peak_rss_mb": 11.48
+      },
+      "baseline_node": {
+        "mean_sec": 0.040413,
+        "median_sec": 0.038709,
+        "min_sec": 0.038584,
+        "max_sec": 0.043945,
+        "stdev_sec": 0.00306,
+        "ops_per_sec": 24.74,
+        "peak_rss_mb": 56.02
+      }
     },
-    "Node.js v26": {
-      "mean_ms": 54.51,
-      "median_ms": 54.52,
-      "min_ms": 53.91,
-      "max_ms": 55.11,
-      "stdev_ms": 0.6
+    "math_loop": {
+      "interpreted": {
+        "mean_sec": 0.51827,
+        "median_sec": 0.523322,
+        "min_sec": 0.496263,
+        "max_sec": 0.535225,
+        "stdev_sec": 0.019966,
+        "ops_per_sec": 1.93,
+        "peak_rss_mb": 8.2
+      },
+      "native_cpp": {
+        "mean_sec": 0.008307,
+        "median_sec": 0.008389,
+        "min_sec": 0.007465,
+        "max_sec": 0.009065,
+        "stdev_sec": 0.000803,
+        "ops_per_sec": 120.39,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 62.39
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.006461,
+        "median_sec": 0.006716,
+        "min_sec": 0.005881,
+        "max_sec": 0.006788,
+        "stdev_sec": 0.000504,
+        "ops_per_sec": 154.76,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 80.22
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005304,
+        "median_sec": 0.005457,
+        "min_sec": 0.004744,
+        "max_sec": 0.005711,
+        "stdev_sec": 0.000501,
+        "ops_per_sec": 188.54,
+        "peak_rss_mb": 1.58
+      },
+      "baseline_python": {
+        "mean_sec": 0.0334,
+        "median_sec": 0.03221,
+        "min_sec": 0.031782,
+        "max_sec": 0.036207,
+        "stdev_sec": 0.002441,
+        "ops_per_sec": 29.94,
+        "peak_rss_mb": 10.8
+      },
+      "baseline_node": {
+        "mean_sec": 0.039902,
+        "median_sec": 0.040125,
+        "min_sec": 0.039409,
+        "max_sec": 0.040173,
+        "stdev_sec": 0.000428,
+        "ops_per_sec": 25.06,
+        "peak_rss_mb": 58.33
+      }
     },
-    "Bun v1.4": {
-      "mean_ms": 26.21,
-      "median_ms": 26.38,
-      "min_ms": 25.77,
-      "max_ms": 26.49,
-      "stdev_ms": 0.39
+    "tree_drop": {
+      "interpreted": {
+        "mean_sec": 7.60366,
+        "median_sec": 7.495648,
+        "min_sec": 7.405352,
+        "max_sec": 7.90998,
+        "stdev_sec": 0.269095,
+        "ops_per_sec": 0.13,
+        "peak_rss_mb": 14.06
+      },
+      "native_cpp": {
+        "mean_sec": 0.007533,
+        "median_sec": 0.006265,
+        "min_sec": 0.005375,
+        "max_sec": 0.01096,
+        "stdev_sec": 0.003001,
+        "ops_per_sec": 132.75,
+        "peak_rss_mb": 6.53,
+        "speedup_vs_interpreted": 1009.38
+      },
+      "baseline_rust": {
+        "mean_sec": 0.004525,
+        "median_sec": 0.004371,
+        "min_sec": 0.004044,
+        "max_sec": 0.005161,
+        "stdev_sec": 0.000574,
+        "ops_per_sec": 220.99,
+        "peak_rss_mb": 2.12
+      },
+      "baseline_python": {
+        "mean_sec": 0.021843,
+        "median_sec": 0.02176,
+        "min_sec": 0.021703,
+        "max_sec": 0.022066,
+        "stdev_sec": 0.000196,
+        "ops_per_sec": 45.78,
+        "peak_rss_mb": 12.09
+      },
+      "baseline_node": {
+        "mean_sec": 0.037894,
+        "median_sec": 0.039674,
+        "min_sec": 0.0339,
+        "max_sec": 0.040108,
+        "stdev_sec": 0.003466,
+        "ops_per_sec": 26.39,
+        "peak_rss_mb": 53.12
+      }
+    },
+    "quicksort": {
+      "interpreted": {
+        "mean_sec": 1.695964,
+        "median_sec": 1.660116,
+        "min_sec": 1.653081,
+        "max_sec": 1.774696,
+        "stdev_sec": 0.068274,
+        "ops_per_sec": 0.59,
+        "peak_rss_mb": 9.02
+      },
+      "native_cpp": {
+        "mean_sec": 0.01314,
+        "median_sec": 0.011362,
+        "min_sec": 0.009165,
+        "max_sec": 0.018892,
+        "stdev_sec": 0.005101,
+        "ops_per_sec": 76.11,
+        "peak_rss_mb": 4.02,
+        "speedup_vs_interpreted": 129.07
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.015952,
+        "median_sec": 0.009791,
+        "min_sec": 0.00733,
+        "max_sec": 0.030736,
+        "stdev_sec": 0.012862,
+        "ops_per_sec": 62.69,
+        "peak_rss_mb": 4.0,
+        "speedup_vs_interpreted": 106.32
+      },
+      "baseline_rust": {
+        "mean_sec": 0.01241,
+        "median_sec": 0.00527,
+        "min_sec": 0.004957,
+        "max_sec": 0.027004,
+        "stdev_sec": 0.012639,
+        "ops_per_sec": 80.58,
+        "peak_rss_mb": 1.64
+      },
+      "baseline_python": {
+        "mean_sec": 0.028787,
+        "median_sec": 0.024409,
+        "min_sec": 0.022182,
+        "max_sec": 0.039769,
+        "stdev_sec": 0.009576,
+        "ops_per_sec": 34.74,
+        "peak_rss_mb": 11.2
+      },
+      "baseline_node": {
+        "mean_sec": 0.046776,
+        "median_sec": 0.04539,
+        "min_sec": 0.039751,
+        "max_sec": 0.055187,
+        "stdev_sec": 0.00781,
+        "ops_per_sec": 21.38,
+        "peak_rss_mb": 58.84
+      }
+    },
+    "json": {
+      "interpreted": {
+        "mean_sec": 0.718571,
+        "median_sec": 0.686309,
+        "min_sec": 0.677826,
+        "max_sec": 0.791577,
+        "stdev_sec": 0.063368,
+        "ops_per_sec": 1.39,
+        "peak_rss_mb": 98.75
+      },
+      "baseline_rust": {
+        "mean_sec": 0.0173,
+        "median_sec": 0.017549,
+        "min_sec": 0.015344,
+        "max_sec": 0.019009,
+        "stdev_sec": 0.001845,
+        "ops_per_sec": 57.8,
+        "peak_rss_mb": 7.83
+      },
+      "baseline_python": {
+        "mean_sec": 0.120566,
+        "median_sec": 0.122902,
+        "min_sec": 0.093656,
+        "max_sec": 0.145142,
+        "stdev_sec": 0.025822,
+        "ops_per_sec": 8.29,
+        "peak_rss_mb": 51.55
+      },
+      "baseline_node": {
+        "mean_sec": 0.117164,
+        "median_sec": 0.070553,
+        "min_sec": 0.061641,
+        "max_sec": 0.219297,
+        "stdev_sec": 0.088562,
+        "ops_per_sec": 8.54,
+        "peak_rss_mb": 93.8
+      }
+    },
+    "csv": {
+      "interpreted": {
+        "mean_sec": 1.884953,
+        "median_sec": 1.822719,
+        "min_sec": 1.555053,
+        "max_sec": 2.277088,
+        "stdev_sec": 0.365018,
+        "ops_per_sec": 0.53,
+        "peak_rss_mb": 112.27
+      },
+      "baseline_rust": {
+        "mean_sec": 0.040588,
+        "median_sec": 0.038513,
+        "min_sec": 0.035312,
+        "max_sec": 0.047938,
+        "stdev_sec": 0.006563,
+        "ops_per_sec": 24.64,
+        "peak_rss_mb": 1.91
+      },
+      "baseline_python": {
+        "mean_sec": 0.270856,
+        "median_sec": 0.323684,
+        "min_sec": 0.157957,
+        "max_sec": 0.330926,
+        "stdev_sec": 0.09784,
+        "ops_per_sec": 3.69,
+        "peak_rss_mb": 11.72
+      },
+      "baseline_node": {
+        "mean_sec": 0.140472,
+        "median_sec": 0.116614,
+        "min_sec": 0.090625,
+        "max_sec": 0.214175,
+        "stdev_sec": 0.065139,
+        "ops_per_sec": 7.12,
+        "peak_rss_mb": 87.59
+      }
     }
   },
-  "Crypto & Token Signing (10,000 SHA-256 + HMAC)": {
-    "MEMElang": {
-      "mean_ms": 151.2,
-      "median_ms": 151.31,
-      "min_ms": 150.93,
-      "max_ms": 151.38,
-      "stdev_ms": 0.24
+  "workloads": {
+    "fib": {
+      "interpreted": {
+        "mean_sec": 2.912754,
+        "median_sec": 2.95377,
+        "min_sec": 2.75087,
+        "max_sec": 3.033622,
+        "stdev_sec": 0.14577,
+        "ops_per_sec": 0.34,
+        "peak_rss_mb": 8.28
+      },
+      "native_cpp": {
+        "mean_sec": 0.007072,
+        "median_sec": 0.006751,
+        "min_sec": 0.006296,
+        "max_sec": 0.008171,
+        "stdev_sec": 0.000978,
+        "ops_per_sec": 141.39,
+        "peak_rss_mb": 1.45,
+        "speedup_vs_interpreted": 411.87
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.005898,
+        "median_sec": 0.005526,
+        "min_sec": 0.005411,
+        "max_sec": 0.006755,
+        "stdev_sec": 0.000745,
+        "ops_per_sec": 169.56,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 493.85
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005158,
+        "median_sec": 0.005244,
+        "min_sec": 0.004937,
+        "max_sec": 0.005293,
+        "stdev_sec": 0.000193,
+        "ops_per_sec": 193.87,
+        "peak_rss_mb": 1.58
+      },
+      "baseline_python": {
+        "mean_sec": 0.019865,
+        "median_sec": 0.019987,
+        "min_sec": 0.017458,
+        "max_sec": 0.022148,
+        "stdev_sec": 0.002347,
+        "ops_per_sec": 50.34,
+        "peak_rss_mb": 10.55
+      },
+      "baseline_node": {
+        "mean_sec": 0.04036,
+        "median_sec": 0.040388,
+        "min_sec": 0.035988,
+        "max_sec": 0.044703,
+        "stdev_sec": 0.004358,
+        "ops_per_sec": 24.78,
+        "peak_rss_mb": 51.38
+      }
     },
-    "Python 3.14": {
-      "mean_ms": 49.36,
-      "median_ms": 49.03,
-      "min_ms": 48.76,
-      "max_ms": 50.28,
-      "stdev_ms": 0.81
+    "sieve": {
+      "interpreted": {
+        "mean_sec": 0.482912,
+        "median_sec": 0.481208,
+        "min_sec": 0.480418,
+        "max_sec": 0.487111,
+        "stdev_sec": 0.003658,
+        "ops_per_sec": 2.07,
+        "peak_rss_mb": 11.38
+      },
+      "native_cpp": {
+        "mean_sec": 0.005819,
+        "median_sec": 0.005937,
+        "min_sec": 0.005232,
+        "max_sec": 0.006287,
+        "stdev_sec": 0.000538,
+        "ops_per_sec": 171.86,
+        "peak_rss_mb": 1.61,
+        "speedup_vs_interpreted": 82.99
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.005903,
+        "median_sec": 0.005889,
+        "min_sec": 0.005373,
+        "max_sec": 0.006446,
+        "stdev_sec": 0.000537,
+        "ops_per_sec": 169.42,
+        "peak_rss_mb": 1.61,
+        "speedup_vs_interpreted": 81.81
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005886,
+        "median_sec": 0.00481,
+        "min_sec": 0.004573,
+        "max_sec": 0.008276,
+        "stdev_sec": 0.002073,
+        "ops_per_sec": 169.89,
+        "peak_rss_mb": 1.72
+      },
+      "baseline_python": {
+        "mean_sec": 0.020053,
+        "median_sec": 0.020121,
+        "min_sec": 0.019642,
+        "max_sec": 0.020397,
+        "stdev_sec": 0.000382,
+        "ops_per_sec": 49.87,
+        "peak_rss_mb": 11.48
+      },
+      "baseline_node": {
+        "mean_sec": 0.040413,
+        "median_sec": 0.038709,
+        "min_sec": 0.038584,
+        "max_sec": 0.043945,
+        "stdev_sec": 0.00306,
+        "ops_per_sec": 24.74,
+        "peak_rss_mb": 56.02
+      }
     },
-    "Node.js v26": {
-      "mean_ms": 54.46,
-      "median_ms": 54.14,
-      "min_ms": 54.1,
-      "max_ms": 55.13,
-      "stdev_ms": 0.58
+    "math_loop": {
+      "interpreted": {
+        "mean_sec": 0.51827,
+        "median_sec": 0.523322,
+        "min_sec": 0.496263,
+        "max_sec": 0.535225,
+        "stdev_sec": 0.019966,
+        "ops_per_sec": 1.93,
+        "peak_rss_mb": 8.2
+      },
+      "native_cpp": {
+        "mean_sec": 0.008307,
+        "median_sec": 0.008389,
+        "min_sec": 0.007465,
+        "max_sec": 0.009065,
+        "stdev_sec": 0.000803,
+        "ops_per_sec": 120.39,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 62.39
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.006461,
+        "median_sec": 0.006716,
+        "min_sec": 0.005881,
+        "max_sec": 0.006788,
+        "stdev_sec": 0.000504,
+        "ops_per_sec": 154.76,
+        "peak_rss_mb": 1.48,
+        "speedup_vs_interpreted": 80.22
+      },
+      "baseline_rust": {
+        "mean_sec": 0.005304,
+        "median_sec": 0.005457,
+        "min_sec": 0.004744,
+        "max_sec": 0.005711,
+        "stdev_sec": 0.000501,
+        "ops_per_sec": 188.54,
+        "peak_rss_mb": 1.58
+      },
+      "baseline_python": {
+        "mean_sec": 0.0334,
+        "median_sec": 0.03221,
+        "min_sec": 0.031782,
+        "max_sec": 0.036207,
+        "stdev_sec": 0.002441,
+        "ops_per_sec": 29.94,
+        "peak_rss_mb": 10.8
+      },
+      "baseline_node": {
+        "mean_sec": 0.039902,
+        "median_sec": 0.040125,
+        "min_sec": 0.039409,
+        "max_sec": 0.040173,
+        "stdev_sec": 0.000428,
+        "ops_per_sec": 25.06,
+        "peak_rss_mb": 58.33
+      }
     },
-    "Bun v1.4": {
-      "mean_ms": 25.24,
-      "median_ms": 25.24,
-      "min_ms": 24.99,
-      "max_ms": 25.5,
-      "stdev_ms": 0.26
+    "tree_drop": {
+      "interpreted": {
+        "mean_sec": 7.60366,
+        "median_sec": 7.495648,
+        "min_sec": 7.405352,
+        "max_sec": 7.90998,
+        "stdev_sec": 0.269095,
+        "ops_per_sec": 0.13,
+        "peak_rss_mb": 14.06
+      },
+      "native_cpp": {
+        "mean_sec": 0.007533,
+        "median_sec": 0.006265,
+        "min_sec": 0.005375,
+        "max_sec": 0.01096,
+        "stdev_sec": 0.003001,
+        "ops_per_sec": 132.75,
+        "peak_rss_mb": 6.53,
+        "speedup_vs_interpreted": 1009.38
+      },
+      "baseline_rust": {
+        "mean_sec": 0.004525,
+        "median_sec": 0.004371,
+        "min_sec": 0.004044,
+        "max_sec": 0.005161,
+        "stdev_sec": 0.000574,
+        "ops_per_sec": 220.99,
+        "peak_rss_mb": 2.12
+      },
+      "baseline_python": {
+        "mean_sec": 0.021843,
+        "median_sec": 0.02176,
+        "min_sec": 0.021703,
+        "max_sec": 0.022066,
+        "stdev_sec": 0.000196,
+        "ops_per_sec": 45.78,
+        "peak_rss_mb": 12.09
+      },
+      "baseline_node": {
+        "mean_sec": 0.037894,
+        "median_sec": 0.039674,
+        "min_sec": 0.0339,
+        "max_sec": 0.040108,
+        "stdev_sec": 0.003466,
+        "ops_per_sec": 26.39,
+        "peak_rss_mb": 53.12
+      }
+    },
+    "quicksort": {
+      "interpreted": {
+        "mean_sec": 1.695964,
+        "median_sec": 1.660116,
+        "min_sec": 1.653081,
+        "max_sec": 1.774696,
+        "stdev_sec": 0.068274,
+        "ops_per_sec": 0.59,
+        "peak_rss_mb": 9.02
+      },
+      "native_cpp": {
+        "mean_sec": 0.01314,
+        "median_sec": 0.011362,
+        "min_sec": 0.009165,
+        "max_sec": 0.018892,
+        "stdev_sec": 0.005101,
+        "ops_per_sec": 76.11,
+        "peak_rss_mb": 4.02,
+        "speedup_vs_interpreted": 129.07
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.015952,
+        "median_sec": 0.009791,
+        "min_sec": 0.00733,
+        "max_sec": 0.030736,
+        "stdev_sec": 0.012862,
+        "ops_per_sec": 62.69,
+        "peak_rss_mb": 4.0,
+        "speedup_vs_interpreted": 106.32
+      },
+      "baseline_rust": {
+        "mean_sec": 0.01241,
+        "median_sec": 0.00527,
+        "min_sec": 0.004957,
+        "max_sec": 0.027004,
+        "stdev_sec": 0.012639,
+        "ops_per_sec": 80.58,
+        "peak_rss_mb": 1.64
+      },
+      "baseline_python": {
+        "mean_sec": 0.028787,
+        "median_sec": 0.024409,
+        "min_sec": 0.022182,
+        "max_sec": 0.039769,
+        "stdev_sec": 0.009576,
+        "ops_per_sec": 34.74,
+        "peak_rss_mb": 11.2
+      },
+      "baseline_node": {
+        "mean_sec": 0.046776,
+        "median_sec": 0.04539,
+        "min_sec": 0.039751,
+        "max_sec": 0.055187,
+        "stdev_sec": 0.00781,
+        "ops_per_sec": 21.38,
+        "peak_rss_mb": 58.84
+      }
+    },
+    "json": {
+      "interpreted": {
+        "mean_sec": 0.718571,
+        "median_sec": 0.686309,
+        "min_sec": 0.677826,
+        "max_sec": 0.791577,
+        "stdev_sec": 0.063368,
+        "ops_per_sec": 1.39,
+        "peak_rss_mb": 98.75
+      },
+      "baseline_rust": {
+        "mean_sec": 0.0173,
+        "median_sec": 0.017549,
+        "min_sec": 0.015344,
+        "max_sec": 0.019009,
+        "stdev_sec": 0.001845,
+        "ops_per_sec": 57.8,
+        "peak_rss_mb": 7.83
+      },
+      "baseline_python": {
+        "mean_sec": 0.120566,
+        "median_sec": 0.122902,
+        "min_sec": 0.093656,
+        "max_sec": 0.145142,
+        "stdev_sec": 0.025822,
+        "ops_per_sec": 8.29,
+        "peak_rss_mb": 51.55
+      },
+      "baseline_node": {
+        "mean_sec": 0.117164,
+        "median_sec": 0.070553,
+        "min_sec": 0.061641,
+        "max_sec": 0.219297,
+        "stdev_sec": 0.088562,
+        "ops_per_sec": 8.54,
+        "peak_rss_mb": 93.8
+      }
+    },
+    "csv": {
+      "interpreted": {
+        "mean_sec": 1.884953,
+        "median_sec": 1.822719,
+        "min_sec": 1.555053,
+        "max_sec": 2.277088,
+        "stdev_sec": 0.365018,
+        "ops_per_sec": 0.53,
+        "peak_rss_mb": 112.27
+      },
+      "baseline_rust": {
+        "mean_sec": 0.040588,
+        "median_sec": 0.038513,
+        "min_sec": 0.035312,
+        "max_sec": 0.047938,
+        "stdev_sec": 0.006563,
+        "ops_per_sec": 24.64,
+        "peak_rss_mb": 1.91
+      },
+      "baseline_python": {
+        "mean_sec": 0.270856,
+        "median_sec": 0.323684,
+        "min_sec": 0.157957,
+        "max_sec": 0.330926,
+        "stdev_sec": 0.09784,
+        "ops_per_sec": 3.69,
+        "peak_rss_mb": 11.72
+      },
+      "baseline_node": {
+        "mean_sec": 0.140472,
+        "median_sec": 0.116614,
+        "min_sec": 0.090625,
+        "max_sec": 0.214175,
+        "stdev_sec": 0.065139,
+        "ops_per_sec": 7.12,
+        "peak_rss_mb": 87.59
+      }
     }
   },
-  "Numerical Loop Execution (200,000 modular iterations)": {
-    "MEMElang": {
-      "mean_ms": 702.94,
-      "median_ms": 703.65,
-      "min_ms": 701.19,
-      "max_ms": 703.98,
-      "stdev_ms": 1.53
+  "memory_peak_rss": {
+    "fib": {
+      "interpreted": 8.28,
+      "native_cpp": 1.45,
+      "self_hosted_native": 1.48,
+      "baseline_rust": 1.58,
+      "baseline_python": 10.55,
+      "baseline_node": 51.38
     },
-    "Python 3.14": {
-      "mean_ms": 18.27,
-      "median_ms": 18.25,
-      "min_ms": 18.21,
-      "max_ms": 18.35,
-      "stdev_ms": 0.07
+    "sieve": {
+      "interpreted": 11.38,
+      "native_cpp": 1.61,
+      "self_hosted_native": 1.61,
+      "baseline_rust": 1.72,
+      "baseline_python": 11.48,
+      "baseline_node": 56.02
     },
-    "Node.js v26": {
-      "mean_ms": 28.44,
-      "median_ms": 30.78,
-      "min_ms": 23.73,
-      "max_ms": 30.82,
-      "stdev_ms": 4.08
+    "math_loop": {
+      "interpreted": 8.2,
+      "native_cpp": 1.48,
+      "self_hosted_native": 1.48,
+      "baseline_rust": 1.58,
+      "baseline_python": 10.8,
+      "baseline_node": 58.33
     },
-    "Bun v1.4": {
-      "mean_ms": 6.46,
-      "median_ms": 6.42,
-      "min_ms": 6.27,
-      "max_ms": 6.71,
-      "stdev_ms": 0.22
+    "tree_drop": {
+      "interpreted": 14.06,
+      "native_cpp": 6.53,
+      "baseline_rust": 2.12,
+      "baseline_python": 12.09,
+      "baseline_node": 53.12
+    },
+    "quicksort": {
+      "interpreted": 9.02,
+      "native_cpp": 4.02,
+      "self_hosted_native": 4.0,
+      "baseline_rust": 1.64,
+      "baseline_python": 11.2,
+      "baseline_node": 58.84
+    },
+    "json": {
+      "interpreted": 98.75,
+      "baseline_rust": 7.83,
+      "baseline_python": 51.55,
+      "baseline_node": 93.8
+    },
+    "csv": {
+      "interpreted": 112.27,
+      "baseline_rust": 1.91,
+      "baseline_python": 11.72,
+      "baseline_node": 87.59
     }
-  }
+  },
+  "peak_rss": {
+    "fib": {
+      "interpreted": 8.28,
+      "native_cpp": 1.45,
+      "self_hosted_native": 1.48,
+      "baseline_rust": 1.58,
+      "baseline_python": 10.55,
+      "baseline_node": 51.38
+    },
+    "sieve": {
+      "interpreted": 11.38,
+      "native_cpp": 1.61,
+      "self_hosted_native": 1.61,
+      "baseline_rust": 1.72,
+      "baseline_python": 11.48,
+      "baseline_node": 56.02
+    },
+    "math_loop": {
+      "interpreted": 8.2,
+      "native_cpp": 1.48,
+      "self_hosted_native": 1.48,
+      "baseline_rust": 1.58,
+      "baseline_python": 10.8,
+      "baseline_node": 58.33
+    },
+    "tree_drop": {
+      "interpreted": 14.06,
+      "native_cpp": 6.53,
+      "baseline_rust": 2.12,
+      "baseline_python": 12.09,
+      "baseline_node": 53.12
+    },
+    "quicksort": {
+      "interpreted": 9.02,
+      "native_cpp": 4.02,
+      "self_hosted_native": 4.0,
+      "baseline_rust": 1.64,
+      "baseline_python": 11.2,
+      "baseline_node": 58.84
+    },
+    "json": {
+      "interpreted": 98.75,
+      "baseline_rust": 7.83,
+      "baseline_python": 51.55,
+      "baseline_node": 93.8
+    },
+    "csv": {
+      "interpreted": 112.27,
+      "baseline_rust": 1.91,
+      "baseline_python": 11.72,
+      "baseline_node": 87.59
+    }
+  },
+  "comparisons": {
+    "matrix": [
+      {
+        "workload": "fib",
+        "interpreted_time_sec": 2.912754,
+        "interpreted_ops_sec": 0.34,
+        "native_cpp_time_sec": 0.007072,
+        "native_cpp_ops_sec": 141.39,
+        "self_hosted_native_time_sec": 0.005898,
+        "self_hosted_native_ops_sec": 169.56,
+        "baseline_rust_time_sec": 0.005158,
+        "baseline_rust_ops_sec": 193.87,
+        "baseline_python_time_sec": 0.019865,
+        "baseline_python_ops_sec": 50.34,
+        "baseline_node_time_sec": 0.04036,
+        "baseline_node_ops_sec": 24.78,
+        "speedup_native_cpp_vs_interp": 411.87,
+        "speedup_self_hosted_native_vs_interp": 493.85,
+        "primary_baseline_time_sec": 0.005158,
+        "primary_baseline_type": "Rust",
+        "speedup_native_vs_baseline": 0.73
+      },
+      {
+        "workload": "sieve",
+        "interpreted_time_sec": 0.482912,
+        "interpreted_ops_sec": 2.07,
+        "native_cpp_time_sec": 0.005819,
+        "native_cpp_ops_sec": 171.86,
+        "self_hosted_native_time_sec": 0.005903,
+        "self_hosted_native_ops_sec": 169.42,
+        "baseline_rust_time_sec": 0.005886,
+        "baseline_rust_ops_sec": 169.89,
+        "baseline_python_time_sec": 0.020053,
+        "baseline_python_ops_sec": 49.87,
+        "baseline_node_time_sec": 0.040413,
+        "baseline_node_ops_sec": 24.74,
+        "speedup_native_cpp_vs_interp": 82.99,
+        "speedup_self_hosted_native_vs_interp": 81.81,
+        "primary_baseline_time_sec": 0.005886,
+        "primary_baseline_type": "Rust",
+        "speedup_native_vs_baseline": 1.01
+      },
+      {
+        "workload": "math_loop",
+        "interpreted_time_sec": 0.51827,
+        "interpreted_ops_sec": 1.93,
+        "native_cpp_time_sec": 0.008307,
+        "native_cpp_ops_sec": 120.39,
+        "self_hosted_native_time_sec": 0.006461,
+        "self_hosted_native_ops_sec": 154.76,
+        "baseline_rust_time_sec": 0.005304,
+        "baseline_rust_ops_sec": 188.54,
+        "baseline_python_time_sec": 0.0334,
+        "baseline_python_ops_sec": 29.94,
+        "baseline_node_time_sec": 0.039902,
+        "baseline_node_ops_sec": 25.06,
+        "speedup_native_cpp_vs_interp": 62.39,
+        "speedup_self_hosted_native_vs_interp": 80.22,
+        "primary_baseline_time_sec": 0.005304,
+        "primary_baseline_type": "Rust",
+        "speedup_native_vs_baseline": 0.64
+      },
+      {
+        "workload": "tree_drop",
+        "interpreted_time_sec": 7.60366,
+        "interpreted_ops_sec": 0.13,
+        "native_cpp_time_sec": 0.007533,
+        "native_cpp_ops_sec": 132.75,
+        "baseline_rust_time_sec": 0.004525,
+        "baseline_rust_ops_sec": 220.99,
+        "baseline_python_time_sec": 0.021843,
+        "baseline_python_ops_sec": 45.78,
+        "baseline_node_time_sec": 0.037894,
+        "baseline_node_ops_sec": 26.39,
+        "speedup_native_cpp_vs_interp": 1009.38,
+        "primary_baseline_time_sec": 0.004525,
+        "primary_baseline_type": "Rust",
+        "speedup_native_vs_baseline": 0.6
+      },
+      {
+        "workload": "quicksort",
+        "interpreted_time_sec": 1.695964,
+        "interpreted_ops_sec": 0.59,
+        "native_cpp_time_sec": 0.01314,
+        "native_cpp_ops_sec": 76.11,
+        "self_hosted_native_time_sec": 0.015952,
+        "self_hosted_native_ops_sec": 62.69,
+        "baseline_rust_time_sec": 0.01241,
+        "baseline_rust_ops_sec": 80.58,
+        "baseline_python_time_sec": 0.028787,
+        "baseline_python_ops_sec": 34.74,
+        "baseline_node_time_sec": 0.046776,
+        "baseline_node_ops_sec": 21.38,
+        "speedup_native_cpp_vs_interp": 129.07,
+        "speedup_self_hosted_native_vs_interp": 106.32,
+        "primary_baseline_time_sec": 0.01241,
+        "primary_baseline_type": "Rust",
+        "speedup_native_vs_baseline": 0.94
+      },
+      {
+        "workload": "json",
+        "interpreted_time_sec": 0.718571,
+        "interpreted_ops_sec": 1.39,
+        "baseline_rust_time_sec": 0.0173,
+        "baseline_rust_ops_sec": 57.8,
+        "baseline_python_time_sec": 0.120566,
+        "baseline_python_ops_sec": 8.29,
+        "baseline_node_time_sec": 0.117164,
+        "baseline_node_ops_sec": 8.54,
+        "primary_baseline_time_sec": 0.0173,
+        "primary_baseline_type": "Rust"
+      },
+      {
+        "workload": "csv",
+        "interpreted_time_sec": 1.884953,
+        "interpreted_ops_sec": 0.53,
+        "baseline_rust_time_sec": 0.040588,
+        "baseline_rust_ops_sec": 24.64,
+        "baseline_python_time_sec": 0.270856,
+        "baseline_python_ops_sec": 3.69,
+        "baseline_node_time_sec": 0.140472,
+        "baseline_node_ops_sec": 7.12,
+        "primary_baseline_time_sec": 0.040588,
+        "primary_baseline_type": "Rust"
+      }
+    ]
+  },
+  "matrix": [
+    {
+      "workload": "fib",
+      "interpreted_time_sec": 2.912754,
+      "interpreted_ops_sec": 0.34,
+      "native_cpp_time_sec": 0.007072,
+      "native_cpp_ops_sec": 141.39,
+      "self_hosted_native_time_sec": 0.005898,
+      "self_hosted_native_ops_sec": 169.56,
+      "baseline_rust_time_sec": 0.005158,
+      "baseline_rust_ops_sec": 193.87,
+      "baseline_python_time_sec": 0.019865,
+      "baseline_python_ops_sec": 50.34,
+      "baseline_node_time_sec": 0.04036,
+      "baseline_node_ops_sec": 24.78,
+      "speedup_native_cpp_vs_interp": 411.87,
+      "speedup_self_hosted_native_vs_interp": 493.85,
+      "primary_baseline_time_sec": 0.005158,
+      "primary_baseline_type": "Rust",
+      "speedup_native_vs_baseline": 0.73
+    },
+    {
+      "workload": "sieve",
+      "interpreted_time_sec": 0.482912,
+      "interpreted_ops_sec": 2.07,
+      "native_cpp_time_sec": 0.005819,
+      "native_cpp_ops_sec": 171.86,
+      "self_hosted_native_time_sec": 0.005903,
+      "self_hosted_native_ops_sec": 169.42,
+      "baseline_rust_time_sec": 0.005886,
+      "baseline_rust_ops_sec": 169.89,
+      "baseline_python_time_sec": 0.020053,
+      "baseline_python_ops_sec": 49.87,
+      "baseline_node_time_sec": 0.040413,
+      "baseline_node_ops_sec": 24.74,
+      "speedup_native_cpp_vs_interp": 82.99,
+      "speedup_self_hosted_native_vs_interp": 81.81,
+      "primary_baseline_time_sec": 0.005886,
+      "primary_baseline_type": "Rust",
+      "speedup_native_vs_baseline": 1.01
+    },
+    {
+      "workload": "math_loop",
+      "interpreted_time_sec": 0.51827,
+      "interpreted_ops_sec": 1.93,
+      "native_cpp_time_sec": 0.008307,
+      "native_cpp_ops_sec": 120.39,
+      "self_hosted_native_time_sec": 0.006461,
+      "self_hosted_native_ops_sec": 154.76,
+      "baseline_rust_time_sec": 0.005304,
+      "baseline_rust_ops_sec": 188.54,
+      "baseline_python_time_sec": 0.0334,
+      "baseline_python_ops_sec": 29.94,
+      "baseline_node_time_sec": 0.039902,
+      "baseline_node_ops_sec": 25.06,
+      "speedup_native_cpp_vs_interp": 62.39,
+      "speedup_self_hosted_native_vs_interp": 80.22,
+      "primary_baseline_time_sec": 0.005304,
+      "primary_baseline_type": "Rust",
+      "speedup_native_vs_baseline": 0.64
+    },
+    {
+      "workload": "tree_drop",
+      "interpreted_time_sec": 7.60366,
+      "interpreted_ops_sec": 0.13,
+      "native_cpp_time_sec": 0.007533,
+      "native_cpp_ops_sec": 132.75,
+      "baseline_rust_time_sec": 0.004525,
+      "baseline_rust_ops_sec": 220.99,
+      "baseline_python_time_sec": 0.021843,
+      "baseline_python_ops_sec": 45.78,
+      "baseline_node_time_sec": 0.037894,
+      "baseline_node_ops_sec": 26.39,
+      "speedup_native_cpp_vs_interp": 1009.38,
+      "primary_baseline_time_sec": 0.004525,
+      "primary_baseline_type": "Rust",
+      "speedup_native_vs_baseline": 0.6
+    },
+    {
+      "workload": "quicksort",
+      "interpreted_time_sec": 1.695964,
+      "interpreted_ops_sec": 0.59,
+      "native_cpp_time_sec": 0.01314,
+      "native_cpp_ops_sec": 76.11,
+      "self_hosted_native_time_sec": 0.015952,
+      "self_hosted_native_ops_sec": 62.69,
+      "baseline_rust_time_sec": 0.01241,
+      "baseline_rust_ops_sec": 80.58,
+      "baseline_python_time_sec": 0.028787,
+      "baseline_python_ops_sec": 34.74,
+      "baseline_node_time_sec": 0.046776,
+      "baseline_node_ops_sec": 21.38,
+      "speedup_native_cpp_vs_interp": 129.07,
+      "speedup_self_hosted_native_vs_interp": 106.32,
+      "primary_baseline_time_sec": 0.01241,
+      "primary_baseline_type": "Rust",
+      "speedup_native_vs_baseline": 0.94
+    },
+    {
+      "workload": "json",
+      "interpreted_time_sec": 0.718571,
+      "interpreted_ops_sec": 1.39,
+      "baseline_rust_time_sec": 0.0173,
+      "baseline_rust_ops_sec": 57.8,
+      "baseline_python_time_sec": 0.120566,
+      "baseline_python_ops_sec": 8.29,
+      "baseline_node_time_sec": 0.117164,
+      "baseline_node_ops_sec": 8.54,
+      "primary_baseline_time_sec": 0.0173,
+      "primary_baseline_type": "Rust"
+    },
+    {
+      "workload": "csv",
+      "interpreted_time_sec": 1.884953,
+      "interpreted_ops_sec": 0.53,
+      "baseline_rust_time_sec": 0.040588,
+      "baseline_rust_ops_sec": 24.64,
+      "baseline_python_time_sec": 0.270856,
+      "baseline_python_ops_sec": 3.69,
+      "baseline_node_time_sec": 0.140472,
+      "baseline_node_ops_sec": 7.12,
+      "primary_baseline_time_sec": 0.040588,
+      "primary_baseline_type": "Rust"
+    }
+  ]
 }

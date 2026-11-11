@@ -1632,6 +1632,9 @@ struct SamayModule {
 };
 
 struct ItertoolsModule {
+    ItertoolsModule *operator->() { return this; }
+    const ItertoolsModule *operator->() const { return this; }
+
     template <typename N>
     auto repeat(bool val, N count) {
         std::vector<uint8_t> vec(static_cast<size_t>(count), val ? 1 : 0);

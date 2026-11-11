@@ -1,0 +1,65 @@
+// Benchmark: In-Place Quicksort on Deterministic PRNG Array
+bula "samay" jaise samay;
+
+sancha QuickSort {
+    kar shuru(n) {
+        khud.arr = [];
+        khud.n = n;
+        pakad seed = 42;
+        pakad MOD = 2147483648;
+        pakad k = 0;
+        jabtak k < n {
+            seed = (seed * 1103515245 + 12345) % MOD;
+            khud.arr.push(seed % 1000000);
+            k = k + 1;
+        }
+    }
+
+    kar partition(low, high) {
+        pakad pivot = khud.arr[high];
+        pakad i = low - 1;
+        pakad j = low;
+        jabtak j < high {
+            dekh khud.arr[j] <= pivot {
+                i = i + 1;
+                pakad temp = khud.arr[i];
+                khud.arr[i] = khud.arr[j];
+                khud.arr[j] = temp;
+            }
+            j = j + 1;
+        }
+        pakad temp2 = khud.arr[i + 1];
+        khud.arr[i + 1] = khud.arr[high];
+        khud.arr[high] = temp2;
+        ye_le i + 1;
+    }
+
+    kar sort(low, high) {
+        dekh low >= high {
+            ye_le 0;
+        }
+        pakad pi = khud.partition(low, high);
+        khud.sort(low, pi - 1);
+        khud.sort(pi + 1, high);
+        ye_le 0;
+    }
+
+    kar checksum() {
+        pakad chk = 0;
+        pakad CHK_MOD = 1000000007;
+        pakad idx = 0;
+        jabtak idx < khud.n {
+            chk = (chk + khud.arr[idx] * (idx + 1)) % CHK_MOD;
+            idx = idx + 1;
+        }
+        ye_le chk;
+    }
+}
+
+pakad qs = QuickSort(5000);
+pakad start = samay.ab();
+qs.sort(0, 4999);
+pakad elapsed = (samay.ab() - start) * 1000.0;
+pakad chk = qs.checksum();
+
+dikha f"MEMElang | Quicksort N=5000 | Checksum: {chk} | Time: {point_wala(elapsed)}ms";
