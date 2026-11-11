@@ -1,0 +1,198 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Namespaces & Scope Resolution (Tiers 1 & 2)
+// Coverage:
+//   - Tier 1: Namespace declarations (`mohalla`, `namespace`, `pados`, `ns`)
+//   - Tier 1: Double-colon scope resolution operator `::`
+//   - Tier 1: Scoped functions, constants, classes
+//   - Tier 2: Nested namespaces, identifier shadowing, cross-namespace invocations
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Namespaces & Scope Resolution (Tiers 1 & 2) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 1: Basic Namespace with Desi `mohalla`
+// ------------------------------------------------------------------------------
+mohalla MathModule {
+    pakad PI = 3;
+
+    jugaad add(a: ank, b: ank) -> ank {
+        ye_le a + b;
+    }
+
+    jugaad multiply(a: ank, b: ank) -> ank {
+        ye_le a * b;
+    }
+}
+
+assert_eq(MathModule::add(15, 25), 40, "T1_ns_function_call_desi");
+assert_eq(MathModule::multiply(6, 7), 42, "T1_ns_function_multiply_desi");
+assert_eq(MathModule::PI, 3, "T1_ns_constant_access_desi");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 2: English `namespace` Keyword
+// ------------------------------------------------------------------------------
+namespace StringModule {
+    jugaad concat(s1: bol, s2: bol) -> bol {
+        ye_le s1 + "_" + s2;
+    }
+
+    jugaad repeat(s: bol, count: ank) -> bol {
+        pakad result = "";
+        ghoom i in 0..count {
+            result = result + s;
+        }
+        ye_le result;
+    }
+}
+
+assert_eq(StringModule::concat("Alpha", "Beta"), "Alpha_Beta", "T1_ns_function_call_english");
+assert_eq(StringModule::repeat("Hi", 3), "HiHiHi", "T1_ns_repeat_english");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Scoped Class Instantiation via `::`
+// ------------------------------------------------------------------------------
+mohalla Geometry {
+    sancha Circle {
+        kaam shuru(radius: ank) {
+            khud.radius = radius;
+        }
+
+        kaam area_approx() -> ank {
+            ye_le 3 * khud.radius * khud.radius;
+        }
+    }
+}
+
+pakad my_circle = new Geometry::Circle(5);
+assert_eq(my_circle.area_approx(), 75, "T1_ns_class_instantiation");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Namespace Aliases (`pados`, `ns`)
+// ------------------------------------------------------------------------------
+pados NetworkConfig {
+    pakad DEFAULT_PORT = 8080;
+    jugaad get_protocol() -> bol {
+        ye_le "HTTPS";
+    }
+}
+
+ns StorageConfig {
+    pakad MAX_CACHE_MB = 512;
+    jugaad get_driver() -> bol {
+        ye_le "RocksDB";
+    }
+}
+
+assert_eq(NetworkConfig::DEFAULT_PORT, 8080, "T1_ns_alias_pados_val");
+assert_eq(NetworkConfig::get_protocol(), "HTTPS", "T1_ns_alias_pados_fn");
+assert_eq(StorageConfig::MAX_CACHE_MB, 512, "T1_ns_alias_ns_val");
+assert_eq(StorageConfig::get_driver(), "RocksDB", "T1_ns_alias_ns_fn");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 1: Deep Nested Namespaces (`Outer::Inner::SubInner::member`)
+// ------------------------------------------------------------------------------
+mohalla SystemCore {
+    mohalla SecurityEngine {
+        mohalla Crypto {
+            pakad ALGO_NAME = "AES-256";
+            jugaad get_key_length() -> ank {
+                ye_le 256;
+            }
+        }
+    }
+}
+
+assert_eq(SystemCore::SecurityEngine::Crypto::ALGO_NAME, "AES-256", "T2_ns_nested_three_levels_val");
+assert_eq(SystemCore::SecurityEngine::Crypto::get_key_length(), 256, "T2_ns_nested_three_levels_fn");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 2: Identifier Shadowing between Scope and Namespace
+// ------------------------------------------------------------------------------
+pakad PI = 314;
+
+mohalla Trig {
+    pakad PI = 314159;
+
+    jugaad get_internal_pi() -> ank {
+        ye_le PI;
+    }
+}
+
+assert_eq(PI, 314, "T2_ns_outer_identifier_preserved");
+assert_eq(Trig::PI, 314159, "T2_ns_inner_identifier_accessed");
+assert_eq(Trig::get_internal_pi(), 314159, "T2_ns_internal_identifier_shadowed");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 3: Cross-Namespace Member Invocations
+// ------------------------------------------------------------------------------
+mohalla ModuleAlpha {
+    jugaad get_factor() -> ank {
+        ye_le 10;
+    }
+}
+
+mohalla ModuleBeta {
+    jugaad compute_total(base: ank) -> ank {
+        ye_le base * ModuleAlpha::get_factor();
+    }
+}
+
+assert_eq(ModuleBeta::compute_total(7), 70, "T2_ns_cross_namespace_invocation");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 4: Overloaded Functions Inside Namespaces
+// ------------------------------------------------------------------------------
+mohalla OverloadSpace {
+    bahuroop jugaad calc(x: ank) -> ank {
+        ye_le x * 2;
+    }
+
+    bahuroop jugaad calc(x: ank, y: ank) -> ank {
+        ye_le x * y;
+    }
+
+    bahuroop jugaad calc(s: bol) -> bol {
+        ye_le f"Prefix_{s}";
+    }
+}
+
+assert_eq(OverloadSpace::calc(20), 40, "T2_ns_overload_unary_int");
+assert_eq(OverloadSpace::calc(5, 9), 45, "T2_ns_overload_binary_int");
+assert_eq(OverloadSpace::calc("Data"), "Prefix_Data", "T2_ns_overload_string");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 5: Namespaced Classes with Overloaded Operators
+// ------------------------------------------------------------------------------
+mohalla Physics {
+    sancha Vector1D {
+        kaam shuru(val: ank) {
+            khud.x = val;
+        }
+
+        tantrik +(other) {
+            ye_le new Physics::Vector1D(khud.x + other.x);
+        }
+
+        tantrik ==(other) {
+            ye_le khud.x == other.x;
+        }
+    }
+}
+
+pakad v1 = new Physics::Vector1D(15);
+pakad v2 = new Physics::Vector1D(25);
+pakad v3 = v1 + v2;
+assert_eq(v3.x, 40, "T2_ns_class_operator_overload_val");
+assert_eq(v3 == new Physics::Vector1D(40), sach, "T2_ns_class_operator_overload_eq");
+
+dikha "=== All Namespaces & Scope Resolution Tests Completed Successfully ===";

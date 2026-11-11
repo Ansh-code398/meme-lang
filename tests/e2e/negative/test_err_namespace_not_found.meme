@@ -1,0 +1,12 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Non-existent Namespace Member
+// EXPECT_ERROR: Mohalla
+// ==============================================================================
+
+mohalla ExistingArea {
+    pakad count = 10;
+}
+
+// Accessing non-existent member in namespace triggers error
+pakad missing = ExistingArea::ghost_function();
+dikha missing;

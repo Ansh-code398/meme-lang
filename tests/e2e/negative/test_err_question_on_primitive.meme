@@ -1,0 +1,13 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Postfix Question Operator on Non-Option/Result
+// EXPECT_ERROR: Sawaal
+// ==============================================================================
+
+jugaad bad_propagation() {
+    pakad num = 42;
+    // Postfix ? operator is only valid on Option or Result types
+    pakad res = num?;
+    ye_le res;
+}
+
+bad_propagation();

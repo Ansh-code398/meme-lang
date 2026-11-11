@@ -1,0 +1,31 @@
+// test_m3_file_io.meme
+// Verifies FileModule: read, write, exists, lines in native compiled binaries
+pakad test_file = "m3_test_scratch.txt";
+
+// 1. Write file
+pakad sample_content = "Line 1: Hello MEME\nLine 2: Self-hosting compiler\nLine 3: Bootstrap Stage 1\n";
+pakad write_ok = file.write(test_file, sample_content);
+dikha f"WRITE_OK:{write_ok}";
+
+// 2. Check exists
+pakad exists_ok = file.exists(test_file);
+dikha f"EXISTS_OK:{exists_ok}";
+
+// 3. Read full content
+pakad read_content = file.read(test_file);
+dikha f"READ_LEN:{read_content.length()}";
+dikha f"READ_MATCH:{(read_content == sample_content)}";
+
+// 4. Read lines into list
+pakad lines_list = file.lines(test_file);
+dikha f"LINES_COUNT:{lines_list.length()}";
+dikha f"LINE_0:{lines_list[0]}";
+dikha f"LINE_1:{lines_list[1]}";
+dikha f"LINE_2:{lines_list[2]}";
+
+// 5. Overwrite file
+pakad ok2 = file.write(test_file, "Cleaned up");
+dikha f"REWRITE_OK:{ok2}";
+
+// 6. Cleanup
+file.remove(test_file);

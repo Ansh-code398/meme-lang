@@ -1,0 +1,282 @@
+// =========================================================================
+// MEMElang Milestone 2 Adversarial Stress Test Suite
+// Testing: Nested Option/Result, Pattern Matching, and ? Error Propagation
+// =========================================================================
+
+dikha("=== Milestone 2 Adversarial Stress Suite ===");
+
+let passed_count = 0;
+let failed_count = 0;
+
+jugaad assert_true(cond, name) {
+    agar cond {
+        passed_count = passed_count + 1;
+        dikha("  [PASS] " + name);
+    } warna {
+        failed_count = failed_count + 1;
+        dikha("  [FAIL] " + name);
+    }
+}
+
+// -------------------------------------------------------------------------
+// 1. Nested Option Stress Testing
+// -------------------------------------------------------------------------
+dikha("--- 1. Nested Option Tests ---");
+
+let opt_nested_3 = Some(Some(Some(42)));
+assert_true(opt_nested_3.is_some(), "opt_nested_3 is_some");
+assert_true(opt_nested_3.unwrap().is_some(), "opt_nested_3 level 1 is_some");
+assert_true(opt_nested_3.unwrap().unwrap().is_some(), "opt_nested_3 level 2 is_some");
+assert_true(opt_nested_3.unwrap().unwrap().unwrap() == 42, "opt_nested_3 unwraps to 42");
+
+let opt_some_none = Some(None);
+assert_true(opt_some_none.is_some(), "Some(None) is outer Some");
+assert_true(opt_some_none.unwrap().is_none(), "Some(None) unwraps to inner None");
+assert_true(opt_some_none.unwrap().unwrap_or(999) == 999, "Some(None).unwrap().unwrap_or(999) is 999");
+
+// Dual-syntax Desi constructors: Kuch & Khali
+let desi_opt = Kuch(Kuch(Khali));
+assert_true(desi_opt.is_some(), "Kuch(Kuch(Khali)) outer is_some");
+assert_true(desi_opt.unwrap().unwrap().is_none(), "Kuch(Kuch(Khali)) inner is_none");
+
+// -------------------------------------------------------------------------
+// 2. Nested Result Stress Testing
+// -------------------------------------------------------------------------
+dikha("--- 2. Nested Result Tests ---");
+
+let res_nested_ok = Ok(Ok("nested_success"));
+assert_true(res_nested_ok.is_ok(), "Ok(Ok(...)) is outer ok");
+assert_true(res_nested_ok.unwrap().is_ok(), "Ok(Ok(...)) inner is ok");
+assert_true(res_nested_ok.unwrap().unwrap() == "nested_success", "Ok(Ok(...)) unwraps to nested_success");
+
+let res_ok_err = Ok(Err("nested_failure"));
+assert_true(res_ok_err.is_ok(), "Ok(Err(...)) outer is ok");
+assert_true(res_ok_err.unwrap().is_err(), "Ok(Err(...)) inner is err");
+assert_true(res_ok_err.unwrap().unwrap_err() == "nested_failure", "Ok(Err(...)) unwraps inner err");
+
+let res_err_ok = Err(Ok(100));
+assert_true(res_err_ok.is_err(), "Err(Ok(...)) outer is err");
+assert_true(res_err_ok.unwrap_err().is_ok(), "Err(Ok(...)) inner is ok");
+assert_true(res_err_ok.unwrap_err().unwrap() == 100, "Err(Ok(...)) unwraps inner ok");
+
+// Dual-syntax Desi constructors: Sahi & Galat
+let desi_res = Sahi(Galat("bura_nateeja"));
+assert_true(desi_res.is_ok(), "Sahi(Galat(...)) outer is_ok");
+assert_true(desi_res.unwrap().is_err(), "Sahi(Galat(...)) inner is_err");
+assert_true(desi_res.unwrap().unwrap_err() == "bura_nateeja", "Sahi(Galat(...)) unwraps to bura_nateeja");
+
+// -------------------------------------------------------------------------
+// 3. Mixed Option & Result
+// -------------------------------------------------------------------------
+dikha("--- 3. Mixed Option & Result Tests ---");
+
+let mix_ok_some = Ok(Some(777));
+assert_true(mix_ok_some.unwrap().unwrap() == 777, "Ok(Some(777)) unwraps to 777");
+
+let mix_some_err = Some(Err("trouble"));
+assert_true(mix_some_err.unwrap().unwrap_err() == "trouble", "Some(Err(trouble)) unwraps err");
+
+// -------------------------------------------------------------------------
+// 4. Pattern Matching on Nested Variants
+// -------------------------------------------------------------------------
+dikha("--- 4. Pattern Matching on Nested Variants ---");
+
+jugaad classify_nested_opt(val) {
+    ye_le jaanch val {
+        Some(Some(x)) => "two_some:" + x,
+        Some(None) => "some_none",
+        None => "pure_none",
+        warna => "unknown"
+    };
+}
+
+assert_true(classify_nested_opt(Some(Some(10))) == "two_some:10", "match Some(Some(10))");
+assert_true(classify_nested_opt(Some(None)) == "some_none", "match Some(None)");
+assert_true(classify_nested_opt(None) == "pure_none", "match None");
+
+jugaad classify_nested_res(val) {
+    ye_le jaanch val {
+        Ok(Ok(x)) => "double_ok:" + x,
+        Ok(Err(e)) => "ok_err:" + e,
+        Err(e) => "err:" + e,
+        warna => "other"
+    };
+}
+
+assert_true(classify_nested_res(Ok(Ok(42))) == "double_ok:42", "match Ok(Ok(42))");
+assert_true(classify_nested_res(Ok(Err("bad"))) == "ok_err:bad", "match Ok(Err(bad))");
+assert_true(classify_nested_res(Err("outer")) == "err:outer", "match Err(outer)");
+
+// -------------------------------------------------------------------------
+// 5. ? Operator Stress Testing: Deep Call Stacks
+// -------------------------------------------------------------------------
+dikha("--- 5. ? Operator Deep Call Stack Tests ---");
+
+// Propagating None through 30 recursive calls
+jugaad recurse_propagate_none(depth) {
+    agar depth <= 0 {
+        ye_le None;
+    }
+    let sub = recurse_propagate_none(depth - 1)?;
+    ye_le Some(sub + 1);
+}
+
+let res_deep_none = recurse_propagate_none(30);
+assert_true(res_deep_none.is_none(), "30-level deep None propagation via ? returns None");
+
+// Propagating Err through 30 recursive calls
+jugaad recurse_propagate_err(depth) {
+    agar depth <= 0 {
+        ye_le Err("aborted_at_depth_0");
+    }
+    let sub = recurse_propagate_err(depth - 1)?;
+    ye_le Ok(sub + 1);
+}
+
+let res_deep_err = recurse_propagate_err(30);
+assert_true(res_deep_err.is_err(), "30-level deep Err propagation via ? returns Err");
+assert_true(res_deep_err.unwrap_err() == "aborted_at_depth_0", "30-level Err preserves error payload");
+
+// Successful propagation through 30 calls
+jugaad recurse_propagate_success(depth) {
+    agar depth <= 0 {
+        ye_le Ok(1);
+    }
+    let sub = recurse_propagate_success(depth - 1)?;
+    ye_le Ok(sub + 1);
+}
+
+let res_deep_succ = recurse_propagate_success(30);
+assert_true(res_deep_succ.is_ok(), "30-level successful ? propagation succeeds");
+assert_true(res_deep_succ.unwrap() == 31, "30-level ? propagation returns 31");
+
+// -------------------------------------------------------------------------
+// 6. ? Operator in Loops (Early Return Verification)
+// -------------------------------------------------------------------------
+dikha("--- 6. ? Operator in Loops ---");
+
+let ghoom_visited = 0;
+jugaad test_ghoom_propagation(items) {
+    ghoom item in items {
+        ghoom_visited = ghoom_visited + 1;
+        let val = item?;
+    }
+    ye_le Ok("completed_all");
+}
+
+ghoom_visited = 0;
+let list_with_err = [Ok(1), Ok(2), Err("abort_ghoom"), Ok(4), Ok(5)];
+let ghoom_res = test_ghoom_propagation(list_with_err);
+assert_true(ghoom_res.is_err(), "ghoom loop ? aborts early on Err");
+assert_true(ghoom_res.unwrap_err() == "abort_ghoom", "ghoom loop preserves Err payload");
+assert_true(ghoom_visited == 3, "ghoom loop strictly stopped at 3rd iteration (visited == 3)");
+
+let jabtak_visited = 0;
+jugaad test_jabtak_propagation() {
+    jabtak jabtak_visited < 50 {
+        jabtak_visited = jabtak_visited + 1;
+        agar jabtak_visited == 7 {
+            let halted = None?;
+        }
+    }
+    ye_le Some(jabtak_visited);
+}
+
+jabtak_visited = 0;
+let jabtak_res = test_jabtak_propagation();
+assert_true(jabtak_res.is_none(), "jabtak loop ? aborts early on None");
+assert_true(jabtak_visited == 7, "jabtak loop strictly stopped at 7th iteration (visited == 7)");
+
+// Nested loops: 3 levels deep early exit
+let nested_visited = 0;
+jugaad test_nested_loops_propagation() {
+    ghoom i in 0..10 {
+        ghoom j in 0..10 {
+            ghoom k in 0..10 {
+                nested_visited = nested_visited + 1;
+                agar i == 1 && j == 2 && k == 3 {
+                    let err = Err("abort_nested_3")?;
+                }
+            }
+        }
+    }
+    ye_le Ok(nested_visited);
+}
+
+nested_visited = 0;
+let nested_res = test_nested_loops_propagation();
+assert_true(nested_res.is_err(), "3-level nested loop ? returns Err");
+assert_true(nested_res.unwrap_err() == "abort_nested_3", "3-level nested loop preserves Err payload");
+// In half open ranges: i=0: 10*10 = 100. i=1, j=0: 10. j=1: 10. j=2, k=0..3: 4 hits. Total = 124.
+assert_true(nested_visited == 124, "3-level nested loop aborted immediately (visited == 124)");
+
+// -------------------------------------------------------------------------
+// 7. ? Operator in Try-Catch-Finally (Panga-Lafda-Pakka)
+// -------------------------------------------------------------------------
+dikha("--- 7. ? Operator in Panga-Lafda-Pakka ---");
+
+let pakka_executed = 0;
+jugaad test_try_finally_propagation() {
+    panga {
+        let x = Err("panga_fail")?;
+        ye_le Ok("never_here");
+    } lafda err {
+        ye_le Ok("caught");
+    } pakka {
+        pakka_executed = pakka_executed + 1;
+    }
+}
+
+pakka_executed = 0;
+let panga_res = test_try_finally_propagation();
+assert_true(panga_res.is_err(), "panga ? returns Err without being caught by catch");
+assert_true(panga_res.unwrap_err() == "panga_fail", "panga ? preserves error payload");
+assert_true(pakka_executed == 1, "pakka (finally) block executed exactly once on ? return");
+
+// -------------------------------------------------------------------------
+// 8. Negative Boundary Tests
+// -------------------------------------------------------------------------
+dikha("--- 8. Negative Boundary Tests ---");
+
+// Unwrap on None throws Khali
+let caught_none_unwrap = jhooth;
+panga {
+    let bad = None.unwrap();
+} lafda err {
+    caught_none_unwrap = sach;
+}
+assert_true(caught_none_unwrap, "None.unwrap() throws exception");
+
+// Unwrap on Err throws Galat
+let caught_err_unwrap = jhooth;
+panga {
+    let bad = Err("kaboom").unwrap();
+} lafda err {
+    caught_err_unwrap = sach;
+}
+assert_true(caught_err_unwrap, "Err.unwrap() throws exception");
+
+// Non-exhaustive match throws Adhoora
+let caught_adhoora = jhooth;
+panga {
+    let x = 999;
+    let res = jaanch x {
+        1 => "one",
+        2 => "two"
+    };
+} lafda err {
+    caught_adhoora = sach;
+}
+assert_true(caught_adhoora, "Non-exhaustive jaanch without warna throws Adhoora");
+
+// -------------------------------------------------------------------------
+// Summary
+// -------------------------------------------------------------------------
+dikha("=========================================");
+dikha("Total Tests Passed: " + passed_count);
+dikha("Total Tests Failed: " + failed_count);
+agar failed_count == 0 {
+    dikha("ALL ADVERSARIAL TESTS PASSED!");
+} warna {
+    dikha("FAILURES OCCURRED!");
+}

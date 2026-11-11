@@ -1,0 +1,507 @@
+{
+  "timestamp": "2026-11-11T14:05:56.916963+00:00",
+  "platform": "Darwin arm64",
+  "compilation_speed": {
+    "overall_loc_per_sec": 28.410731224842188,
+    "compilation_loc_per_sec": 28.410731224842188,
+    "total_loc": 40,
+    "total_time_sec": 1.4079187080205884,
+    "workloads": {
+      "small_fib": {
+        "loc": 11,
+        "elapsed_sec": 0.7042760000040289,
+        "loc_per_sec": 15.618876690299077,
+        "peak_rss_mb": 160.671875
+      },
+      "medium_sieve": {
+        "loc": 29,
+        "elapsed_sec": 0.7036427080165595,
+        "loc_per_sec": 41.21409867480289,
+        "peak_rss_mb": 160.671875
+      }
+    }
+  },
+  "compilation_loc_per_sec": 28.410731224842188,
+  "throughput": {
+    "fib": {
+      "interpreted": {
+        "mean_sec": 2.0719236113266866,
+        "median_sec": 2.062662541982718,
+        "min_sec": 2.0170307499938644,
+        "max_sec": 2.136077542003477,
+        "stdev_sec": 0.060061303898519665,
+        "ops_per_sec": 0.4826432762932238,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.02399348634450386,
+        "median_sec": 0.002501792012481019,
+        "min_sec": 0.002297667000675574,
+        "max_sec": 0.06718100002035499,
+        "stdev_sec": 0.03740162322522222,
+        "ops_per_sec": 41.677978166314624,
+        "peak_rss_mb": 166.109375
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.020962888656261686,
+        "median_sec": 0.002131540997652337,
+        "min_sec": 0.00202991598052904,
+        "max_sec": 0.058727208990603685,
+        "stdev_sec": 0.03270490023906393,
+        "ops_per_sec": 47.703349304452686,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.027199694673375536,
+        "median_sec": 0.0021471249929163605,
+        "min_sec": 0.0019768339989241213,
+        "max_sec": 0.07747512502828613,
+        "stdev_sec": 0.04353988312782038,
+        "ops_per_sec": 36.76511857976301,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "sieve": {
+      "interpreted": {
+        "mean_sec": 0.4064906533361257,
+        "median_sec": 0.37515983401681297,
+        "min_sec": 0.3585612089955248,
+        "max_sec": 0.48575091699603945,
+        "stdev_sec": 0.06914130917713818,
+        "ops_per_sec": 2.46008116494896,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.11851134766281272,
+        "median_sec": 0.0027082919841632247,
+        "min_sec": 0.002665792009793222,
+        "max_sec": 0.3501599589944817,
+        "stdev_sec": 0.20061358329006523,
+        "ops_per_sec": 8.43801053419112,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.12337880600049782,
+        "median_sec": 0.0021293750032782555,
+        "min_sec": 0.00211408399627544,
+        "max_sec": 0.36589295900193974,
+        "stdev_sec": 0.2100234174156749,
+        "ops_per_sec": 8.105119772321068,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "math_loop": {
+      "interpreted": {
+        "mean_sec": 0.4471475833367246,
+        "median_sec": 0.4039410420227796,
+        "min_sec": 0.37933049999992363,
+        "max_sec": 0.5581712079874706,
+        "stdev_sec": 0.0969335010076856,
+        "ops_per_sec": 2.2363980870426614,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.169976986333495,
+        "median_sec": 0.003527666995069012,
+        "min_sec": 0.003414667007746175,
+        "max_sec": 0.5029886249976698,
+        "stdev_sec": 0.28839654437353873,
+        "ops_per_sec": 5.883149369632893,
+        "peak_rss_mb": 166.109375
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.139135361018513,
+        "median_sec": 0.0028006250213366,
+        "min_sec": 0.002608208014862612,
+        "max_sec": 0.41199725001933984,
+        "stdev_sec": 0.23630534718431734,
+        "ops_per_sec": 7.187245518893953,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.17378906966769136,
+        "median_sec": 0.002694374998100102,
+        "min_sec": 0.002646542008733377,
+        "max_sec": 0.5160262919962406,
+        "stdev_sec": 0.29638612962210187,
+        "ops_per_sec": 5.75410180808343,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "tree_drop": {
+      "interpreted": {
+        "mean_sec": 6.496883264005494,
+        "median_sec": 6.523875709011918,
+        "min_sec": 6.286647500004619,
+        "max_sec": 6.6801265829999465,
+        "stdev_sec": 0.19812342429475494,
+        "ops_per_sec": 0.1539199581344293,
+        "peak_rss_mb": 168.171875
+      },
+      "native_cpp": {
+        "mean_sec": 0.23023429167612144,
+        "median_sec": 0.005329125007847324,
+        "min_sec": 0.004384125000797212,
+        "max_sec": 0.6809896250197198,
+        "stdev_sec": 0.39036585552469516,
+        "ops_per_sec": 4.343401639781509,
+        "peak_rss_mb": 168.171875
+      },
+      "baseline_rust": {
+        "mean_sec": 0.138152624994594,
+        "median_sec": 0.007394624990411103,
+        "min_sec": 0.002504125004634261,
+        "max_sec": 0.4045591249887366,
+        "stdev_sec": 0.23072775445722724,
+        "ops_per_sec": 7.238371330542077,
+        "peak_rss_mb": 168.171875
+      }
+    },
+    "json": {
+      "interpreted": {
+        "mean_sec": 0.3536372499947902,
+        "median_sec": 0.3555938749923371,
+        "min_sec": 0.34491883299779147,
+        "max_sec": 0.360399041994242,
+        "stdev_sec": 0.007923414900105636,
+        "ops_per_sec": 2.8277564086213545,
+        "peak_rss_mb": 168.171875
+      }
+    },
+    "csv": {
+      "interpreted": {
+        "mean_sec": 1.040854985990639,
+        "median_sec": 1.0326469999854453,
+        "min_sec": 1.0107784580031876,
+        "max_sec": 1.0791394999832846,
+        "stdev_sec": 0.03491183597073122,
+        "ops_per_sec": 0.9607486282522294,
+        "peak_rss_mb": 168.171875
+      }
+    }
+  },
+  "workloads": {
+    "fib": {
+      "interpreted": {
+        "mean_sec": 2.0719236113266866,
+        "median_sec": 2.062662541982718,
+        "min_sec": 2.0170307499938644,
+        "max_sec": 2.136077542003477,
+        "stdev_sec": 0.060061303898519665,
+        "ops_per_sec": 0.4826432762932238,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.02399348634450386,
+        "median_sec": 0.002501792012481019,
+        "min_sec": 0.002297667000675574,
+        "max_sec": 0.06718100002035499,
+        "stdev_sec": 0.03740162322522222,
+        "ops_per_sec": 41.677978166314624,
+        "peak_rss_mb": 166.109375
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.020962888656261686,
+        "median_sec": 0.002131540997652337,
+        "min_sec": 0.00202991598052904,
+        "max_sec": 0.058727208990603685,
+        "stdev_sec": 0.03270490023906393,
+        "ops_per_sec": 47.703349304452686,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.027199694673375536,
+        "median_sec": 0.0021471249929163605,
+        "min_sec": 0.0019768339989241213,
+        "max_sec": 0.07747512502828613,
+        "stdev_sec": 0.04353988312782038,
+        "ops_per_sec": 36.76511857976301,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "sieve": {
+      "interpreted": {
+        "mean_sec": 0.4064906533361257,
+        "median_sec": 0.37515983401681297,
+        "min_sec": 0.3585612089955248,
+        "max_sec": 0.48575091699603945,
+        "stdev_sec": 0.06914130917713818,
+        "ops_per_sec": 2.46008116494896,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.11851134766281272,
+        "median_sec": 0.0027082919841632247,
+        "min_sec": 0.002665792009793222,
+        "max_sec": 0.3501599589944817,
+        "stdev_sec": 0.20061358329006523,
+        "ops_per_sec": 8.43801053419112,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.12337880600049782,
+        "median_sec": 0.0021293750032782555,
+        "min_sec": 0.00211408399627544,
+        "max_sec": 0.36589295900193974,
+        "stdev_sec": 0.2100234174156749,
+        "ops_per_sec": 8.105119772321068,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "math_loop": {
+      "interpreted": {
+        "mean_sec": 0.4471475833367246,
+        "median_sec": 0.4039410420227796,
+        "min_sec": 0.37933049999992363,
+        "max_sec": 0.5581712079874706,
+        "stdev_sec": 0.0969335010076856,
+        "ops_per_sec": 2.2363980870426614,
+        "peak_rss_mb": 166.109375
+      },
+      "native_cpp": {
+        "mean_sec": 0.169976986333495,
+        "median_sec": 0.003527666995069012,
+        "min_sec": 0.003414667007746175,
+        "max_sec": 0.5029886249976698,
+        "stdev_sec": 0.28839654437353873,
+        "ops_per_sec": 5.883149369632893,
+        "peak_rss_mb": 166.109375
+      },
+      "self_hosted_native": {
+        "mean_sec": 0.139135361018513,
+        "median_sec": 0.0028006250213366,
+        "min_sec": 0.002608208014862612,
+        "max_sec": 0.41199725001933984,
+        "stdev_sec": 0.23630534718431734,
+        "ops_per_sec": 7.187245518893953,
+        "peak_rss_mb": 166.109375
+      },
+      "baseline_rust": {
+        "mean_sec": 0.17378906966769136,
+        "median_sec": 0.002694374998100102,
+        "min_sec": 0.002646542008733377,
+        "max_sec": 0.5160262919962406,
+        "stdev_sec": 0.29638612962210187,
+        "ops_per_sec": 5.75410180808343,
+        "peak_rss_mb": 166.109375
+      }
+    },
+    "tree_drop": {
+      "interpreted": {
+        "mean_sec": 6.496883264005494,
+        "median_sec": 6.523875709011918,
+        "min_sec": 6.286647500004619,
+        "max_sec": 6.6801265829999465,
+        "stdev_sec": 0.19812342429475494,
+        "ops_per_sec": 0.1539199581344293,
+        "peak_rss_mb": 168.171875
+      },
+      "native_cpp": {
+        "mean_sec": 0.23023429167612144,
+        "median_sec": 0.005329125007847324,
+        "min_sec": 0.004384125000797212,
+        "max_sec": 0.6809896250197198,
+        "stdev_sec": 0.39036585552469516,
+        "ops_per_sec": 4.343401639781509,
+        "peak_rss_mb": 168.171875
+      },
+      "baseline_rust": {
+        "mean_sec": 0.138152624994594,
+        "median_sec": 0.007394624990411103,
+        "min_sec": 0.002504125004634261,
+        "max_sec": 0.4045591249887366,
+        "stdev_sec": 0.23072775445722724,
+        "ops_per_sec": 7.238371330542077,
+        "peak_rss_mb": 168.171875
+      }
+    },
+    "json": {
+      "interpreted": {
+        "mean_sec": 0.3536372499947902,
+        "median_sec": 0.3555938749923371,
+        "min_sec": 0.34491883299779147,
+        "max_sec": 0.360399041994242,
+        "stdev_sec": 0.007923414900105636,
+        "ops_per_sec": 2.8277564086213545,
+        "peak_rss_mb": 168.171875
+      }
+    },
+    "csv": {
+      "interpreted": {
+        "mean_sec": 1.040854985990639,
+        "median_sec": 1.0326469999854453,
+        "min_sec": 1.0107784580031876,
+        "max_sec": 1.0791394999832846,
+        "stdev_sec": 0.03491183597073122,
+        "ops_per_sec": 0.9607486282522294,
+        "peak_rss_mb": 168.171875
+      }
+    }
+  },
+  "memory_peak_rss": {
+    "fib": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "self_hosted_native": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "sieve": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "math_loop": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "self_hosted_native": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "tree_drop": {
+      "interpreted": 168.171875,
+      "native_cpp": 168.171875,
+      "baseline_rust": 168.171875
+    },
+    "json": {
+      "interpreted": 168.171875
+    },
+    "csv": {
+      "interpreted": 168.171875
+    }
+  },
+  "peak_rss": {
+    "fib": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "self_hosted_native": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "sieve": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "math_loop": {
+      "interpreted": 166.109375,
+      "native_cpp": 166.109375,
+      "self_hosted_native": 166.109375,
+      "baseline_rust": 166.109375
+    },
+    "tree_drop": {
+      "interpreted": 168.171875,
+      "native_cpp": 168.171875,
+      "baseline_rust": 168.171875
+    },
+    "json": {
+      "interpreted": 168.171875
+    },
+    "csv": {
+      "interpreted": 168.171875
+    }
+  },
+  "comparisons": {
+    "matrix": [
+      {
+        "workload": "fib",
+        "interpreted_time_sec": 2.0719236113266866,
+        "interpreted_ops_sec": 0.4826432762932238,
+        "native_cpp_time_sec": 0.02399348634450386,
+        "native_cpp_ops_sec": 41.677978166314624,
+        "self_hosted_native_time_sec": 0.020962888656261686,
+        "self_hosted_native_ops_sec": 47.703349304452686,
+        "baseline_rust_time_sec": 0.027199694673375536,
+        "baseline_rust_ops_sec": 36.76511857976301
+      },
+      {
+        "workload": "sieve",
+        "interpreted_time_sec": 0.4064906533361257,
+        "interpreted_ops_sec": 2.46008116494896,
+        "native_cpp_time_sec": 0.11851134766281272,
+        "native_cpp_ops_sec": 8.43801053419112,
+        "baseline_rust_time_sec": 0.12337880600049782,
+        "baseline_rust_ops_sec": 8.105119772321068
+      },
+      {
+        "workload": "math_loop",
+        "interpreted_time_sec": 0.4471475833367246,
+        "interpreted_ops_sec": 2.2363980870426614,
+        "native_cpp_time_sec": 0.169976986333495,
+        "native_cpp_ops_sec": 5.883149369632893,
+        "self_hosted_native_time_sec": 0.139135361018513,
+        "self_hosted_native_ops_sec": 7.187245518893953,
+        "baseline_rust_time_sec": 0.17378906966769136,
+        "baseline_rust_ops_sec": 5.75410180808343
+      },
+      {
+        "workload": "tree_drop",
+        "interpreted_time_sec": 6.496883264005494,
+        "interpreted_ops_sec": 0.1539199581344293,
+        "native_cpp_time_sec": 0.23023429167612144,
+        "native_cpp_ops_sec": 4.343401639781509,
+        "baseline_rust_time_sec": 0.138152624994594,
+        "baseline_rust_ops_sec": 7.238371330542077
+      },
+      {
+        "workload": "json",
+        "interpreted_time_sec": 0.3536372499947902,
+        "interpreted_ops_sec": 2.8277564086213545
+      },
+      {
+        "workload": "csv",
+        "interpreted_time_sec": 1.040854985990639,
+        "interpreted_ops_sec": 0.9607486282522294
+      }
+    ]
+  },
+  "matrix": [
+    {
+      "workload": "fib",
+      "interpreted_time_sec": 2.0719236113266866,
+      "interpreted_ops_sec": 0.4826432762932238,
+      "native_cpp_time_sec": 0.02399348634450386,
+      "native_cpp_ops_sec": 41.677978166314624,
+      "self_hosted_native_time_sec": 0.020962888656261686,
+      "self_hosted_native_ops_sec": 47.703349304452686,
+      "baseline_rust_time_sec": 0.027199694673375536,
+      "baseline_rust_ops_sec": 36.76511857976301
+    },
+    {
+      "workload": "sieve",
+      "interpreted_time_sec": 0.4064906533361257,
+      "interpreted_ops_sec": 2.46008116494896,
+      "native_cpp_time_sec": 0.11851134766281272,
+      "native_cpp_ops_sec": 8.43801053419112,
+      "baseline_rust_time_sec": 0.12337880600049782,
+      "baseline_rust_ops_sec": 8.105119772321068
+    },
+    {
+      "workload": "math_loop",
+      "interpreted_time_sec": 0.4471475833367246,
+      "interpreted_ops_sec": 2.2363980870426614,
+      "native_cpp_time_sec": 0.169976986333495,
+      "native_cpp_ops_sec": 5.883149369632893,
+      "self_hosted_native_time_sec": 0.139135361018513,
+      "self_hosted_native_ops_sec": 7.187245518893953,
+      "baseline_rust_time_sec": 0.17378906966769136,
+      "baseline_rust_ops_sec": 5.75410180808343
+    },
+    {
+      "workload": "tree_drop",
+      "interpreted_time_sec": 6.496883264005494,
+      "interpreted_ops_sec": 0.1539199581344293,
+      "native_cpp_time_sec": 0.23023429167612144,
+      "native_cpp_ops_sec": 4.343401639781509,
+      "baseline_rust_time_sec": 0.138152624994594,
+      "baseline_rust_ops_sec": 7.238371330542077
+    },
+    {
+      "workload": "json",
+      "interpreted_time_sec": 0.3536372499947902,
+      "interpreted_ops_sec": 2.8277564086213545
+    },
+    {
+      "workload": "csv",
+      "interpreted_time_sec": 1.040854985990639,
+      "interpreted_ops_sec": 0.9607486282522294
+    }
+  ]
+}

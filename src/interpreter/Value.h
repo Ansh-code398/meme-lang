@@ -20,12 +20,16 @@ struct MemeBytes;
 struct MemeSet;
 struct MemeTuple;
 struct Pointer;
+struct MemeOption;
+struct MemeResult;
 std::string instanceToString(const std::shared_ptr<Instance> &instance);
 std::string listToString(const std::shared_ptr<MemeList> &list);
 std::string mapToString(const std::shared_ptr<MemeMap> &map);
 std::string bytesToString(const std::shared_ptr<MemeBytes> &bytes);
 std::string setToString(const std::shared_ptr<MemeSet> &set);
 std::string tupleToString(const std::shared_ptr<MemeTuple> &tuple);
+std::string optionToString(const std::shared_ptr<MemeOption> &opt);
+std::string resultToString(const std::shared_ptr<MemeResult> &res);
 
 template <class... Ts>
 struct overload : Ts...
@@ -138,7 +142,9 @@ using ValueVariant = std::variant<
     std::shared_ptr<MemeMap>,    // map / dict / khata
     std::shared_ptr<MemeBytes>,  // raw bytes buffer
     std::shared_ptr<MemeSet>,    // set / jhund
-    std::shared_ptr<MemeTuple>   // tuple / jodi
+    std::shared_ptr<MemeTuple>,  // tuple / jodi
+    std::shared_ptr<MemeOption>, // Option (Some/None, Kuch/Khali)
+    std::shared_ptr<MemeResult>  // Result (Ok/Err, Sahi/Galat)
 >;
 
 inline std::string formatFloat(double v)
@@ -187,6 +193,45 @@ struct Value
     Value(std::shared_ptr<MemeBytes> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeSet> v) : data(std::move(v)) {}
     Value(std::shared_ptr<MemeTuple> v) : data(std::move(v)) {}
+    Value(std::shared_ptr<MemeOption> v) : data(std::move(v)) {}
+    Value(std::shared_ptr<MemeResult> v) : data(std::move(v)) {}
+
+    static Value some(Value val);
+    static Value none();
+    static Value ok(Value val);
+    static Value err(Value val);
+
+    bool isOption() const
+    {
+        if (isReference()) return deref().isOption();
+        return std::holds_alternative<std::shared_ptr<MemeOption>>(data);
+    }
+
+    std::shared_ptr<MemeOption> getOption() const
+    {
+        if (isReference()) return deref().getOption();
+        if (!std::holds_alternative<std::shared_ptr<MemeOption>>(data))
+        {
+            throw std::runtime_error("Doglapan! Expected Option value but got " + typeName());
+        }
+        return std::get<std::shared_ptr<MemeOption>>(data);
+    }
+
+    bool isResult() const
+    {
+        if (isReference()) return deref().isResult();
+        return std::holds_alternative<std::shared_ptr<MemeResult>>(data);
+    }
+
+    std::shared_ptr<MemeResult> getResult() const
+    {
+        if (isReference()) return deref().getResult();
+        if (!std::holds_alternative<std::shared_ptr<MemeResult>>(data))
+        {
+            throw std::runtime_error("Doglapan! Expected Result value but got " + typeName());
+        }
+        return std::get<std::shared_ptr<MemeResult>>(data);
+    }
 
     static Value pointer(std::shared_ptr<Pointer> ptr)
     {
@@ -525,7 +570,9 @@ struct Value
                 [](const std::shared_ptr<MemeMap> &) -> std::string { return "khata"; },
                 [](const std::shared_ptr<MemeBytes> &) -> std::string { return "bytes"; },
                 [](const std::shared_ptr<MemeSet> &) -> std::string { return "set"; },
-                [](const std::shared_ptr<MemeTuple> &) -> std::string { return "tuple"; }
+                [](const std::shared_ptr<MemeTuple> &) -> std::string { return "tuple"; },
+                [](const std::shared_ptr<MemeOption> &) -> std::string { return "Option"; },
+                [](const std::shared_ptr<MemeResult> &) -> std::string { return "Result"; }
             },
             data);
     }
@@ -579,6 +626,12 @@ struct Value
                 },
                 [](const std::shared_ptr<MemeTuple> &v) -> std::string {
                     return tupleToString(v);
+                },
+                [](const std::shared_ptr<MemeOption> &v) -> std::string {
+                    return optionToString(v);
+                },
+                [](const std::shared_ptr<MemeResult> &v) -> std::string {
+                    return resultToString(v);
                 }
             },
             data);
@@ -604,6 +657,15 @@ struct MemeMap
     std::unordered_map<std::string, Value> entries;
     std::vector<std::string> keyOrder;
     bool isModule = false;
+    bool isNamespace = false;
+    bool isPackage = false;
+    std::string packageName = "";
+    std::unordered_set<std::string> unexportedSymbols;
+
+    bool hasUnexported(const std::string &key) const
+    {
+        return unexportedSymbols.find(key) != unexportedSymbols.end();
+    }
     MemeMap() = default;
 
     void set(const std::string &key, Value val)
@@ -740,6 +802,67 @@ struct MemeSet
     }
 };
 
+struct MemeOption
+{
+    bool hasValue = false;
+    Value value;
+
+    MemeOption() : hasValue(false), value(std::monostate{}) {}
+    explicit MemeOption(Value val) : hasValue(true), value(std::move(val)) {}
+
+    static std::shared_ptr<MemeOption> some(Value val)
+    {
+        return std::make_shared<MemeOption>(std::move(val));
+    }
+
+    static std::shared_ptr<MemeOption> none()
+    {
+        return std::make_shared<MemeOption>();
+    }
+
+    bool isSome() const { return hasValue; }
+    bool isNone() const { return !hasValue; }
+};
+
+struct MemeResult
+{
+    bool isOkVal = true;
+    Value value;
+
+    MemeResult() : isOkVal(true), value(std::monostate{}) {}
+    MemeResult(bool ok, Value val) : isOkVal(ok), value(std::move(val)) {}
+
+    static std::shared_ptr<MemeResult> ok(Value val)
+    {
+        return std::make_shared<MemeResult>(true, std::move(val));
+    }
+
+    static std::shared_ptr<MemeResult> err(Value val)
+    {
+        return std::make_shared<MemeResult>(false, std::move(val));
+    }
+
+    bool isOk() const { return isOkVal; }
+    bool isErr() const { return !isOkVal; }
+};
+
+inline std::string optionToString(const std::shared_ptr<MemeOption> &opt)
+{
+    if (!opt) return "None";
+    return opt->hasValue ? ("Some(" + opt->value.toString() + ")") : "None";
+}
+
+inline std::string resultToString(const std::shared_ptr<MemeResult> &res)
+{
+    if (!res) return "Err(nalla)";
+    return res->isOkVal ? ("Ok(" + res->value.toString() + ")") : ("Err(" + res->value.toString() + ")");
+}
+
+inline Value Value::some(Value val) { return Value(MemeOption::some(std::move(val))); }
+inline Value Value::none() { return Value(MemeOption::none()); }
+inline Value Value::ok(Value val) { return Value(MemeResult::ok(std::move(val))); }
+inline Value Value::err(Value val) { return Value(MemeResult::err(std::move(val))); }
+
 inline bool Value::isTruthy() const
 {
     if (std::holds_alternative<bool>(data))
@@ -775,7 +898,9 @@ inline bool Value::isTruthy() const
             [](const std::shared_ptr<MemeMap> &v) -> bool { return v != nullptr && !v->entries.empty(); },
             [](const std::shared_ptr<MemeBytes> &v) -> bool { return v != nullptr && !v->data.empty(); },
             [](const std::shared_ptr<MemeSet> &v) -> bool { return v != nullptr && !v->elements.empty(); },
-            [](const std::shared_ptr<MemeTuple> &v) -> bool { return v != nullptr && !v->elements.empty(); }
+            [](const std::shared_ptr<MemeTuple> &v) -> bool { return v != nullptr && !v->elements.empty(); },
+            [](const std::shared_ptr<MemeOption> &v) -> bool { return v != nullptr && v->hasValue; },
+            [](const std::shared_ptr<MemeResult> &v) -> bool { return v != nullptr && v->isOkVal; }
         },
         data);
 }

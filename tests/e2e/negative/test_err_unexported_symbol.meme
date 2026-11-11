@@ -1,0 +1,15 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Access Unexported Package Symbol
+// EXPECT_ERROR: Khufiya
+// ==============================================================================
+
+potli SecretVault;
+
+// Private unexported function
+jugaad _internal_keys() {
+    ye_le "super_secret_credentials";
+}
+
+// Attempting to access unexported symbol from outside package triggers error
+pakad stolen = SecretVault::_internal_keys();
+dikha stolen;

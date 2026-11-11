@@ -1,0 +1,21 @@
+// test_m3_map.meme
+// Verifies MapLiteralExpr and MemeValue::TYPE_MAP in native compiled binaries
+pakad kw = {};
+kw["agar"] = "KW_IF";
+kw["warna"] = "KW_ELSE";
+kw["jabtak"] = "KW_WHILE";
+kw["ye_le"] = "KW_RETURN";
+
+dikha f"MAP_SIZE:{kw.size()}";
+dikha f"HAS_AGAR:{kw.has(\"agar\")}";
+dikha f"HAS_UNKNOWN:{kw.has(\"unknown\")}";
+dikha f"LOOKUP_AGAR:{kw[\"agar\"]}";
+dikha f"LOOKUP_YE_LE:{kw[\"ye_le\"]}";
+
+// Update existing key
+kw["agar"] = "KW_IF_UPDATED";
+dikha f"UPDATED_AGAR:{kw[\"agar\"]}";
+
+// Keys enumeration
+pakad k_list = kw.keys();
+dikha f"KEYS_COUNT:{k_list.length()}";

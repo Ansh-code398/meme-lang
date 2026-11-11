@@ -1,0 +1,9 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Unhandled Unwrap on None/Khali
+// EXPECT_ERROR: Khali
+// ==============================================================================
+
+pakad opt = Khali;
+// Unwrapping empty Option directly without error handling triggers fatal error
+pakad val = opt.unwrap();
+dikha val;

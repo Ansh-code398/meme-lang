@@ -48,6 +48,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " setup                     Link 'meme' CLI globally into PATH (alias: link)\n";
     std::cout << "  " << prog << " run <script>              Run a script defined in tapri.json\n";
     std::cout << "  " << prog << " test [dir]                Run test runner on *_test.meme files\n";
+    std::cout << "  " << prog << " build [file]              Build project via tapri.json or compile script\n";
     std::cout << "  " << prog << " compile <file> [-o bin]   Ahead-Of-Time (AOT) compile to native machine binary\n";
     std::cout << "  " << prog << " --native <file> [args]    Compile and run immediately at 100% native CPU speed\n";
     std::cout << "  " << prog << " pakao <file> ...          Alias for compile (Cook/bake to native binary)\n";
@@ -1499,7 +1500,37 @@ static void handleDev(int argc, char *argv[])
 
 static void handleTest(int argc, char *argv[])
 {
-    std::string targetDir = (argc >= 3) ? argv[2] : (std::filesystem::exists("tests") ? "tests" : ".");
+    std::string targetDir = "";
+    std::string filterPattern = "";
+    bool stagedOnly = false;
+    bool useNative = false;
+
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg.rfind("--filter=", 0) == 0)
+        {
+            filterPattern = arg.substr(9);
+        }
+        else if (arg == "--staged-only")
+        {
+            stagedOnly = true;
+        }
+        else if (arg == "--native")
+        {
+            useNative = true;
+        }
+        else if (arg[0] != '-')
+        {
+            targetDir = arg;
+        }
+    }
+
+    if (targetDir.empty())
+    {
+        targetDir = std::filesystem::exists("tests") ? "tests" : ".";
+    }
+
     if (!std::filesystem::exists(targetDir))
     {
         std::cout << formatRichText("[laal]❌ Test directory '" + targetDir + "' nahi mili![/]\n");
@@ -1515,6 +1546,14 @@ static void handleTest(int argc, char *argv[])
             if ((filename.length() > 10 && filename.substr(filename.length() - 10) == "_test.meme") ||
                 (filename.rfind("test_", 0) == 0 && filename.ends_with(".meme")))
             {
+                if (stagedOnly && entry.path().string().find("staged") == std::string::npos)
+                {
+                    continue;
+                }
+                if (!filterPattern.empty() && entry.path().string().find(filterPattern) == std::string::npos)
+                {
+                    continue;
+                }
                 testFiles.push_back(entry.path());
             }
         }
@@ -1533,6 +1572,13 @@ static void handleTest(int argc, char *argv[])
     for (const auto &tf : testFiles)
     {
         std::cout << formatRichText("[asmani]• " + tf.string() + "[/]\n");
+        if (useNative)
+        {
+            int code = NativeCompiler::runNative(tf.string(), {});
+            if (code == 0) passed++; else failed++;
+            continue;
+        }
+
         std::ifstream file(tf);
         if (!file.is_open())
         {
@@ -1654,6 +1700,147 @@ static void handleCompile(int argc, char *argv[])
     std::cout << formatRichText("[hara bold]✔ Pak gaya:[/] Generated native machine binary at [bold]" + res.binaryPath + "[/] (" + std::to_string(static_cast<int>(res.compileTimeMs)) + "ms)\n");
 }
 
+struct TapriManifest {
+    std::string name;
+    std::string version = "1.0.0";
+    std::string entry;
+    std::string output;
+};
+
+static bool parseTapriJson(const std::string &content, TapriManifest &manifest, std::string &error)
+{
+    int braceDepth = 0;
+    bool inQuote = false;
+    bool escaped = false;
+    for (char c : content)
+    {
+        if (escaped) { escaped = false; continue; }
+        if (c == '\\' && inQuote) { escaped = true; continue; }
+        if (c == '"') { inQuote = !inQuote; continue; }
+        if (!inQuote)
+        {
+            if (c == '{') braceDepth++;
+            else if (c == '}') braceDepth--;
+        }
+    }
+    if (inQuote || braceDepth != 0)
+    {
+        error = "Invalid JSON syntax in tapri.json: unclosed string or unbalanced braces.";
+        return false;
+    }
+
+    auto extractField = [&](const std::string &key) -> std::string {
+        std::string search = "\"" + key + "\"";
+        size_t pos = 0;
+        while ((pos = content.find(search, pos)) != std::string::npos)
+        {
+            size_t colon = content.find(':', pos + search.size());
+            if (colon != std::string::npos)
+            {
+                size_t q1 = content.find('"', colon + 1);
+                if (q1 != std::string::npos)
+                {
+                    size_t q2 = content.find('"', q1 + 1);
+                    if (q2 != std::string::npos)
+                    {
+                        return content.substr(q1 + 1, q2 - q1 - 1);
+                    }
+                }
+            }
+            pos += search.size();
+        }
+        return "";
+    };
+
+    manifest.name = extractField("name");
+    manifest.version = extractField("version");
+    manifest.entry = extractField("entry");
+    if (manifest.entry.empty()) manifest.entry = extractField("main");
+    manifest.output = extractField("output");
+    if (manifest.output.empty()) manifest.output = extractField("bin");
+
+    return true;
+}
+
+static void handleBuild(int argc, char *argv[])
+{
+    // If a source file was explicitly passed: ./meme build foo.meme
+    if (argc >= 3 && std::string(argv[2]).ends_with(".meme"))
+    {
+        handleCompile(argc, argv);
+        return;
+    }
+
+    // Automatically inspect tapri.json manifest in current directory
+    if (!std::filesystem::exists("tapri.json"))
+    {
+        std::cerr << formatRichText("[laal]❌ tapri.json nahi mila! 'meme build' tapri.json wale project root mein chalayein.[/]\n");
+        std::exit(1);
+    }
+
+    std::ifstream tf("tapri.json");
+    if (!tf.is_open())
+    {
+        std::cerr << formatRichText("[laal]❌ tapri.json open nahi ho saka![/]\n");
+        std::exit(1);
+    }
+
+    std::stringstream ss;
+    ss << tf.rdbuf();
+    std::string content = ss.str();
+
+    TapriManifest manifest;
+    std::string error;
+    if (!parseTapriJson(content, manifest, error))
+    {
+        std::cerr << formatRichText("[laal]❌ Manifest error in tapri.json: " + error + "[/]\n");
+        std::exit(1);
+    }
+
+    if (manifest.entry.empty())
+    {
+        if (std::filesystem::exists("src/main.meme")) manifest.entry = "src/main.meme";
+        else if (std::filesystem::exists("main.meme")) manifest.entry = "main.meme";
+        else
+        {
+            std::cerr << formatRichText("[laal]❌ Entry file specified nahi hai tapri.json mein aur src/main.meme nahi mila![/]\n");
+            std::exit(1);
+        }
+    }
+
+    if (!std::filesystem::exists(manifest.entry))
+    {
+        std::cerr << formatRichText("[laal]❌ Entry file '" + manifest.entry + "' nahi mili![/]\n");
+        std::exit(1);
+    }
+
+    if (manifest.output.empty())
+    {
+        manifest.output = manifest.name.empty() ? "bin/app" : ("bin/" + manifest.name);
+    }
+
+    // Ensure output directories exist
+    std::filesystem::path outPath(manifest.output);
+    if (outPath.has_parent_path())
+    {
+        std::filesystem::create_directories(outPath.parent_path());
+    }
+
+    CompileOptions options;
+    options.outputPath = manifest.output;
+    options.optimize = true;
+
+    std::cout << formatRichText("[asmani bold]⚡ Building tapri project '" + manifest.name + "' from " + manifest.entry + " -> " + manifest.output + "...[/]\n");
+    CompileResult res = NativeCompiler::compileFile(manifest.entry, options);
+    if (!res.success)
+    {
+        std::cerr << formatRichText("[laal bold]❌ Build failed:\n" + res.errorMessage + "[/]\n");
+        std::exit(1);
+    }
+
+    std::cout << formatRichText("[hara bold]✔ Pak gaya:[/] Generated native machine binary at [bold]" + res.binaryPath + "[/] (" + std::to_string(static_cast<int>(res.compileTimeMs)) + "ms)\n");
+}
+
 static bool runSource(const std::string &source, Interpreter &interpreter)
 {
     try
@@ -1741,6 +1928,26 @@ static void runRepl()
 
 int main(int argc, char *argv[])
 {
+    try
+    {
+        std::error_code ec;
+        std::filesystem::path exePath = std::filesystem::canonical(std::filesystem::absolute(argv[0], ec), ec);
+        std::filesystem::path repoDir = exePath.parent_path();
+        if (std::filesystem::exists(repoDir / "src" / "compiler" / "MemeRuntime.h"))
+        {
+            std::string existingInc = getenv("CPLUS_INCLUDE_PATH") ? getenv("CPLUS_INCLUDE_PATH") : "";
+            std::string newInc = repoDir.string();
+            if (!existingInc.empty())
+            {
+                newInc += ":" + existingInc;
+            }
+            setenv("CPLUS_INCLUDE_PATH", newInc.c_str(), 1);
+        }
+    }
+    catch (...)
+    {
+    }
+
     if (argc == 1)
     {
         runRepl();
@@ -1824,7 +2031,12 @@ int main(int argc, char *argv[])
             handleTest(argc, argv);
             return 0;
         }
-        else if (arg1 == "pakao" || arg1 == "compile" || arg1 == "build")
+        else if (arg1 == "build")
+        {
+            handleBuild(argc, argv);
+            return 0;
+        }
+        else if (arg1 == "pakao" || arg1 == "compile")
         {
             handleCompile(argc, argv);
             return 0;

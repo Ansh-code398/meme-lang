@@ -29,7 +29,9 @@ enum class TypeKind
     CLASS,
     ENUM,
     POINTER,    // Pointer type: patta[T] / *T
-    OVERLOAD    // Overload set holding candidate FunctionTypes
+    OVERLOAD,   // Overload set holding candidate FunctionTypes
+    OPTION,     // Option[T]
+    RESULT      // Result[T, E]
 };
 
 class PointerType;
@@ -168,6 +170,17 @@ public:
     static std::shared_ptr<Type> Enum(const std::string &enumName) {
         return std::make_shared<Type>(TypeKind::ENUM, enumName);
     }
+    static std::shared_ptr<Type> Option(std::shared_ptr<Type> elem = nullptr) {
+        auto t = std::make_shared<Type>(TypeKind::OPTION, "Option");
+        t->elementType = elem ? elem : Any();
+        return t;
+    }
+    static std::shared_ptr<Type> Result(std::shared_ptr<Type> okType = nullptr, std::shared_ptr<Type> errType = nullptr) {
+        auto t = std::make_shared<Type>(TypeKind::RESULT, "Result");
+        t->elementType = okType ? okType : Any();
+        t->keyType = errType ? errType : Any();
+        return t;
+    }
     static std::shared_ptr<Type> pointer(std::shared_ptr<Type> pointee, bool isMut = false);
     static std::shared_ptr<Type> Pointer(std::shared_ptr<Type> pointee, bool isMut = false);
     static std::shared_ptr<Type> Patta(std::shared_ptr<Type> pointee, bool isMut = false);
@@ -214,6 +227,8 @@ public:
 
         case TypeKind::LIST:
         case TypeKind::SET:
+        case TypeKind::OPTION:
+        case TypeKind::RESULT:
             if (!this->elementType && !other.elementType) return true;
             if (!this->elementType || !other.elementType) return false;
             return this->elementType->equals(*other.elementType);
@@ -335,7 +350,8 @@ public:
             {
                 return this->name.empty() || target.name.empty() || this->name == target.name;
             }
-            if (this->kind == TypeKind::LIST || this->kind == TypeKind::SET)
+            if (this->kind == TypeKind::LIST || this->kind == TypeKind::SET ||
+                this->kind == TypeKind::OPTION || this->kind == TypeKind::RESULT)
             {
                 if (!this->elementType || !target.elementType) return true;
                 return this->elementType->isAssignableTo(*target.elementType);
@@ -416,6 +432,10 @@ public:
             return "list[" + (elementType ? elementType->toString() : "any") + "]";
         case TypeKind::SET:
             return "set[" + (elementType ? elementType->toString() : "any") + "]";
+        case TypeKind::OPTION:
+            return "Option[" + (elementType ? elementType->toString() : "any") + "]";
+        case TypeKind::RESULT:
+            return "Result[" + (elementType ? elementType->toString() : "any") + "]";
         case TypeKind::TUPLE:
         {
             if (paramTypes.empty()) return "tuple";

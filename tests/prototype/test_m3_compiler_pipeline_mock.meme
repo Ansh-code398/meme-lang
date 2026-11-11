@@ -1,0 +1,59 @@
+// test_m3_compiler_pipeline_mock.meme
+// Complete end-to-end simulation of compiler.meme workflow:
+// file.read -> string lexing -> AST parsing -> C++ code emission -> file.write -> sys.exec(clang++) -> binary execution
+
+// 1. Prepare dummy input file
+pakad source_file = "test_mini_in.meme";
+pakad source_code = "dikha 999;\n";
+file.write(source_file, source_code);
+dikha f"1_INPUT_WRITTEN:{file.exists(source_file)}";
+
+// 2. Ingest source code
+pakad raw_src = file.read(source_file);
+dikha f"2_SOURCE_READ_LEN:{raw_src.length()}";
+
+// 3. Mini Lexer: token scanning
+pakad words = [];
+pakad token = "";
+ghoom idx in 0..raw_src.length() {
+    pakad c = raw_src.charAt(idx);
+    agar (c == " " || c == "\n" || c == ";") {
+        agar (token.length() > 0) {
+            words.push(token);
+            token = "";
+        }
+    } warna {
+        token = token + c;
+    }
+}
+dikha f"3_TOKEN_COUNT:{words.length()}";
+dikha f"3_TOKEN_0:{words[0]}";
+dikha f"3_TOKEN_1:{words[1]}";
+
+// 4. Mini C++ Code Generator
+pakad target_cpp = "test_mini_out.cpp";
+pakad cpp_code = "#include \"src/compiler/MemeRuntime.h\"\n";
+cpp_code = cpp_code + "int main(int argc, char* argv[]) {\n";
+agar (words[0] == "dikha") {
+    cpp_code = cpp_code + "    print_dikha(" + words[1] + "LL);\n";
+}
+cpp_code = cpp_code + "    return 0;\n}\n";
+
+// 5. Write generated C++ file
+file.write(target_cpp, cpp_code);
+dikha f"4_CPP_WRITTEN:{file.exists(target_cpp)}";
+
+// 6. Invoke host clang++ via sys.exec
+pakad target_bin = "test_mini_out_bin";
+pakad compile_cmd = "clang++ -std=c++20 -O2 -I. " + target_cpp + " -o " + target_bin + " 2>&1";
+pakad compile_log = sys.exec(compile_cmd);
+dikha f"5_BIN_EXISTS:{file.exists(target_bin)}";
+
+// 7. Execute compiled mini binary
+pakad run_cmd = "./" + target_bin;
+pakad run_out = sys.exec(run_cmd);
+dikha f"6_MINI_BIN_OUT:{run_out.trim()}";
+
+// 8. Cleanup temporary artifacts
+sys.exec("rm -f test_mini_in.meme test_mini_out.cpp test_mini_out_bin");
+dikha "7_PIPELINE_SUCCESS";

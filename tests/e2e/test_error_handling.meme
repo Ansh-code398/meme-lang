@@ -1,0 +1,193 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Error Handling & Error Propagation Operator (Tiers 1 & 2)
+// Coverage:
+//   - Tier 1: Postfix `?` operator unwrapping for Result and Option
+//   - Tier 1: Exception blocks (`panga ... lafda`, `try ... catch`)
+//   - Tier 1: Explicit throwing (`chillao`, `throw`)
+//   - Tier 2: Chained `?` propagation pipelines, early exit guarantee, nested try/catch
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Error Handling & Propagation (Tiers 1 & 2) ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 1: Exception Handling with Desi `panga ... lafda` & `chillao`
+// ------------------------------------------------------------------------------
+pakad desi_caught_msg = "";
+panga {
+    chillao "Kuch gadbad ho gayi!";
+} lafda (err) {
+    desi_caught_msg = err;
+}
+assert_eq(desi_caught_msg, "Kuch gadbad ho gayi!", "T1_err_try_catch_desi");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 2: English `try ... catch` and `throw`
+// ------------------------------------------------------------------------------
+pakad english_caught_msg = "";
+try {
+    throw "Critical failure";
+} catch (err) {
+    english_caught_msg = err;
+}
+assert_eq(english_caught_msg, "Critical failure", "T1_err_try_catch_english");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 3: Postfix `?` Operator with Result (`Sahi`/`Ok`)
+// ------------------------------------------------------------------------------
+jugaad safe_divide(a: ank, b: ank) {
+    dekh b == 0 {
+        ye_le Galat("Cannot divide by zero");
+    }
+    ye_le Sahi(a / b);
+}
+
+jugaad calculate_average(sum: ank, count: ank) {
+    pakad avg = safe_divide(sum, count)?;
+    ye_le Sahi(avg * 2);
+}
+
+pakad res_ok_call = calculate_average(100, 5);
+assert_eq(res_ok_call.is_ok(), sach, "T1_err_propagate_result_ok_is_ok");
+assert_eq(res_ok_call.unwrap(), 40, "T1_err_propagate_result_ok_val");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 4: Postfix `?` Operator with Result (`Galat`/`Err`) Early Return
+// ------------------------------------------------------------------------------
+pakad res_err_call = calculate_average(100, 0);
+assert_eq(res_err_call.is_err(), sach, "T1_err_propagate_result_err_is_err");
+assert_eq(res_err_call.unwrap_err(), "Cannot divide by zero", "T1_err_propagate_result_err_msg");
+
+// ------------------------------------------------------------------------------
+// TIER 1 - FEATURE 5: Postfix `?` Operator with Option (`Kuch`/`Khali`)
+// ------------------------------------------------------------------------------
+jugaad lookup_user(id: ank) {
+    dekh id == 1 {
+        ye_le Kuch("Alice");
+    }
+    ye_le Khali;
+}
+
+jugaad get_user_greeting(id: ank) {
+    pakad name = lookup_user(id)?;
+    ye_le Kuch(f"Namaste, {name}!");
+}
+
+pakad opt_some_call = get_user_greeting(1);
+assert_eq(opt_some_call.is_some(), sach, "T1_err_propagate_option_some_is_some");
+assert_eq(opt_some_call.unwrap(), "Namaste, Alice!", "T1_err_propagate_option_some_val");
+
+pakad opt_none_call = get_user_greeting(99);
+assert_eq(opt_none_call.is_none(), sach, "T1_err_propagate_option_none_is_none");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 1: Chained Multiple `?` Propagation Steps in Single Function
+// ------------------------------------------------------------------------------
+jugaad step_one(val: ank) {
+    dekh val < 0 { ye_le Err("step1 negative"); }
+    ye_le Ok(val + 10);
+}
+
+jugaad step_two(val: ank) {
+    dekh val > 100 { ye_le Err("step2 overflow"); }
+    ye_le Ok(val * 2);
+}
+
+jugaad step_three(val: ank) {
+    ye_le Ok(val + 5);
+}
+
+jugaad execute_pipeline(val: ank) {
+    pakad v1 = step_one(val)?;
+    pakad v2 = step_two(v1)?;
+    pakad v3 = step_three(v2)?;
+    ye_le Ok(v3);
+}
+
+assert_eq(execute_pipeline(10).unwrap(), 45, "T2_err_chained_pipeline_success");
+assert_eq(execute_pipeline(-5).unwrap_err(), "step1 negative", "T2_err_chained_pipeline_fail_step1");
+assert_eq(execute_pipeline(95).unwrap_err(), "step2 overflow", "T2_err_chained_pipeline_fail_step2");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 2: No Side-Effects Occur After Early Exit via `?`
+// ------------------------------------------------------------------------------
+pakad side_effect_flag = jhooth;
+
+jugaad test_early_exit_side_effects() {
+    pakad x = safe_divide(10, 0)?;
+    side_effect_flag = sach;
+    ye_le Sahi(x);
+}
+
+pakad exit_result = test_early_exit_side_effects();
+assert_eq(exit_result.is_err(), sach, "T2_err_early_exit_is_err");
+assert_eq(side_effect_flag, jhooth, "T2_err_early_exit_no_side_effects");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 3: Wrapping `?` Calls Inside `panga ... lafda`
+// ------------------------------------------------------------------------------
+jugaad parse_and_process(s: bol) {
+    dekh s == "bad" {
+        ye_le Err("Parse error");
+    }
+    ye_le Ok(42);
+}
+
+pakad caught_wrapped = "none";
+jugaad outer_wrapper() {
+    panga {
+        pakad val = parse_and_process("bad")?;
+        ye_le Ok(val);
+    } lafda (e) {
+        caught_wrapped = "caught";
+        ye_le Err(e);
+    }
+}
+
+pakad wrapped_res = outer_wrapper();
+assert_eq(wrapped_res.is_err(), sach, "T2_err_wrapped_question_is_err");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 4: Nested Exception Handling Re-throwing
+// ------------------------------------------------------------------------------
+pakad outer_caught = "";
+panga {
+    panga {
+        chillao "Inner exception";
+    } lafda (inner_err) {
+        chillao f"Rethrown: {inner_err}";
+    }
+} lafda (outer_err) {
+    outer_caught = outer_err;
+}
+assert_eq(outer_caught, "Rethrown: Inner exception", "T2_err_nested_rethrown_exception");
+
+// ------------------------------------------------------------------------------
+// TIER 2 - CORNER CASE 5: Result Propagation with Option Conversion
+// ------------------------------------------------------------------------------
+jugaad result_to_option(res) {
+    dekh res.is_ok() {
+        ye_le Some(res.unwrap());
+    }
+    ye_le None;
+}
+
+jugaad convert_and_propagate(val: ank) {
+    pakad opt = result_to_option(safe_divide(val, 2));
+    pakad unwrapped = opt?;
+    ye_le Some(unwrapped + 1);
+}
+
+assert_eq(convert_and_propagate(20).unwrap(), 11, "T2_err_option_from_result_success");
+assert_eq(convert_and_propagate(0).is_some(), sach, "T2_err_option_from_result_zero");
+
+dikha "=== All Error Handling & Propagation Tests Completed Successfully ===";

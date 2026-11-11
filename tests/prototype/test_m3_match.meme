@@ -1,0 +1,16 @@
+// test_m3_match.meme
+// Verifies JaanchStmt and JaanchExpr code emission in native compiled binaries
+kaam classify_token(kind: str) -> str {
+    ye_le jaanch kind {
+        "KW_IF" => "keyword",
+        "KW_ELSE" => "keyword",
+        "IDENT" => "identifier",
+        "INT_LIT" => "literal",
+        _ => "other"
+    };
+}
+
+dikha f"CLASSIFY_IF:{classify_token(\"KW_IF\")}";
+dikha f"CLASSIFY_IDENT:{classify_token(\"IDENT\")}";
+dikha f"CLASSIFY_LIT:{classify_token(\"INT_LIT\")}";
+dikha f"CLASSIFY_SYM:{classify_token(\"PLUS\")}";

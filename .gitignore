@@ -13,4 +13,6 @@ docs/dist/
 benchmarks/data/
 .agents/
 __pycache__/
+meme_stage*
+stage*
 *.pyc

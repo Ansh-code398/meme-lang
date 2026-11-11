@@ -53,6 +53,8 @@ public:
     std::vector<std::string> importStack;
     std::vector<std::vector<std::unique_ptr<Stmt>>> importedAsts;
     std::vector<std::vector<std::unique_ptr<Stmt>>> astStorage;
+    std::shared_ptr<MemeMap> activePackageMap = nullptr;
+    std::unordered_set<std::string> explicitExports;
 
     // React Runtime & Fiber State
     Value rootUiComponent = Value(std::monostate{});
@@ -131,6 +133,8 @@ public:
     void interpret(std::vector<std::unique_ptr<Stmt>> &&statements);
     Value evaluate(const Expr *expr);
     Value evaluateInEnv(const Expr *expr, std::shared_ptr<Environment> env);
+    bool matchPattern(const Value &val, const MemePattern *pattern, std::vector<std::pair<std::string, Value>> &bindings);
+    Value evaluateJaanchExpr(const JaanchExpr *je);
     std::string stringify(const Value &val);
     void execute(const Stmt *stmt);
     void executeInEnv(const Stmt *stmt, std::shared_ptr<Environment> targetEnv);

@@ -1,0 +1,14 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Non-exhaustive Pattern Matching
+// EXPECT_ERROR: Adhoora
+// ==============================================================================
+
+pakad code = 999;
+
+// jaanch missing a matching branch for 999 and missing fallback warna
+pakad outcome = jaanch code {
+    1 => "One",
+    2 => "Two"
+};
+
+dikha outcome;

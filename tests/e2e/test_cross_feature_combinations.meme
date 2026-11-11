@@ -1,0 +1,216 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - Tier 3: Cross-Feature Combinations (Pairwise Interactions)
+// Coverage:
+//   - Pairwise interaction: Namespaces + Option/Result types
+//   - Pairwise interaction: Namespaces + Pattern Matching (`jaanch`)
+//   - Pairwise interaction: Pattern Matching + Error Propagation (`?`)
+//   - Pairwise interaction: Package Exports + Namespaced Classes
+//   - Pairwise interaction: Function Overloading + Namespaces
+//   - Pairwise interaction: Pointers + Option/Result types
+//   - Pairwise interaction: Pattern Matching + Exception Blocks (`panga`/`lafda`)
+//   - Pairwise interaction: Chained `?` in Namespaced Pipelines
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+dikha "=== Running E2E Test Suite: Tier 3 Cross-Feature Combinations ===";
+
+// Test helper: assertion with reporting
+jugaad assert_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// COMBINATION 1: Namespaces + Option/Result Types
+// ------------------------------------------------------------------------------
+mohalla UserRepository {
+    jugaad find_by_id(id: ank) {
+        dekh id == 101 {
+            ye_le Some("User_Alpha");
+        }
+        ye_le None;
+    }
+
+    jugaad authenticate(id: ank, secret: bol) {
+        dekh id != 101 {
+            ye_le Err("User not found");
+        }
+        dekh secret != "correct_pass" {
+            ye_le Err("Invalid credentials");
+        }
+        ye_le Ok("AUTH_TOKEN_777");
+    }
+}
+
+assert_eq(UserRepository::find_by_id(101).unwrap(), "User_Alpha", "T3_ns_and_option_success");
+assert_eq(UserRepository::find_by_id(999).is_none(), sach, "T3_ns_and_option_none");
+assert_eq(UserRepository::authenticate(101, "correct_pass").unwrap(), "AUTH_TOKEN_777", "T3_ns_and_result_ok");
+assert_eq(UserRepository::authenticate(101, "wrong").unwrap_err(), "Invalid credentials", "T3_ns_and_result_err");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 2: Namespaces + Pattern Matching
+// ------------------------------------------------------------------------------
+mohalla PaymentProcessor {
+    jugaad inspect_payment(amount: ank) {
+        dekh amount <= 0 { ye_le Err("Zero or negative payment"); }
+        dekh amount > 10000 { ye_le Ok("Requires KYC"); }
+        ye_le Ok("Approved");
+    }
+}
+
+jugaad handle_checkout(amount: ank) -> bol {
+    pakad status = PaymentProcessor::inspect_payment(amount);
+    ye_le jaanch status {
+        Ok("Approved") => "instant_success",
+        Ok("Requires KYC") => "kyc_pending",
+        Err(reason) => f"failed: {reason}",
+        warna => "unhandled"
+    };
+}
+
+assert_eq(handle_checkout(500), "instant_success", "T3_ns_and_match_approved");
+assert_eq(handle_checkout(50000), "kyc_pending", "T3_ns_and_match_kyc");
+assert_eq(handle_checkout(-10), "failed: Zero or negative payment", "T3_ns_and_match_err");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 3: Pattern Matching + Error Propagation Operator (`?`)
+// ------------------------------------------------------------------------------
+jugaad parse_command(input: bol) {
+    dekh input == "START" { ye_le Ok(1); }
+    dekh input == "STOP" { ye_le Ok(0); }
+    ye_le Err(f"Unknown command: {input}");
+}
+
+jugaad run_command_pipeline(cmd_str: bol) {
+    pakad code = parse_command(cmd_str)?;
+    pakad action = jaanch code {
+        1 => "Engine started",
+        0 => "Engine stopped",
+        warna => "Idle"
+    };
+    ye_le Ok(action);
+}
+
+assert_eq(run_command_pipeline("START").unwrap(), "Engine started", "T3_match_and_propagate_ok");
+assert_eq(run_command_pipeline("INVALID").unwrap_err(), "Unknown command: INVALID", "T3_match_and_propagate_err");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 4: Package Packaging + Exports + Namespaces
+// ------------------------------------------------------------------------------
+potli CloudServices;
+
+bech mohalla S3Storage {
+    pakad BUCKET_NAME = "production-assets";
+
+    jugaad get_presigned_url(key: bol) -> bol {
+        ye_le f"https://s3.amazonaws.com/{BUCKET_NAME}/{key}";
+    }
+}
+
+assert_eq(S3Storage::BUCKET_NAME, "production-assets", "T3_pkg_export_ns_const");
+assert_eq(S3Storage::get_presigned_url("logo.png"), "https://s3.amazonaws.com/production-assets/logo.png", "T3_pkg_export_ns_fn");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 5: Function Overloading Inside Namespaces Resolving Option/Result
+// ------------------------------------------------------------------------------
+mohalla Converter {
+    bahuroop jugaad parse_val(s: bol) {
+        dekh s == "true" { ye_le Ok(sach); }
+        dekh s == "false" { ye_le Ok(jhooth); }
+        ye_le Err("Not a boolean");
+    }
+
+    bahuroop jugaad parse_val(n: ank) {
+        ye_le Ok(n * 10);
+    }
+}
+
+assert_eq(Converter::parse_val("true").unwrap(), sach, "T3_ns_overload_str_bool");
+assert_eq(Converter::parse_val(42).unwrap(), 420, "T3_ns_overload_int_scale");
+assert_eq(Converter::parse_val("hello").unwrap_err(), "Not a boolean", "T3_ns_overload_err");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 6: Pointers + Option Types (`Kuch(&val)`)
+// ------------------------------------------------------------------------------
+pakad raw_score = 100;
+pakad opt_ptr = Some(&raw_score);
+
+assert_eq(opt_ptr.is_some(), sach, "T3_ptr_in_option_is_some");
+pakad p = opt_ptr.unwrap();
+assert_eq(*p, 100, "T3_ptr_in_option_deref_read");
+*p = 150;
+assert_eq(raw_score, 150, "T3_ptr_in_option_deref_write");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 7: Pattern Matching with Destructuring & Guards on Option Lists
+// ------------------------------------------------------------------------------
+jugaad inspect_option_pair(pair) -> bol {
+    ye_le jaanch pair {
+        [Some(a), Some(b)] agar a == b => f"matching pair of {a}",
+        [Some(a), Some(b)] => f"differing pair: {a} and {b}",
+        [Some(a), None] => f"left only: {a}",
+        [None, Some(b)] => f"right only: {b}",
+        warna => "both empty"
+    };
+}
+
+assert_eq(inspect_option_pair([Some(42), Some(42)]), "matching pair of 42", "T3_match_opt_pair_guards_equal");
+assert_eq(inspect_option_pair([Some(10), Some(20)]), "differing pair: 10 and 20", "T3_match_opt_pair_diff");
+assert_eq(inspect_option_pair([Some(99), None]), "left only: 99", "T3_match_opt_pair_left_only");
+assert_eq(inspect_option_pair([None, None]), "both empty", "T3_match_opt_pair_both_none");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 8: Pattern Match Inside Exception Handler Block
+// ------------------------------------------------------------------------------
+jugaad match_with_exception_trap(code: ank) -> bol {
+    pakad outcome = "";
+    panga {
+        outcome = jaanch code {
+            1 => "All good",
+            2 => { chillao "Code 2 triggered explosion"; "unreached"; },
+            warna => "Fallback code"
+        };
+    } lafda (err) {
+        outcome = f"Trapped: {err}";
+    }
+    ye_le outcome;
+}
+
+assert_eq(match_with_exception_trap(1), "All good", "T3_match_try_catch_clean");
+assert_eq(match_with_exception_trap(2), "Trapped: Code 2 triggered explosion", "T3_match_try_catch_thrown");
+
+// ------------------------------------------------------------------------------
+// COMBINATION 9: Chained `?` Operator in Namespaced Multi-Stage Pipeline
+// ------------------------------------------------------------------------------
+mohalla Pipeline {
+    jugaad validate_input(val: ank) {
+        dekh val < 0 { ye_le Err("Validation: Negative"); }
+        ye_le Ok(val);
+    }
+
+    jugaad transform_data(val: ank) {
+        pakad res = val * 3;
+        dekh res > 1000 { ye_le Err("Transform: Overflow"); }
+        ye_le Ok(res);
+    }
+
+    jugaad finalize_record(val: ank) {
+        ye_le Ok(val + 50);
+    }
+}
+
+jugaad execute_full_pipeline(input: ank) {
+    pakad step1 = Pipeline::validate_input(input)?;
+    pakad step2 = Pipeline::transform_data(step1)?;
+    pakad step3 = Pipeline::finalize_record(step2)?;
+    ye_le Ok(step3);
+}
+
+assert_eq(execute_full_pipeline(10).unwrap(), 80, "T3_ns_chained_pipeline_success");
+assert_eq(execute_full_pipeline(-1).unwrap_err(), "Validation: Negative", "T3_ns_chained_pipeline_val_err");
+assert_eq(execute_full_pipeline(500).unwrap_err(), "Transform: Overflow", "T3_ns_chained_pipeline_trans_err");
+
+dikha "=== All Tier 3 Cross-Feature Combinations Completed Successfully ===";

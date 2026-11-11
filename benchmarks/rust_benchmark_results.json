@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-08T02:59:36.617895+00:00",
+  "timestamp": "2026-11-10T16:12:20.468128+00:00",
   "environment": {
     "os": "Darwin",
     "os_release": "27.3.0",
@@ -21,362 +21,86 @@
       "compilation": {
         "rust": {
           "status": "SUCCESS",
-          "compile_ms": 390.89987500028656,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/fib_bin"
+          "compile_ms": 274.5442090090364,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_6k0rdhyj/fib_bin"
         },
         "meme_native": {
           "status": "SUCCESS",
-          "compile_ms": 529.0561669999079,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/fib_meme_bin"
+          "compile_ms": 710.1322090020403,
+          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_6k0rdhyj/fib_meme_bin"
         },
         "meme": {
           "status": "SUCCESS",
           "mode": "parse_only",
-          "prep_ms": 3.98991699967155
+          "prep_ms": 3.463417000602931
         }
       },
       "execution": {
         "rust": {
           "status": "SUCCESS",
           "runs_count": 1,
-          "mean_wall_ms": 9.07929100048932,
-          "median_wall_ms": 9.07929100048932,
-          "min_wall_ms": 9.07929100048932,
-          "max_wall_ms": 9.07929100048932,
+          "mean_wall_ms": 484.29529200075194,
+          "median_wall_ms": 484.29529200075194,
+          "min_wall_ms": 484.29529200075194,
+          "max_wall_ms": 484.29529200075194,
           "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 10.000000000000009,
-          "peak_rss_mb": 1.56,
+          "mean_cpu_ms": 0.0,
+          "peak_rss_mb": 1.58,
           "raw_wall_ms": [
-            9.07929100048932
+            484.29529200075194
           ],
           "raw_cpu_ms": [
-            10.000000000000009
+            0.0
           ],
-          "last_stdout": "Rust | fib(20) = 6765 | Time: 0.02662ms"
+          "last_stdout": "Rust | fib(20) = 6765 | Time: 0.03183ms"
         },
         "meme_native": {
           "status": "SUCCESS",
           "runs_count": 1,
-          "mean_wall_ms": 8.10504199944262,
-          "median_wall_ms": 8.10504199944262,
-          "min_wall_ms": 8.10504199944262,
-          "max_wall_ms": 8.10504199944262,
+          "mean_wall_ms": 319.1430830047466,
+          "median_wall_ms": 319.1430830047466,
+          "min_wall_ms": 319.1430830047466,
+          "max_wall_ms": 319.1430830047466,
           "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 10.000000000000009,
-          "peak_rss_mb": 1.41,
+          "mean_cpu_ms": 0.0,
+          "peak_rss_mb": 1.47,
           "raw_wall_ms": [
-            8.10504199944262
+            319.1430830047466
           ],
           "raw_cpu_ms": [
-            10.000000000000009
+            0.0
           ],
-          "last_stdout": "MEMElang | fib(20) = 6765 | Time: 0.0608ms"
+          "last_stdout": "MEMElang | fib(20) = 6765 | Time: 0.0604ms"
         },
         "meme": {
           "status": "SUCCESS",
           "runs_count": 1,
-          "mean_wall_ms": 2128.0092079996393,
-          "median_wall_ms": 2128.0092079996393,
-          "min_wall_ms": 2128.0092079996393,
-          "max_wall_ms": 2128.0092079996393,
+          "mean_wall_ms": 1980.9529580088565,
+          "median_wall_ms": 1980.9529580088565,
+          "min_wall_ms": 1980.9529580088565,
+          "max_wall_ms": 1980.9529580088565,
           "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 2110.0,
-          "peak_rss_mb": 8.28,
+          "mean_cpu_ms": 1979.9999999999998,
+          "peak_rss_mb": 8.38,
           "raw_wall_ms": [
-            2128.0092079996393
+            1980.9529580088565
           ],
           "raw_cpu_ms": [
-            2110.0
+            1979.9999999999998
           ],
-          "last_stdout": "MEMElang | fib(20) = 6765 | Time: 2123.633146ms"
+          "last_stdout": "MEMElang | fib(20) = 6765 | Time: 1966.500998ms"
         }
       },
       "comparison": {
-        "rust_wall_ms": 9.07929100048932,
-        "meme_native_wall_ms": 8.10504199944262,
-        "meme_interp_wall_ms": 2128.0092079996393,
-        "native_vs_interp_speedup": 262.5537545821455,
-        "native_vs_rust_ratio": 1.1202028319055841,
-        "rust_vs_interp_speedup": 234.3805488649887,
-        "rust_rss_mb": 1.56,
-        "meme_native_rss_mb": 1.41,
-        "meme_interp_rss_mb": 8.28
-      }
-    },
-    "sieve": {
-      "name": "Sieve of Eratosthenes",
-      "description": "Array allocation, memory indexing, prime sieving up to 100,000",
-      "files": {
-        "meme": "benchmarks/sieve.meme",
-        "rust": "benchmarks/sieve.rs"
-      },
-      "compilation": {
-        "rust": {
-          "status": "SUCCESS",
-          "compile_ms": 133.3066659999531,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/sieve_bin"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "compile_ms": 371.9135829996958,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/sieve_meme_bin"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "mode": "parse_only",
-          "prep_ms": 4.697124999438529
-        }
-      },
-      "execution": {
-        "rust": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 2.9928750000181026,
-          "median_wall_ms": 2.9928750000181026,
-          "min_wall_ms": 2.9928750000181026,
-          "max_wall_ms": 2.9928750000181026,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 0.0,
-          "peak_rss_mb": 1.72,
-          "raw_wall_ms": [
-            2.9928750000181026
-          ],
-          "raw_cpu_ms": [
-            0.0
-          ],
-          "last_stdout": "Rust | Primes up to 100000: 9592 | Time: 0.07817ms"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 2.2113329996500397,
-          "median_wall_ms": 2.2113329996500397,
-          "min_wall_ms": 2.2113329996500397,
-          "max_wall_ms": 2.2113329996500397,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 10.000000000000009,
-          "peak_rss_mb": 1.56,
-          "raw_wall_ms": [
-            2.2113329996500397
-          ],
-          "raw_cpu_ms": [
-            10.000000000000009
-          ],
-          "last_stdout": "MEMElang | Primes up to 100000: 9592 | Time: 0.0436ms"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 370.21400000048743,
-          "median_wall_ms": 370.21400000048743,
-          "min_wall_ms": 370.21400000048743,
-          "max_wall_ms": 370.21400000048743,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 370.0000000000001,
-          "peak_rss_mb": 11.2,
-          "raw_wall_ms": [
-            370.21400000048743
-          ],
-          "raw_cpu_ms": [
-            370.0000000000001
-          ],
-          "last_stdout": "MEMElang | Primes up to 100000: 9592 | Time: 365.441799ms"
-        }
-      },
-      "comparison": {
-        "rust_wall_ms": 2.9928750000181026,
-        "meme_native_wall_ms": 2.2113329996500397,
-        "meme_interp_wall_ms": 370.21400000048743,
-        "native_vs_interp_speedup": 167.41666680643604,
-        "native_vs_rust_ratio": 1.3534257393580016,
-        "rust_vs_interp_speedup": 123.69845048598694,
-        "rust_rss_mb": 1.72,
-        "meme_native_rss_mb": 1.56,
-        "meme_interp_rss_mb": 11.2
-      }
-    },
-    "math_loop": {
-      "name": "Modular Math Loop",
-      "description": "Tight arithmetic loop (200,000 iterations) with modulo and addition",
-      "files": {
-        "meme": "benchmarks/math_loop.meme",
-        "rust": "benchmarks/math_loop.rs"
-      },
-      "compilation": {
-        "rust": {
-          "status": "SUCCESS",
-          "compile_ms": 75.88341600057902,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/math_loop_bin"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "compile_ms": 376.6512080001121,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/math_loop_meme_bin"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "mode": "parse_only",
-          "prep_ms": 3.7382919999799924
-        }
-      },
-      "execution": {
-        "rust": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 5.670292000104382,
-          "median_wall_ms": 5.670292000104382,
-          "min_wall_ms": 5.670292000104382,
-          "max_wall_ms": 5.670292000104382,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 0.0,
-          "peak_rss_mb": 1.59,
-          "raw_wall_ms": [
-            5.670292000104382
-          ],
-          "raw_cpu_ms": [
-            0.0
-          ],
-          "last_stdout": "Rust | Math Loop 200000 | Result: 755102504 | Time: 1.56625ms"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 4.602125000019441,
-          "median_wall_ms": 4.602125000019441,
-          "min_wall_ms": 4.602125000019441,
-          "max_wall_ms": 4.602125000019441,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 0.0,
-          "peak_rss_mb": 1.44,
-          "raw_wall_ms": [
-            4.602125000019441
-          ],
-          "raw_cpu_ms": [
-            0.0
-          ],
-          "last_stdout": "MEMElang | Math Loop 200000 | Result: 755102504 | Time: 1.2857ms"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 295.34016599973256,
-          "median_wall_ms": 295.34016599973256,
-          "min_wall_ms": 295.34016599973256,
-          "max_wall_ms": 295.34016599973256,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 299.9999999999989,
-          "peak_rss_mb": 8.05,
-          "raw_wall_ms": [
-            295.34016599973256
-          ],
-          "raw_cpu_ms": [
-            299.9999999999989
-          ],
-          "last_stdout": "MEMElang | Math Loop 200000 | Result: 755102504 | Time: 290.581942ms"
-        }
-      },
-      "comparison": {
-        "rust_wall_ms": 5.670292000104382,
-        "meme_native_wall_ms": 4.602125000019441,
-        "meme_interp_wall_ms": 295.34016599973256,
-        "native_vs_interp_speedup": 64.17473797397614,
-        "native_vs_rust_ratio": 1.23210299591611,
-        "rust_vs_interp_speedup": 52.085530338525025,
-        "rust_rss_mb": 1.59,
-        "meme_native_rss_mb": 1.44,
-        "meme_interp_rss_mb": 8.05
-      }
-    },
-    "tree_drop": {
-      "name": "Tree Allocation & Drop",
-      "description": "Object graph allocation, pointer linking, and recursive drop cleanup",
-      "files": {
-        "meme": "benchmarks/tree_drop.meme",
-        "rust": "benchmarks/tree_drop.rs"
-      },
-      "compilation": {
-        "rust": {
-          "status": "SUCCESS",
-          "compile_ms": 88.67125000051601,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/tree_drop_bin"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "compile_ms": 444.314458000008,
-          "binary_path": "/var/folders/3w/4krf3qr54w9402nsfbqhwyfc0000gn/T/meme_rust_bench_v6dwvgcf/tree_drop_meme_bin"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "mode": "parse_only",
-          "prep_ms": 3.641250000328
-        }
-      },
-      "execution": {
-        "rust": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 3.964958000324259,
-          "median_wall_ms": 3.964958000324259,
-          "min_wall_ms": 3.964958000324259,
-          "max_wall_ms": 3.964958000324259,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 0.0,
-          "peak_rss_mb": 2.12,
-          "raw_wall_ms": [
-            3.964958000324259
-          ],
-          "raw_cpu_ms": [
-            0.0
-          ],
-          "last_stdout": "Rust | Tree Drop (depth 14) | Result: 16383 | Time: 0.52487ms"
-        },
-        "meme_native": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 4.648041999644192,
-          "median_wall_ms": 4.648041999644192,
-          "min_wall_ms": 4.648041999644192,
-          "max_wall_ms": 4.648041999644192,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 0.0,
-          "peak_rss_mb": 4.47,
-          "raw_wall_ms": [
-            4.648041999644192
-          ],
-          "raw_cpu_ms": [
-            0.0
-          ],
-          "last_stdout": "MEMElang | Tree Drop (depth 14) | Result: 16383 | Time: 1.2492ms"
-        },
-        "meme": {
-          "status": "SUCCESS",
-          "runs_count": 1,
-          "mean_wall_ms": 6076.15183300004,
-          "median_wall_ms": 6076.15183300004,
-          "min_wall_ms": 6076.15183300004,
-          "max_wall_ms": 6076.15183300004,
-          "stdev_wall_ms": 0.0,
-          "mean_cpu_ms": 6050.000000000003,
-          "peak_rss_mb": 14.78,
-          "raw_wall_ms": [
-            6076.15183300004
-          ],
-          "raw_cpu_ms": [
-            6050.000000000003
-          ],
-          "last_stdout": "MEMElang | Tree Drop (depth 14) | Result: 16383 | Time: 6068.289042ms"
-        }
-      },
-      "comparison": {
-        "rust_wall_ms": 3.964958000324259,
-        "meme_native_wall_ms": 4.648041999644192,
-        "meme_interp_wall_ms": 6076.15183300004,
-        "native_vs_interp_speedup": 1307.2497695729016,
-        "native_vs_rust_ratio": 0.8530383332654431,
-        "rust_vs_interp_speedup": 1532.4631011231709,
-        "rust_rss_mb": 2.12,
-        "meme_native_rss_mb": 4.47,
-        "meme_interp_rss_mb": 14.78
+        "rust_wall_ms": 484.29529200075194,
+        "meme_native_wall_ms": 319.1430830047466,
+        "meme_interp_wall_ms": 1980.9529580088565,
+        "native_vs_interp_speedup": 6.207099772798127,
+        "native_vs_rust_ratio": 1.5174864121794207,
+        "rust_vs_interp_speedup": 4.09038243965787,
+        "rust_rss_mb": 1.58,
+        "meme_native_rss_mb": 1.47,
+        "meme_interp_rss_mb": 8.38
       }
     }
   }

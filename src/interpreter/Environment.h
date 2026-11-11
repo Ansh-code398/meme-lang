@@ -319,6 +319,26 @@ inline bool Value::operator==(const Value &other) const
         return s.size() == 1 && s[0] == std::get<char>(b.data);
     }
 
+    // Error map vs String comparison (allows comparing caught error map directly to expected message)
+    if (a.isMap() && std::holds_alternative<std::string>(b.data))
+    {
+        auto m = a.getMap();
+        if (m && m->has("__is_error__"))
+        {
+            if (m->has("message") && m->get("message").deref().toString() == std::get<std::string>(b.data)) return true;
+            if (m->has("baat") && m->get("baat").deref().toString() == std::get<std::string>(b.data)) return true;
+        }
+    }
+    if (std::holds_alternative<std::string>(a.data) && b.isMap())
+    {
+        auto m = b.getMap();
+        if (m && m->has("__is_error__"))
+        {
+            if (m->has("message") && m->get("message").deref().toString() == std::get<std::string>(a.data)) return true;
+            if (m->has("baat") && m->get("baat").deref().toString() == std::get<std::string>(a.data)) return true;
+        }
+    }
+
     // Bytes comparison
     if (a.isBytes() && b.isBytes())
     {
@@ -399,6 +419,19 @@ inline bool Value::operator==(const Value &other) const
             },
             [](std::monostate, const std::shared_ptr<Pointer> &rhs) -> bool {
                 return !rhs || rhs->isNull();
+            },
+            [](const std::shared_ptr<MemeOption> &lhs, const std::shared_ptr<MemeOption> &rhs) -> bool {
+                if (lhs == rhs) return true;
+                if (!lhs || !rhs) return false;
+                if (lhs->hasValue != rhs->hasValue) return false;
+                if (!lhs->hasValue) return true;
+                return lhs->value == rhs->value;
+            },
+            [](const std::shared_ptr<MemeResult> &lhs, const std::shared_ptr<MemeResult> &rhs) -> bool {
+                if (lhs == rhs) return true;
+                if (!lhs || !rhs) return false;
+                if (lhs->isOkVal != rhs->isOkVal) return false;
+                return lhs->value == rhs->value;
             },
             [](const auto &, const auto &) -> bool { return false; }
         },

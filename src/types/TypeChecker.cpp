@@ -830,13 +830,35 @@ void TypeChecker::checkStmt(const Stmt *stmt, std::shared_ptr<TypeEnvironment> e
         return;
     }
 
+    if (dynamic_cast<const PackageDeclStmt *>(stmt))
+    {
+        return;
+    }
+
+    if (auto *es = dynamic_cast<const ExportStmt *>(stmt))
+    {
+        if (es->decl) checkStmt(es->decl.get(), env);
+        return;
+    }
+
+    if (auto *ns = dynamic_cast<const NamespaceDeclStmt *>(stmt))
+    {
+        auto nsEnv = std::make_shared<TypeEnvironment>(env);
+        for (const auto &s : ns->body)
+        {
+            if (s) checkStmt(s.get(), nsEnv);
+        }
+        return;
+    }
+
     if (auto *js = dynamic_cast<const JaanchStmt *>(stmt))
     {
-        checkExpr(js->target.get(), env);
+        if (js->target) checkExpr(js->target.get(), env);
         for (const auto &arm : js->arms)
         {
-            if (arm.pattern) checkExpr(arm.pattern.get(), env);
-            checkStmt(arm.body.get(), env);
+            if (arm.guard) checkExpr(arm.guard.get(), env);
+            if (arm.bodyExpr) checkExpr(arm.bodyExpr.get(), env);
+            if (arm.bodyStmt) checkStmt(arm.bodyStmt.get(), env);
         }
         if (js->defaultArm)
         {
@@ -1424,6 +1446,44 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
     if (auto *mv = dynamic_cast<const MoveExpr *>(expr))
     {
         return mv->operand ? checkExpr(mv->operand.get(), env) : Type::Any();
+    }
+
+    if (dynamic_cast<const ScopedAccessExpr *>(expr))
+    {
+        return Type::Any();
+    }
+
+    if (auto *ss = dynamic_cast<const ScopedSetExpr *>(expr))
+    {
+        return ss->value ? checkExpr(ss->value.get(), env) : Type::Any();
+    }
+
+    if (auto *tp = dynamic_cast<const TryPropagateExpr *>(expr))
+    {
+        if (tp->expression)
+        {
+            auto innerType = checkExpr(tp->expression.get(), env);
+            if (innerType && (innerType->kind == TypeKind::OPTION || innerType->kind == TypeKind::RESULT))
+            {
+                return innerType->elementType ? innerType->elementType : Type::Any();
+            }
+            return innerType;
+        }
+        return Type::Any();
+    }
+
+    if (auto *je = dynamic_cast<const JaanchExpr *>(expr))
+    {
+        if (je->target) checkExpr(je->target.get(), env);
+        for (const auto &arm : je->arms)
+        {
+            if (arm.guard) checkExpr(arm.guard.get(), env);
+            if (arm.bodyExpr) checkExpr(arm.bodyExpr.get(), env);
+            if (arm.bodyStmt) checkStmt(arm.bodyStmt.get(), env);
+        }
+        if (je->defaultBodyExpr) checkExpr(je->defaultBodyExpr.get(), env);
+        if (je->defaultBodyStmt) checkStmt(je->defaultBodyStmt.get(), env);
+        return Type::Any();
     }
 
     return Type::Any();

@@ -1,0 +1,10 @@
+// test_m3_cli_args.meme
+// Verifies argc/argv plumbing into sys.args in native compiled binaries
+pakad count = sys.args.length();
+dikha f"TOTAL_ARGS:{count}";
+agar (count >= 1) {
+    dikha f"ARG0_PRESENT:{sys.args[0].length() > 0}";
+}
+ghoom i in 1..count {
+    dikha f"ARG_{i}:{sys.args[i]}";
+}

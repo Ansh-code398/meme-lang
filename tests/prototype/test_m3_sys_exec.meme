@@ -1,0 +1,21 @@
+// test_m3_sys_exec.meme
+// Verifies SystummModule: exec, cwd, platform in native compiled binaries
+
+// 1. Basic subprocess execution
+pakad echo_out = sys.exec("echo SYSTUMM_EXEC_OK");
+dikha f"ECHO_OUT:{echo_out.trim()}";
+
+// 2. Query environment
+pakad cur_dir = sys.cwd();
+dikha f"CWD_NONEMPTY:{cur_dir.length() > 0}";
+
+pakad plat = sys.platform();
+dikha f"PLATFORM_NONEMPTY:{plat.length() > 0}";
+
+// 3. Host toolchain check (essential for compiler.meme self-hosting)
+pakad clang_out = sys.exec("clang++ --version");
+dikha f"CLANG_AVAILABLE:{clang_out.starts_with(\"Apple clang\") || clang_out.starts_with(\"clang version\") || clang_out.find(\"clang\") >= 0}";
+
+// 4. Subprocess stdout capture
+pakad date_out = sys.exec("date +%Y");
+dikha f"YEAR_DIGIT:{date_out.trim().length() == 4}";

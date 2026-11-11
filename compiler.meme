@@ -1,0 +1,1723 @@
+// ============================================================================
+// MEMElang Production Self-Hosting Compiler (compiler.meme)
+// ============================================================================
+// Pure MEMElang implementation of the complete compiler pipeline:
+//   - Lexer & Tokenizer with line/column tracking
+//   - Recursive descent precedence climbing Parser emitting uniform AST maps
+//   - C++20 AOT Code Generator targeting MemeRuntime.h with bitwise determinism
+//   - CLI Toolchain Driver shelling out to clang++ -std=c++20 -O3
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 1. Keyword Tables & Identifier Sanitization
+// ----------------------------------------------------------------------------
+
+kaam init_keywords() {
+    ye_le {
+        // Variable declaration
+        "pakad": "LE", "le": "LE", "let": "LE", "var": "LE", "banao": "LE",
+        // Functions
+        "jugaad": "KAR", "kar": "KAR", "kaam": "KAR", "def": "KAR", "fn": "KAR",
+        // Returns
+        "ye_le": "WAPAS", "wapas": "WAPAS", "de": "WAPAS", "return": "WAPAS",
+        // Conditionals
+        "dekh": "DEKH", "agar": "DEKH", "if": "DEKH",
+        "warna": "WARNA", "nahi_toh": "WARNA", "else": "WARNA", "elif": "ELIF",
+        // Loops
+        "jabtak": "JABTAK", "while": "JABTAK",
+        "ghuma": "GHOOM", "ghoom": "GHOOM", "har": "GHOOM", "for": "GHOOM",
+        "se": "SE", "from": "SE", "mein": "MEIN", "andar": "MEIN", "in": "MEIN",
+        "bas_kar": "BAS", "bas": "BAS", "break": "BAS",
+        "aage_badh": "CHAL", "chal": "CHAL", "continue": "CHAL",
+        // Classes & OOP
+        "biradari": "SANCHA", "vibe": "SANCHA", "class": "SANCHA", "sancha": "SANCHA", "roop": "SANCHA",
+        "khud": "KHUD", "apun": "KHUD", "this": "KHUD", "self": "KHUD", "nepo": "NEPO",
+        // Instantiation
+        "new": "NEW", "naya": "NEW",
+        // Input / Output
+        "dikha": "DIKHA", "flex": "DIKHA", "bol": "DIKHA", "print": "DIKHA",
+        "bata": "POOCH", "pooch": "POOCH", "puch": "POOCH", "input": "POOCH",
+        // Literals
+        "han": "TRUE", "haan": "TRUE", "sach": "TRUE", "real": "TRUE", "true": "TRUE",
+        "nhi": "FALSE", "nahi": "FALSE", "na": "FALSE", "jhooth": "FALSE", "cap": "FALSE", "false": "FALSE",
+        "nalla": "NULL", "khali": "NULL", "kuch_nhi": "NULL", "null": "NULL", "none": "NULL",
+        // Error handling
+        "panga": "PANGA", "koshish": "PANGA", "try": "PANGA",
+        "lafda": "LAFDA", "sambhal": "LAFDA", "catch": "LAFDA", "except": "LAFDA",
+        "pakka": "PAKKA", "hamesha": "PAKKA", "finally": "PAKKA",
+        "chillao": "CHILLAO", "fek": "CHILLAO", "throw": "CHILLAO", "raise": "CHILLAO",
+        // Modules & Packaging
+        "potli": "PACKAGE", "dibbi": "PACKAGE", "bundle": "PACKAGE", "package": "PACKAGE", "pkg": "PACKAGE",
+        "bech": "EXPORT", "khula": "EXPORT", "baahar": "EXPORT", "export": "EXPORT", "pub": "EXPORT",
+        "mohalla": "NAMESPACE", "pados": "NAMESPACE", "namespace": "NAMESPACE", "ns": "NAMESPACE",
+        "bula": "IMPORT", "chura": "IMPORT", "lao": "IMPORT", "shamil": "IMPORT", "import": "IMPORT",
+        "jaise": "AS", "as": "AS",
+        // Pattern Matching & Enums
+        "avtar": "AVTAR", "kism": "AVTAR", "enum": "AVTAR",
+        "jaanch": "JAANCH", "parakh": "JAANCH", "match": "JAANCH",
+        "baaki": "BAAKI", "default": "BAAKI",
+        // Option & Result
+        "Some": "SOME", "Kuch": "SOME", "None": "NONE", "Khali": "NONE",
+        "Ok": "OK", "Sahi": "OK", "Err": "ERR", "Galat": "ERR",
+        // Logical
+        "aur": "AND", "and": "AND",
+        "ya": "OR", "or": "OR",
+        "not": "NOT"
+    };
+}
+
+kaam init_cpp_keywords() {
+    ye_le {
+        "alignas": 1, "alignof": 1, "and": 1, "and_eq": 1, "asm": 1, "auto": 1,
+        "bitand": 1, "bitor": 1, "bool": 1, "break": 1, "case": 1, "catch": 1,
+        "char": 1, "class": 1, "compl": 1, "concept": 1, "const": 1, "constexpr": 1,
+        "continue": 1, "decltype": 1, "default": 1, "delete": 1, "do": 1, "double": 1,
+        "dynamic_cast": 1, "else": 1, "enum": 1, "explicit": 1, "export": 1, "extern": 1,
+        "false": 1, "float": 1, "for": 1, "friend": 1, "goto": 1, "if": 1, "inline": 1,
+        "int": 1, "long": 1, "mutable": 1, "namespace": 1, "new": 1, "noexcept": 1,
+        "not": 1, "not_eq": 1, "nullptr": 1, "operator": 1, "or": 1, "or_eq": 1,
+        "private": 1, "protected": 1, "public": 1, "register": 1, "reinterpret_cast": 1,
+        "requires": 1, "return": 1, "short": 1, "signed": 1, "sizeof": 1, "static": 1,
+        "static_assert": 1, "static_cast": 1, "struct": 1, "switch": 1, "template": 1,
+        "this": 1, "thread_local": 1, "throw": 1, "true": 1, "try": 1, "typedef": 1,
+        "typeid": 1, "typename": 1, "union": 1, "unsigned": 1, "using": 1, "virtual": 1,
+        "void": 1, "volatile": 1, "while": 1, "xor": 1, "xor_eq": 1, "main": 1
+    };
+}
+
+kaam sanitize_identifier(name) {
+    agar (name == "khud" || name == "apun" || name == "self" || name == "this") { ye_le "this"; }
+    agar (name == "nalla" || name == "null" || name == "nil") { ye_le "nullptr"; }
+    agar (name == "han" || name == "true" || name == "sach") { ye_le "true"; }
+    agar (name == "nhi" || name == "false" || name == "jhooth") { ye_le "false"; }
+    agar (name == "main") { ye_le "meme_user_main"; }
+    pakad cpp_kw = init_cpp_keywords();
+    agar (cpp_kw.has(name)) {
+        ye_le "m_" + name;
+    }
+    ye_le name;
+}
+
+// ----------------------------------------------------------------------------
+// 2. Character & String Utilities
+// ----------------------------------------------------------------------------
+
+kaam is_digit(c) {
+    pakad s = "" + c;
+    ye_le s >= "0" && s <= "9";
+}
+
+kaam is_alpha(c) {
+    pakad s = "" + c;
+    ye_le (s >= "a" && s <= "z") || (s >= "A" && s <= "Z") || s == "_";
+}
+
+kaam is_alnum(c) {
+    ye_le is_alpha(c) || is_digit(c);
+}
+
+kaam is_hex(c) {
+    pakad s = "" + c;
+    ye_le is_digit(s) || (s >= "a" && s <= "f") || (s >= "A" && s <= "F");
+}
+
+kaam str_greater(a, b) {
+    pakad sa = "" + a;
+    pakad sb = "" + b;
+    ye_le sa > sb;
+}
+
+kaam sort_strings(orig) {
+    pakad list = [];
+    ghoom i in 0..orig.length() {
+        list.push(orig[i]);
+    }
+    pakad n = list.length();
+    ghoom i in 1..n {
+        pakad key = list[i];
+        pakad j = i - 1;
+        jabtak (j >= 0 && str_greater(list[j], key)) {
+            list[j + 1] = list[j];
+            j = j - 1;
+        }
+        list[j + 1] = key;
+    }
+    ye_le list;
+}
+
+kaam escape_string(str) {
+    pakad res = "";
+    pakad n = str.length();
+    ghoom i in 0..n {
+        pakad c = str[i];
+        agar (c == "\"") { res = res + "\\\""; }
+        warna agar (c == "\\") { res = res + "\\\\"; }
+        warna agar (c == "\n") { res = res + "\\n"; }
+        warna agar (c == "\t") { res = res + "\\t"; }
+        warna agar (c == "\r") { res = res + "\\r"; }
+        warna { res = res + c; }
+    }
+    ye_le res;
+}
+
+// ----------------------------------------------------------------------------
+// 3. Token Model & Tokenizer
+// ----------------------------------------------------------------------------
+
+kaam make_token(type, val, line, col) {
+    ye_le {
+        "type": type,
+        "value": val,
+        "line": line,
+        "col": col
+    };
+}
+
+kaam tokenize(source) {
+    pakad keywords = init_keywords();
+    pakad tokens = [];
+    pakad pos = 0;
+    pakad line = 1;
+    pakad col = 1;
+    pakad src_len = source.length();
+
+    jabtak (pos < src_len) {
+        pakad c = source[pos];
+
+        // 1. Whitespace
+        agar (c == " " || c == "\t") {
+            pos = pos + 1;
+            col = col + 1;
+        }
+        warna agar (c == "\r") {
+            pos = pos + 1;
+        }
+        warna agar (c == "\n") {
+            pos = pos + 1;
+            line = line + 1;
+            col = 1;
+        }
+
+        // 2. Comments
+        warna agar (c == "/" && pos + 1 < src_len && source[pos + 1] == "/") {
+            pos = pos + 2;
+            jabtak (pos < src_len && source[pos] != "\n") {
+                pos = pos + 1;
+            }
+        }
+        warna agar (c == "/" && pos + 1 < src_len && source[pos + 1] == "*") {
+            pos = pos + 2;
+            col = col + 2;
+            jabtak (pos + 1 < src_len && !(source[pos] == "*" && source[pos + 1] == "/")) {
+                agar (source[pos] == "\n") {
+                    line = line + 1;
+                    col = 1;
+                } warna {
+                    col = col + 1;
+                }
+                pos = pos + 1;
+            }
+            pos = pos + 2;
+            col = col + 2;
+        }
+
+        // 3. F-Strings (f"..." or f'...')
+        warna agar ((c == "f" || c == "F") && pos + 1 < src_len && (source[pos + 1] == "\"" || source[pos + 1] == "'")) {
+            pakad start_line = line;
+            pakad start_col = col;
+            pakad quote = source[pos + 1];
+            pos = pos + 2;
+            col = col + 2;
+            pakad val = "";
+            jabtak (pos < src_len && source[pos] != quote) {
+                pakad cur = source[pos];
+                agar (cur == "\\" && pos + 1 < src_len) {
+                    pos = pos + 1;
+                    col = col + 1;
+                    pakad esc = source[pos];
+                    agar (esc == "n") { val = val + "\n"; }
+                    warna agar (esc == "t") { val = val + "\t"; }
+                    warna agar (esc == "r") { val = val + "\r"; }
+                    warna agar (esc == "\\") { val = val + "\\"; }
+                    warna agar (esc == "\"") { val = val + "\""; }
+                    warna agar (esc == "'") { val = val + "'"; }
+                    warna { val = val + esc; }
+                } warna {
+                    agar (cur == "\n") {
+                        line = line + 1;
+                        col = 0;
+                    }
+                    val = val + cur;
+                }
+                pos = pos + 1;
+                col = col + 1;
+            }
+            pos = pos + 1; // skip closing quote
+            col = col + 1;
+            tokens.push(make_token("FSTRING", val, start_line, start_col));
+        }
+
+        // 4. Regular String Literals ("..." or '...')
+        warna agar (c == "\"" || c == "'") {
+            pakad start_line = line;
+            pakad start_col = col;
+            pakad quote = c;
+            pos = pos + 1;
+            col = col + 1;
+            pakad val = "";
+            jabtak (pos < src_len && source[pos] != quote) {
+                pakad cur = source[pos];
+                agar (cur == "\\" && pos + 1 < src_len) {
+                    pos = pos + 1;
+                    col = col + 1;
+                    pakad esc = source[pos];
+                    agar (esc == "n") { val = val + "\n"; }
+                    warna agar (esc == "t") { val = val + "\t"; }
+                    warna agar (esc == "r") { val = val + "\r"; }
+                    warna agar (esc == "\\") { val = val + "\\"; }
+                    warna agar (esc == "\"") { val = val + "\""; }
+                    warna agar (esc == "'") { val = val + "'"; }
+                    warna { val = val + esc; }
+                } warna {
+                    agar (cur == "\n") {
+                        line = line + 1;
+                        col = 0;
+                    }
+                    val = val + cur;
+                }
+                pos = pos + 1;
+                col = col + 1;
+            }
+            pos = pos + 1; // skip closing quote
+            col = col + 1;
+            tokens.push(make_token("STRING", val, start_line, start_col));
+        }
+
+        // 5. Numbers (Hex, Binary, Floats, Integers)
+        warna agar (is_digit(c)) {
+            pakad start_line = line;
+            pakad start_col = col;
+            pakad val = "";
+            pakad is_float = false;
+
+            // Hex: 0x...
+            agar (c == "0" && pos + 1 < src_len && (source[pos + 1] == "x" || source[pos + 1] == "X")) {
+                val = val + source[pos] + source[pos + 1];
+                pos = pos + 2;
+                col = col + 2;
+                jabtak (pos < src_len && is_hex(source[pos])) {
+                    val = val + source[pos];
+                    pos = pos + 1;
+                    col = col + 1;
+                }
+                tokens.push(make_token("INT", val, start_line, start_col));
+            }
+            // Binary: 0b...
+            warna agar (c == "0" && pos + 1 < src_len && (source[pos + 1] == "b" || source[pos + 1] == "B")) {
+                val = val + source[pos] + source[pos + 1];
+                pos = pos + 2;
+                col = col + 2;
+                jabtak (pos < src_len && (source[pos] == "0" || source[pos] == "1")) {
+                    val = val + source[pos];
+                    pos = pos + 1;
+                    col = col + 1;
+                }
+                tokens.push(make_token("INT", val, start_line, start_col));
+            }
+            // Decimal / Float
+            warna {
+                jabtak (pos < src_len && is_digit(source[pos])) {
+                    val = val + source[pos];
+                    pos = pos + 1;
+                    col = col + 1;
+                }
+                agar (pos + 1 < src_len && source[pos] == "." && is_digit(source[pos + 1])) {
+                    is_float = true;
+                    val = val + ".";
+                    pos = pos + 1;
+                    col = col + 1;
+                    jabtak (pos < src_len && is_digit(source[pos])) {
+                        val = val + source[pos];
+                        pos = pos + 1;
+                        col = col + 1;
+                    }
+                }
+                agar (is_float) {
+                    tokens.push(make_token("FLOAT", val, start_line, start_col));
+                } warna {
+                    tokens.push(make_token("INT", val, start_line, start_col));
+                }
+            }
+        }
+
+        // 6. Identifiers and Keywords
+        warna agar (is_alpha(c)) {
+            pakad start_line = line;
+            pakad start_col = col;
+            pakad val = "";
+            jabtak (pos < src_len && is_alnum(source[pos])) {
+                val = val + source[pos];
+                pos = pos + 1;
+                col = col + 1;
+            }
+            agar (keywords.has(val)) {
+                tokens.push(make_token(keywords[val], val, start_line, start_col));
+            } warna {
+                tokens.push(make_token("IDENT", val, start_line, start_col));
+            }
+        }
+
+        // 7. Two-character operators
+        warna agar (pos + 1 < src_len && (
+            (c == "=" && source[pos + 1] == "=") ||
+            (c == "!" && source[pos + 1] == "=") ||
+            (c == "<" && source[pos + 1] == "=") ||
+            (c == ">" && source[pos + 1] == "=") ||
+            (c == "&" && source[pos + 1] == "&") ||
+            (c == "|" && source[pos + 1] == "|") ||
+            (c == ":" && source[pos + 1] == ":") ||
+            (c == "-" && source[pos + 1] == ">") ||
+            (c == "=" && source[pos + 1] == ">") ||
+            (c == "+" && source[pos + 1] == "=") ||
+            (c == "-" && source[pos + 1] == "=") ||
+            (c == "*" && source[pos + 1] == "=") ||
+            (c == "/" && source[pos + 1] == "=") ||
+            (c == "*" && source[pos + 1] == "*") ||
+            (c == "." && source[pos + 1] == ".")
+        )) {
+            pakad op_str = c + source[pos + 1];
+            pakad tok_type = "OP";
+            agar (op_str == "==") { tok_type = "EQ"; }
+            warna agar (op_str == "!=") { tok_type = "NEQ"; }
+            warna agar (op_str == "<=") { tok_type = "LTE"; }
+            warna agar (op_str == ">=") { tok_type = "GTE"; }
+            warna agar (op_str == "&&") { tok_type = "AND"; }
+            warna agar (op_str == "||") { tok_type = "OR"; }
+            warna agar (op_str == "::") { tok_type = "DOUBLE_COLON"; }
+            warna agar (op_str == "->") { tok_type = "THIN_ARROW"; }
+            warna agar (op_str == "=>") { tok_type = "ARROW"; }
+            warna agar (op_str == "+=") { tok_type = "PLUS_ASSIGN"; }
+            warna agar (op_str == "-=") { tok_type = "MINUS_ASSIGN"; }
+            warna agar (op_str == "*=") { tok_type = "MUL_ASSIGN"; }
+            warna agar (op_str == "/=") { tok_type = "DIV_ASSIGN"; }
+            warna agar (op_str == "**") { tok_type = "POW"; }
+            warna agar (op_str == "..") { tok_type = "DOT_DOT"; }
+
+            tokens.push(make_token(tok_type, op_str, line, col));
+            pos = pos + 2;
+            col = col + 2;
+        }
+
+        // 8. Single-character operators & punctuation
+        warna {
+            pakad tok_type = "UNKNOWN";
+            agar (c == "+") { tok_type = "PLUS"; }
+            warna agar (c == "-") { tok_type = "MINUS"; }
+            warna agar (c == "*") { tok_type = "STAR"; }
+            warna agar (c == "/") { tok_type = "SLASH"; }
+            warna agar (c == "%") { tok_type = "MOD"; }
+            warna agar (c == "=") { tok_type = "ASSIGN"; }
+            warna agar (c == "<") { tok_type = "LT"; }
+            warna agar (c == ">") { tok_type = "GT"; }
+            warna agar (c == "!") { tok_type = "NOT"; }
+            warna agar (c == "?") { tok_type = "QUESTION"; }
+            warna agar (c == ";") { tok_type = "SEMICOLON"; }
+            warna agar (c == ",") { tok_type = "COMMA"; }
+            warna agar (c == ".") { tok_type = "DOT"; }
+            warna agar (c == ":") { tok_type = "COLON"; }
+            warna agar (c == "(") { tok_type = "LPAREN"; }
+            warna agar (c == ")") { tok_type = "RPAREN"; }
+            warna agar (c == "{") { tok_type = "LBRACE"; }
+            warna agar (c == "}") { tok_type = "RBRACE"; }
+            warna agar (c == "[") { tok_type = "LBRACKET"; }
+            warna agar (c == "]") { tok_type = "RBRACKET"; }
+
+            tokens.push(make_token(tok_type, c, line, col));
+            pos = pos + 1;
+            col = col + 1;
+        }
+    }
+
+    tokens.push(make_token("EOF", "", line, col));
+    ye_le tokens;
+}
+
+// ----------------------------------------------------------------------------
+// 4. Recursive Descent Precedence-Climbing Parser
+// ----------------------------------------------------------------------------
+
+sancha Parser {
+    kaam shuru(tokens) {
+        khud.tokens = tokens;
+        khud.current = 0;
+        khud.count = tokens.length();
+    }
+
+    kaam is_at_end() {
+        ye_le (khud.current >= khud.count) || (khud.peek()["type"] == "EOF");
+    }
+
+    kaam peek() {
+        agar (khud.current >= khud.count) {
+            ye_le khud.tokens[khud.count - 1];
+        }
+        ye_le khud.tokens[khud.current];
+    }
+
+    kaam peek_next() {
+        agar (khud.current + 1 >= khud.count) {
+            ye_le khud.tokens[khud.count - 1];
+        }
+        ye_le khud.tokens[khud.current + 1];
+    }
+
+    kaam advance() {
+        agar (khud.current < khud.count) {
+            khud.current = khud.current + 1;
+            ye_le khud.tokens[khud.current - 1];
+        }
+        ye_le khud.tokens[khud.count - 1];
+    }
+
+    kaam check(type) {
+        agar (khud.is_at_end() && type != "EOF") {
+            ye_le false;
+        }
+        ye_le khud.peek()["type"] == type;
+    }
+
+    kaam match_token(type) {
+        agar (khud.check(type)) {
+            khud.advance();
+            ye_le true;
+        }
+        ye_le false;
+    }
+
+    kaam expect(type, err_msg) {
+        agar (khud.check(type)) {
+            ye_le khud.advance();
+        }
+        pakad tok = khud.peek();
+        dikha f"SyntaxError at line {tok['line']}, col {tok['col']}: {err_msg} (found '{tok['value']}' of type {tok['type']})";
+        sys.exit(1);
+    }
+
+    kaam skip_type_annotation() {
+        agar (khud.check("IDENT") || khud.check("LE") || khud.check("KAR")) {
+            khud.advance();
+        }
+        agar (khud.match_token("LBRACKET")) {
+            pakad depth = 1;
+            jabtak (!khud.is_at_end() && depth > 0) {
+                agar (khud.check("LBRACKET")) { depth = depth + 1; }
+                warna agar (khud.check("RBRACKET")) { depth = depth - 1; }
+                khud.advance();
+            }
+        }
+    }
+
+    kaam is_ternary_question_ahead() {
+        agar (!khud.check("QUESTION")) { ye_le false; }
+        pakad p_depth = 0;
+        pakad b_depth = 0;
+        pakad c_depth = 0;
+        pakad idx = khud.current + 1;
+        jabtak (idx < khud.count) {
+            pakad tok = khud.tokens[idx];
+            pakad ttype = tok["type"];
+            agar (ttype == "SEMICOLON" || ttype == "EOF") { ye_le false; }
+            agar (ttype == "LPAREN") { p_depth = p_depth + 1; }
+            warna agar (ttype == "RPAREN") {
+                agar (p_depth == 0) { ye_le false; }
+                p_depth = p_depth - 1;
+            }
+            warna agar (ttype == "LBRACKET") { b_depth = b_depth + 1; }
+            warna agar (ttype == "RBRACKET") {
+                agar (b_depth == 0) { ye_le false; }
+                b_depth = b_depth - 1;
+            }
+            warna agar (ttype == "LBRACE") { c_depth = c_depth + 1; }
+            warna agar (ttype == "RBRACE") {
+                agar (c_depth == 0) { ye_le false; }
+                c_depth = c_depth - 1;
+            }
+            warna agar (p_depth == 0 && b_depth == 0 && c_depth == 0) {
+                agar (ttype == "COLON") { ye_le true; }
+                agar (ttype == "COMMA") { ye_le false; }
+            }
+            idx = idx + 1;
+        }
+        ye_le false;
+    }
+
+    // ----------------------------------------------------
+    // Statement Parsing
+    // ----------------------------------------------------
+    kaam parse_program() {
+        pakad statements = [];
+        jabtak (!khud.is_at_end()) {
+            agar (khud.match_token("SEMICOLON")) {
+                continue;
+            }
+            statements.push(khud.parse_statement());
+        }
+        ye_le { "kind": "Program", "statements": statements };
+    }
+
+    kaam parse_statement() {
+        agar (khud.match_token("LE")) {
+            ye_le khud.parse_var_decl();
+        }
+        warna agar (khud.match_token("KAR")) {
+            ye_le khud.parse_func_decl();
+        }
+        warna agar (khud.match_token("SANCHA")) {
+            ye_le khud.parse_class_decl();
+        }
+        warna agar (khud.match_token("WAPAS")) {
+            ye_le khud.parse_return_stmt();
+        }
+        warna agar (khud.match_token("DEKH")) {
+            ye_le khud.parse_if_stmt();
+        }
+        warna agar (khud.match_token("JABTAK")) {
+            ye_le khud.parse_while_stmt();
+        }
+        warna agar (khud.match_token("GHOOM")) {
+            ye_le khud.parse_for_stmt();
+        }
+        warna agar (khud.match_token("PANGA")) {
+            ye_le khud.parse_try_catch_stmt();
+        }
+        warna agar (khud.match_token("CHILLAO")) {
+            ye_le khud.parse_throw_stmt();
+        }
+        warna agar (khud.match_token("DIKHA")) {
+            ye_le khud.parse_print_stmt();
+        }
+        warna agar (khud.match_token("BAS")) {
+            khud.match_token("SEMICOLON");
+            ye_le { "kind": "Break" };
+        }
+        warna agar (khud.match_token("CHAL")) {
+            khud.match_token("SEMICOLON");
+            ye_le { "kind": "Continue" };
+        }
+        warna agar (khud.match_token("LBRACE")) {
+            ye_le khud.parse_block();
+        }
+        warna agar (khud.match_token("PACKAGE")) {
+            pakad name = khud.expect("IDENT", "Package name expected")["value"];
+            khud.match_token("SEMICOLON");
+            ye_le { "kind": "PackageDecl", "name": name };
+        }
+        warna agar (khud.match_token("IMPORT")) {
+            pakad path = khud.expect("STRING", "Import path expected")["value"];
+            pakad alias = "";
+            agar (khud.match_token("AS")) {
+                alias = "" + khud.expect("IDENT", "Import alias expected")["value"];
+            }
+            khud.match_token("SEMICOLON");
+            ye_le { "kind": "ImportStmt", "path": path, "alias": alias };
+        }
+
+        // Expression statement
+        pakad expr = khud.parse_expression();
+        khud.match_token("SEMICOLON");
+        ye_le { "kind": "ExprStmt", "expression": expr };
+    }
+
+    kaam parse_var_decl() {
+        pakad name_tok = khud.expect("IDENT", "Variable name expected");
+        agar (khud.match_token("COLON")) {
+            khud.skip_type_annotation();
+        }
+        pakad init_expr = nalla;
+        agar (khud.match_token("ASSIGN")) {
+            init_expr = khud.parse_expression();
+        }
+        khud.match_token("SEMICOLON");
+        ye_le { "kind": "VarDecl", "name": name_tok["value"], "init": init_expr };
+    }
+
+    kaam parse_func_decl() {
+        pakad name_tok = khud.expect("IDENT", "Function name expected");
+        khud.expect("LPAREN", "'(' expected after function name");
+        pakad params = [];
+        agar (!khud.check("RPAREN")) {
+            pakad p = khud.expect("IDENT", "Parameter name expected")["value"];
+            agar (khud.match_token("COLON")) { khud.skip_type_annotation(); }
+            agar (khud.match_token("ASSIGN")) { khud.parse_expression(); }
+            params.push(p);
+            jabtak (khud.match_token("COMMA")) {
+                pakad pn = khud.expect("IDENT", "Parameter name expected")["value"];
+                agar (khud.match_token("COLON")) { khud.skip_type_annotation(); }
+                agar (khud.match_token("ASSIGN")) { khud.parse_expression(); }
+                params.push(pn);
+            }
+        }
+        khud.expect("RPAREN", "')' expected after parameter list");
+        agar (khud.match_token("THIN_ARROW") || khud.match_token("ARROW") || khud.match_token("COLON")) {
+            khud.skip_type_annotation();
+        }
+        khud.expect("LBRACE", "'{' expected before function body");
+        pakad body = khud.parse_block_statements();
+        ye_le { "kind": "FuncDecl", "name": name_tok["value"], "params": params, "body": body };
+    }
+
+    kaam parse_class_decl() {
+        pakad name_tok = khud.expect("IDENT", "Class name expected");
+        pakad superclass = "";
+        agar (khud.match_token("SE") || khud.match_token("NEPO")) {
+            superclass = "" + khud.expect("IDENT", "Superclass name expected")["value"];
+        }
+        khud.expect("LBRACE", "'{' expected before class body");
+        pakad methods = [];
+        jabtak (!khud.check("RBRACE") && !khud.is_at_end()) {
+            agar (khud.match_token("SEMICOLON")) { continue; }
+            agar (khud.match_token("KAR")) {
+                methods.push(khud.parse_func_decl());
+            } warna agar (khud.check("IDENT") && khud.peek_next()["type"] == "LPAREN") {
+                methods.push(khud.parse_func_decl());
+            } warna {
+                khud.advance();
+            }
+        }
+        khud.expect("RBRACE", "'}' expected after class body");
+        ye_le { "kind": "ClassDecl", "name": name_tok["value"], "superclass": superclass, "methods": methods };
+    }
+
+    kaam parse_return_stmt() {
+        pakad expr = nalla;
+        agar (!khud.check("SEMICOLON") && !khud.check("RBRACE") && !khud.is_at_end()) {
+            expr = khud.parse_expression();
+        }
+        khud.match_token("SEMICOLON");
+        ye_le { "kind": "Return", "value": expr };
+    }
+
+    kaam parse_if_stmt() {
+        pakad has_paren = khud.match_token("LPAREN");
+        pakad cond = khud.parse_expression();
+        agar (has_paren) {
+            khud.expect("RPAREN", "')' expected after if condition");
+        }
+        khud.expect("LBRACE", "'{' expected after if condition");
+        pakad then_branch = khud.parse_block_statements();
+        pakad else_branch = nalla;
+        agar (khud.match_token("WARNA") || khud.match_token("ELIF")) {
+            agar (khud.check("DEKH") || khud.tokens[khud.current - 1]["type"] == "ELIF") {
+                khud.match_token("DEKH");
+                else_branch = khud.parse_if_stmt();
+            } warna {
+                khud.expect("LBRACE", "'{' expected after else keyword");
+                else_branch = khud.parse_block_statements();
+            }
+        }
+        ye_le { "kind": "If", "condition": cond, "then_branch": then_branch, "else_branch": else_branch };
+    }
+
+    kaam parse_while_stmt() {
+        pakad has_paren = khud.match_token("LPAREN");
+        pakad cond = khud.parse_expression();
+        agar (has_paren) {
+            khud.expect("RPAREN", "')' expected after while condition");
+        }
+        khud.expect("LBRACE", "'{' expected after while condition");
+        pakad body = khud.parse_block_statements();
+        ye_le { "kind": "While", "condition": cond, "body": body };
+    }
+
+    kaam parse_for_stmt() {
+        pakad var_name = khud.expect("IDENT", "Loop variable name expected")["value"];
+        agar (khud.match_token("SE") || khud.match_token("IN") || khud.match_token("MEIN")) {
+            // consumed loop keyword
+        }
+        pakad start_expr = khud.parse_expression();
+        agar (khud.match_token("DOT_DOT")) {
+            pakad end_expr = khud.parse_expression();
+            khud.expect("LBRACE", "'{' expected before for body");
+            pakad body = khud.parse_block_statements();
+            ye_le { "kind": "ForRange", "var_name": var_name, "start": start_expr, "end": end_expr, "body": body };
+        } warna {
+            khud.expect("LBRACE", "'{' expected before for body");
+            pakad body = khud.parse_block_statements();
+            ye_le { "kind": "ForEach", "var_name": var_name, "collection": start_expr, "body": body };
+        }
+    }
+
+    kaam parse_try_catch_stmt() {
+        khud.expect("LBRACE", "'{' expected after try keyword");
+        pakad try_block = khud.parse_block_statements();
+        pakad catch_var = "err";
+        pakad catch_block = nalla;
+        agar (khud.match_token("LAFDA")) {
+            agar (khud.match_token("LPAREN")) {
+                catch_var = "" + khud.expect("IDENT", "Catch variable name expected")["value"];
+                khud.expect("RPAREN", "')' expected after catch variable");
+            }
+            khud.expect("LBRACE", "'{' expected after catch clause");
+            catch_block = khud.parse_block_statements();
+        }
+        pakad finally_block = nalla;
+        agar (khud.match_token("PAKKA")) {
+            khud.expect("LBRACE", "'{' expected after finally keyword");
+            finally_block = khud.parse_block_statements();
+        }
+        ye_le { "kind": "TryCatch", "try_block": try_block, "catch_var": catch_var, "catch_block": catch_block, "finally_block": finally_block };
+    }
+
+    kaam parse_throw_stmt() {
+        pakad expr = khud.parse_expression();
+        khud.match_token("SEMICOLON");
+        ye_le { "kind": "Throw", "expression": expr };
+    }
+
+    kaam parse_print_stmt() {
+        pakad args = [];
+        agar (!khud.check("SEMICOLON") && !khud.check("RBRACE") && !khud.is_at_end()) {
+            args.push(khud.parse_expression());
+            jabtak (khud.match_token("COMMA")) {
+                args.push(khud.parse_expression());
+            }
+        }
+        khud.match_token("SEMICOLON");
+        ye_le { "kind": "Print", "args": args };
+    }
+
+    kaam parse_block_statements() {
+        pakad stmts = [];
+        jabtak (!khud.check("RBRACE") && !khud.is_at_end()) {
+            agar (khud.match_token("SEMICOLON")) { continue; }
+            stmts.push(khud.parse_statement());
+        }
+        khud.expect("RBRACE", "'}' expected after block");
+        ye_le { "kind": "Block", "statements": stmts };
+    }
+
+    kaam parse_block() {
+        ye_le khud.parse_block_statements();
+    }
+
+    // ----------------------------------------------------
+    // Expression Parsing
+    // ----------------------------------------------------
+    kaam parse_expression() {
+        ye_le khud.parse_assignment();
+    }
+
+    kaam parse_assignment() {
+        pakad expr = khud.parse_ternary();
+        agar (khud.match_token("ASSIGN")) {
+            pakad val = khud.parse_assignment();
+            agar (expr["kind"] == "Identifier") {
+                ye_le { "kind": "Assign", "name": expr["name"], "value": val };
+            }
+            warna agar (expr["kind"] == "Get") {
+                ye_le { "kind": "Set", "object": expr["object"], "name": expr["name"], "value": val };
+            }
+            warna agar (expr["kind"] == "Index") {
+                ye_le { "kind": "IndexAssign", "target": expr["target"], "index": expr["index"], "value": val };
+            }
+            dikha "Invalid assignment target!";
+            sys.exit(1);
+        }
+        warna agar (khud.match_token("PLUS_ASSIGN") || khud.match_token("MINUS_ASSIGN") ||
+                    khud.match_token("MUL_ASSIGN") || khud.match_token("DIV_ASSIGN")) {
+            pakad op_tok = khud.tokens[khud.current - 1]["value"];
+            pakad base_op = op_tok[0];
+            pakad rhs = khud.parse_assignment();
+            pakad bin_expr = { "kind": "Binary", "op": base_op, "left": expr, "right": rhs };
+            agar (expr["kind"] == "Identifier") {
+                ye_le { "kind": "Assign", "name": expr["name"], "value": bin_expr };
+            }
+            warna agar (expr["kind"] == "Get") {
+                ye_le { "kind": "Set", "object": expr["object"], "name": expr["name"], "value": bin_expr };
+            }
+            warna agar (expr["kind"] == "Index") {
+                ye_le { "kind": "IndexAssign", "target": expr["target"], "index": expr["index"], "value": bin_expr };
+            }
+            dikha "Invalid compound assignment target!";
+            sys.exit(1);
+        }
+        ye_le expr;
+    }
+
+    kaam parse_ternary() {
+        pakad expr = khud.parse_logical_or();
+        agar (khud.is_ternary_question_ahead()) {
+            khud.advance();
+            pakad then_branch = khud.parse_assignment();
+            khud.expect("COLON", "':' expected in ternary");
+            pakad else_branch = khud.parse_assignment();
+            ye_le { "kind": "Ternary", "condition": expr, "then_branch": then_branch, "else_branch": else_branch };
+        }
+        ye_le expr;
+    }
+
+    kaam parse_logical_or() {
+        pakad left = khud.parse_logical_and();
+        jabtak (khud.match_token("OR")) {
+            pakad right = khud.parse_logical_and();
+            left = { "kind": "Binary", "op": "||", "left": left, "right": right };
+        }
+        ye_le left;
+    }
+
+    kaam parse_logical_and() {
+        pakad left = khud.parse_comparison();
+        jabtak (khud.match_token("AND")) {
+            pakad right = khud.parse_comparison();
+            left = { "kind": "Binary", "op": "&&", "left": left, "right": right };
+        }
+        ye_le left;
+    }
+
+    kaam parse_comparison() {
+        pakad left = khud.parse_additive();
+        jabtak (khud.check("EQ") || khud.check("NEQ") || khud.check("LT") ||
+                khud.check("GT") || khud.check("LTE") || khud.check("GTE")) {
+            pakad oper = khud.advance();
+            pakad right = khud.parse_additive();
+            left = { "kind": "Binary", "op": oper["value"], "left": left, "right": right };
+        }
+        ye_le left;
+    }
+
+    kaam parse_additive() {
+        pakad left = khud.parse_multiplicative();
+        jabtak (khud.check("PLUS") || khud.check("MINUS")) {
+            pakad oper = khud.advance();
+            pakad right = khud.parse_multiplicative();
+            left = { "kind": "Binary", "op": oper["value"], "left": left, "right": right };
+        }
+        ye_le left;
+    }
+
+    kaam parse_multiplicative() {
+        pakad left = khud.parse_unary();
+        jabtak (khud.check("STAR") || khud.check("SLASH") || khud.check("MOD")) {
+            pakad oper = khud.advance();
+            pakad right = khud.parse_unary();
+            left = { "kind": "Binary", "op": oper["value"], "left": left, "right": right };
+        }
+        ye_le left;
+    }
+
+    kaam parse_unary() {
+        agar (khud.check("NOT") || khud.check("MINUS")) {
+            pakad oper = khud.advance();
+            pakad operand = khud.parse_unary();
+            ye_le { "kind": "Unary", "op": oper["value"], "operand": operand };
+        }
+        warna agar (khud.match_token("NEW")) {
+            ye_le khud.parse_unary();
+        }
+        ye_le khud.parse_postfix();
+    }
+
+    kaam parse_postfix() {
+        pakad expr = khud.parse_primary();
+        jabtak (true) {
+            agar (khud.match_token("LPAREN")) {
+                pakad args = [];
+                agar (!khud.check("RPAREN")) {
+                    args.push(khud.parse_expression());
+                    jabtak (khud.match_token("COMMA")) {
+                        args.push(khud.parse_expression());
+                    }
+                }
+                khud.expect("RPAREN", "')' expected after arguments");
+                expr = { "kind": "Call", "callee": expr, "args": args };
+            }
+            warna agar (khud.match_token("DOT")) {
+                pakad member = khud.expect("IDENT", "Property name expected after '.'")["value"];
+                expr = { "kind": "Get", "object": expr, "name": member };
+            }
+            warna agar (khud.match_token("DOUBLE_COLON")) {
+                pakad member = khud.expect("IDENT", "Member name expected after '::'")["value"];
+                expr = { "kind": "ScopedAccess", "scope": expr, "member": member };
+            }
+            warna agar (khud.match_token("LBRACKET")) {
+                pakad idx = khud.parse_expression();
+                khud.expect("RBRACKET", "']' expected after index");
+                expr = { "kind": "Index", "target": expr, "index": idx };
+            }
+            warna agar (khud.check("QUESTION") && !khud.is_ternary_question_ahead()) {
+                khud.advance();
+                expr = { "kind": "TryPropagate", "expression": expr };
+            }
+            warna {
+                bas;
+            }
+        }
+        ye_le expr;
+    }
+
+    kaam parse_primary() {
+        agar (khud.match_token("INT")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le { "kind": "IntLiteral", "value": tok["value"] };
+        }
+        warna agar (khud.match_token("FLOAT")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le { "kind": "FloatLiteral", "value": tok["value"] };
+        }
+        warna agar (khud.match_token("STRING")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le { "kind": "StringLiteral", "value": tok["value"] };
+        }
+        warna agar (khud.match_token("FSTRING")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le khud.parse_fstring(tok["value"]);
+        }
+        warna agar (khud.match_token("TRUE")) {
+            ye_le { "kind": "BoolLiteral", "value": true };
+        }
+        warna agar (khud.match_token("FALSE")) {
+            ye_le { "kind": "BoolLiteral", "value": false };
+        }
+        warna agar (khud.match_token("NULL")) {
+            ye_le { "kind": "NullLiteral" };
+        }
+        warna agar (khud.match_token("SOME") || khud.match_token("OK") || khud.match_token("ERR")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le { "kind": "Identifier", "name": tok["value"] };
+        }
+        warna agar (khud.match_token("NONE")) {
+            ye_le { "kind": "Identifier", "name": "None" };
+        }
+        warna agar (khud.match_token("KHUD")) {
+            ye_le { "kind": "Identifier", "name": "this" };
+        }
+        warna agar (khud.match_token("IDENT")) {
+            pakad tok = khud.tokens[khud.current - 1];
+            ye_le { "kind": "Identifier", "name": tok["value"] };
+        }
+        warna agar (khud.match_token("LPAREN")) {
+            pakad expr = khud.parse_expression();
+            khud.expect("RPAREN", "')' expected after grouped expression");
+            ye_le expr;
+        }
+        warna agar (khud.match_token("LBRACKET")) {
+            pakad elements = [];
+            agar (!khud.check("RBRACKET")) {
+                elements.push(khud.parse_expression());
+                jabtak (khud.match_token("COMMA")) {
+                    agar (khud.check("RBRACKET")) { bas; }
+                    elements.push(khud.parse_expression());
+                }
+            }
+            khud.expect("RBRACKET", "']' expected after list literal");
+            ye_le { "kind": "ListLiteral", "elements": elements };
+        }
+        warna agar (khud.match_token("LBRACE")) {
+            pakad entries = [];
+            agar (!khud.check("RBRACE")) {
+                jabtak (true) {
+                    pakad key_expr = khud.parse_expression();
+                    khud.expect("COLON", "':' expected after map key");
+                    pakad val_expr = khud.parse_expression();
+                    entries.push({ "key": key_expr, "value": val_expr });
+                    agar (khud.match_token("COMMA")) {
+                        agar (khud.check("RBRACE")) { bas; }
+                    } warna {
+                        bas;
+                    }
+                }
+            }
+            khud.expect("RBRACE", "'}' expected after map entries");
+            ye_le { "kind": "MapLiteral", "entries": entries };
+        }
+        warna agar (khud.match_token("JAANCH")) {
+            pakad target = khud.parse_expression();
+            khud.expect("LBRACE", "'{' expected after jaanch target");
+            pakad arms = [];
+            jabtak (!khud.check("RBRACE") && !khud.is_at_end()) {
+                pakad is_default = false;
+                pakad pat = nalla;
+                agar (khud.match_token("WARNA") || khud.match_token("BAAKI")) {
+                    is_default = true;
+                } warna {
+                    pat = khud.parse_expression();
+                }
+                khud.expect("ARROW", "'=>' expected after pattern in jaanch arm");
+                pakad arm_body = khud.parse_expression();
+                arms.push({ "is_default": is_default, "pattern": pat, "body": arm_body });
+                khud.match_token("COMMA");
+            }
+            khud.expect("RBRACE", "'}' expected after jaanch body");
+            ye_le { "kind": "Jaanch", "target": target, "arms": arms };
+        }
+
+        pakad tok = khud.peek();
+        dikha f"SyntaxError at line {tok['line']}, col {tok['col']}: Unexpected token '{tok['value']}' of type {tok['type']}";
+        sys.exit(1);
+    }
+
+    kaam parse_fstring(raw) {
+        pakad parts = [];
+        pakad lit = "";
+        pakad pos = 0;
+        pakad n = raw.length();
+        jabtak (pos < n) {
+            pakad c = raw[pos];
+            agar (c == "{") {
+                agar (pos + 1 < n && raw[pos + 1] == "{") {
+                    lit = lit + "{";
+                    pos = pos + 2;
+                } warna {
+                    agar (lit != "") {
+                        parts.push({ "kind": "StringLiteral", "value": lit });
+                        lit = "";
+                    }
+                    pos = pos + 1;
+                    pakad depth = 1;
+                    pakad start = pos;
+                    jabtak (pos < n && depth > 0) {
+                        agar (raw[pos] == "{") { depth = depth + 1; }
+                        warna agar (raw[pos] == "}") { depth = depth - 1; }
+                        agar (depth > 0) { pos = pos + 1; }
+                    }
+                    pakad expr_str = raw.slice(start, pos);
+                    pos = pos + 1; // skip closing '}'
+                    pakad sub_tokens = tokenize(expr_str);
+                    pakad sub_parser = new Parser(sub_tokens);
+                    pakad sub_expr = sub_parser.parse_expression();
+                    parts.push(sub_expr);
+                }
+            } warna agar (c == "}") {
+                agar (pos + 1 < n && raw[pos + 1] == "}") {
+                    lit = lit + "}";
+                    pos = pos + 2;
+                } warna {
+                    pos = pos + 1;
+                }
+            } warna {
+                lit = lit + c;
+                pos = pos + 1;
+            }
+        }
+        agar (lit != "") {
+            parts.push({ "kind": "StringLiteral", "value": lit });
+        }
+        ye_le { "kind": "FString", "parts": parts };
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 5. C++20 AOT Code Generator
+// ----------------------------------------------------------------------------
+
+sancha CodeGenerator {
+    kaam shuru() {
+        khud.indent_level = 0;
+        khud.known_classes = {};
+        khud.known_functions = {};
+        khud.tmp_counter = 0;
+        khud.curr_field_map = {};
+    }
+
+    kaam indent(level) {
+        pakad s = "";
+        ghoom i in 0..level {
+            s = s + "    ";
+        }
+        ye_le s;
+    }
+
+    kaam next_tmp() {
+        pakad id = "_tmp_" + khud.tmp_counter;
+        khud.tmp_counter = khud.tmp_counter + 1;
+        ye_le id;
+    }
+
+    kaam find_fields_in_stmt(s) {
+        agar (s == nalla) { return; }
+        pakad kind = s["kind"];
+        agar (kind == "ExprStmt") {
+            pakad e = s["expression"];
+            agar (e != nalla && e["kind"] == "Set" && e["object"] != nalla && e["object"]["kind"] == "Identifier" && e["object"]["name"] == "this") {
+                khud.curr_field_map[e["name"]] = 1;
+            }
+            agar (e != nalla && e["kind"] == "Get" && e["object"] != nalla && e["object"]["kind"] == "Identifier" && e["object"]["name"] == "this") {
+                khud.curr_field_map[e["name"]] = 1;
+            }
+        } warna agar (kind == "Block") {
+            ghoom i in 0..s["statements"].length() {
+                khud.find_fields_in_stmt(s["statements"][i]);
+            }
+        } warna agar (kind == "If") {
+            khud.find_fields_in_stmt(s["then_branch"]);
+            agar (s["else_branch"] != nalla) {
+                khud.find_fields_in_stmt(s["else_branch"]);
+            }
+        } warna agar (kind == "While") {
+            khud.find_fields_in_stmt(s["body"]);
+        } warna agar (kind == "ForRange" || kind == "ForEach") {
+            khud.find_fields_in_stmt(s["body"]);
+        } warna agar (kind == "TryCatch") {
+            khud.find_fields_in_stmt(s["try_block"]);
+            agar (s["catch_block"] != nalla) {
+                khud.find_fields_in_stmt(s["catch_block"]);
+            }
+            agar (s["finally_block"] != nalla) {
+                khud.find_fields_in_stmt(s["finally_block"]);
+            }
+        }
+    }
+
+    kaam gen_expr(e) {
+        agar (e == nalla) { ye_le "MemeValue()"; }
+        pakad kind = e["kind"];
+
+        agar (kind == "IntLiteral") {
+            ye_le ("" + e["value"]) + "LL";
+        }
+        warna agar (kind == "FloatLiteral") {
+            ye_le "" + e["value"];
+        }
+        warna agar (kind == "BoolLiteral") {
+            ye_le e["value"] ? "true" : "false";
+        }
+        warna agar (kind == "StringLiteral") {
+            ye_le "std::string(\"" + escape_string(e["value"]) + "\")";
+        }
+        warna agar (kind == "NullLiteral") {
+            ye_le "MemeValue()";
+        }
+        warna agar (kind == "Identifier") {
+            ye_le sanitize_identifier(e["name"]);
+        }
+        warna agar (kind == "Assign") {
+            ye_le "(" + sanitize_identifier(e["name"]) + " = " + khud.gen_expr(e["value"]) + ")";
+        }
+        warna agar (kind == "Unary") {
+            pakad oper = e["op"];
+            agar (oper == "!" || oper == "not") { oper = "!"; }
+            ye_le "(" + oper + khud.gen_expr(e["operand"]) + ")";
+        }
+        warna agar (kind == "Binary") {
+            pakad oper = e["op"];
+            agar (oper == "&&" || oper == "aur") { oper = "&&"; }
+            warna agar (oper == "||" || oper == "ya") { oper = "||"; }
+            ye_le "(" + khud.gen_expr(e["left"]) + " " + oper + " " + khud.gen_expr(e["right"]) + ")";
+        }
+        warna agar (kind == "ListLiteral") {
+            pakad items = "";
+            ghoom i in 0..e["elements"].length() {
+                agar (i > 0) { items = items + ", "; }
+                items = items + khud.gen_expr(e["elements"][i]);
+            }
+            ye_le "std::vector<MemeValue>{" + items + "}";
+        }
+        warna agar (kind == "MapLiteral") {
+            pakad pairs = "";
+            ghoom i in 0..e["entries"].length() {
+                agar (i > 0) { pairs = pairs + ", "; }
+                pakad ent = e["entries"][i];
+                pairs = pairs + "{" + khud.gen_expr(ent["key"]) + ", " + khud.gen_expr(ent["value"]) + "}";
+            }
+            ye_le "make_map({" + pairs + "})";
+        }
+        warna agar (kind == "Index") {
+            ye_le "meme_index(" + khud.gen_expr(e["target"]) + ", " + khud.gen_expr(e["index"]) + ")";
+        }
+        warna agar (kind == "IndexAssign") {
+            ye_le "(meme_index(" + khud.gen_expr(e["target"]) + ", " + khud.gen_expr(e["index"]) + ") = " + khud.gen_expr(e["value"]) + ")";
+        }
+        warna agar (kind == "Get") {
+            pakad obj_str = khud.gen_expr(e["object"]);
+            pakad prop = sanitize_identifier(e["name"]);
+            agar (obj_str == "this") { ye_le "this->" + prop; }
+            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "samay" || obj_str == "math") {
+                ye_le obj_str + "." + prop;
+            }
+            ye_le obj_str + "->" + prop;
+        }
+        warna agar (kind == "Set") {
+            pakad obj_str = khud.gen_expr(e["object"]);
+            pakad prop = sanitize_identifier(e["name"]);
+            pakad val = khud.gen_expr(e["value"]);
+            agar (obj_str == "this") { ye_le "(this->" + prop + " = " + val + ")"; }
+            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file") { ye_le "(" + obj_str + "." + prop + " = " + val + ")"; }
+            ye_le "(" + obj_str + "->" + prop + " = " + val + ")";
+        }
+        warna agar (kind == "Call") {
+            // 1. Constructor call on user class
+            agar (e["callee"]["kind"] == "Identifier" && khud.known_classes.has(e["callee"]["name"])) {
+                pakad args = "";
+                ghoom i in 0..e["args"].length() {
+                    agar (i > 0) { args = args + ", "; }
+                    args = args + khud.gen_expr(e["args"][i]);
+                }
+                ye_le "std::make_shared<" + e["callee"]["name"] + ">(" + args + ")";
+            }
+
+            // 2. Member call: obj.method(args)
+            agar (e["callee"]["kind"] == "Get") {
+                pakad obj_str = khud.gen_expr(e["callee"]["object"]);
+                pakad method = sanitize_identifier(e["callee"]["name"]);
+
+                pakad args = "";
+                ghoom i in 0..e["args"].length() {
+                    agar (i > 0) { args = args + ", "; }
+                    args = args + khud.gen_expr(e["args"][i]);
+                }
+
+                agar (method == "push" || method == "push_back") {
+                    ye_le obj_str + ".push_back(" + args + ")";
+                }
+                agar (method == "length" || method == "lambai" || method == "size") {
+                    ye_le "static_cast<int64_t>(" + obj_str + ".size())";
+                }
+                agar (obj_str == "this") {
+                    ye_le "this->" + method + "(" + args + ")";
+                }
+                agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "samay" || obj_str == "math") {
+                    ye_le obj_str + "." + method + "(" + args + ")";
+                }
+                agar (method == "is_some" || method == "is_none" || method == "is_ok" || method == "is_err" ||
+                      method == "unwrap" || method == "unwrap_err" || method == "unwrap_or" ||
+                      method == "keys" || method == "values" || method == "remove" || method == "get" || method == "has") {
+                    ye_le obj_str + "." + method + "(" + args + ")";
+                }
+                agar (method == "charAt" || method == "chars" || method == "slice" ||
+                      method == "starts_with" || method == "ends_with" || method == "find" ||
+                      method == "split" || method == "replace" || method == "trim") {
+                    ye_le "MemeValue(" + obj_str + ")." + method + "(" + args + ")";
+                }
+                ye_le obj_str + "->" + method + "(" + args + ")";
+            }
+
+            // 3. Regular function call
+            pakad callee_str = khud.gen_expr(e["callee"]);
+            pakad args = "";
+            ghoom i in 0..e["args"].length() {
+                agar (i > 0) { args = args + ", "; }
+                args = args + khud.gen_expr(e["args"][i]);
+            }
+            ye_le callee_str + "(" + args + ")";
+        }
+        warna agar (kind == "FString") {
+            pakad ss = "((std::ostringstream()";
+            ghoom i in 0..e["parts"].length() {
+                ss = ss + " << meme_to_string_fmt(" + khud.gen_expr(e["parts"][i]) + ")";
+            }
+            ss = ss + ").str())";
+            ye_le ss;
+        }
+        warna agar (kind == "Ternary") {
+            ye_le "(is_truthy(" + khud.gen_expr(e["condition"]) + ") ? " +
+                  khud.gen_expr(e["then_branch"]) + " : " + khud.gen_expr(e["else_branch"]) + ")";
+        }
+        warna agar (kind == "TryPropagate") {
+            ye_le "([&](auto &&_v) {\n" +
+                  "    if (_v.is_none() || _v.is_err()) throw MemeReturnSignal(_v);\n" +
+                  "    return _v.unwrap();\n" +
+                  "})(" + khud.gen_expr(e["expression"]) + ")";
+        }
+        warna agar (kind == "Jaanch") {
+            pakad out = "([&]() -> MemeValue {\n";
+            out = out + "    auto _target = " + khud.gen_expr(e["target"]) + ";\n";
+            pakad def_body = "MemeValue()";
+            ghoom i in 0..e["arms"].length() {
+                pakad arm = e["arms"][i];
+                agar (arm["is_default"]) {
+                    def_body = "" + khud.gen_expr(arm["body"]);
+                } warna {
+                    out = out + "    if (_target == " + khud.gen_expr(arm["pattern"]) + ") return " + khud.gen_expr(arm["body"]) + ";\n";
+                }
+            }
+            out = out + "    return " + def_body + ";\n";
+            out = out + "})()";
+            ye_le out;
+        }
+
+        ye_le "MemeValue()";
+    }
+
+    kaam gen_stmt(s, level) {
+        agar (s == nalla) { ye_le ""; }
+        pakad ind = khud.indent(level);
+        pakad kind = s["kind"];
+
+        agar (kind == "VarDecl") {
+            pakad var_name = sanitize_identifier(s["name"]);
+            agar (s["init"] != nalla) {
+                ye_le ind + "auto " + var_name + " = " + khud.gen_expr(s["init"]) + ";\n";
+            } warna {
+                ye_le ind + "MemeValue " + var_name + ";\n";
+            }
+        }
+        warna agar (kind == "ExprStmt") {
+            ye_le ind + khud.gen_expr(s["expression"]) + ";\n";
+        }
+        warna agar (kind == "Print") {
+            pakad args = "";
+            ghoom i in 0..s["args"].length() {
+                agar (i > 0) { args = args + ", "; }
+                args = args + khud.gen_expr(s["args"][i]);
+            }
+            ye_le ind + "print_dikha(" + args + ");\n";
+        }
+        warna agar (kind == "Block") {
+            pakad out = ind + "{\n";
+            ghoom i in 0..s["statements"].length() {
+                out = out + khud.gen_stmt(s["statements"][i], level + 1);
+            }
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+        warna agar (kind == "If") {
+            pakad out = ind + "if (is_truthy(" + khud.gen_expr(s["condition"]) + ")) {\n";
+            out = out + khud.gen_stmt(s["then_branch"], level + 1);
+            agar (s["else_branch"] != nalla) {
+                out = out + ind + "} else {\n";
+                out = out + khud.gen_stmt(s["else_branch"], level + 1);
+            }
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+        warna agar (kind == "While") {
+            pakad out = ind + "while (is_truthy(" + khud.gen_expr(s["condition"]) + ")) {\n";
+            out = out + khud.gen_stmt(s["body"], level + 1);
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+        warna agar (kind == "ForRange") {
+            pakad var_name = sanitize_identifier(s["var_name"]);
+            pakad start = khud.gen_expr(s["start"]);
+            pakad end = khud.gen_expr(s["end"]);
+            pakad out = ind + "for (int64_t " + var_name + " = " + start + "; " + var_name + " < " + end + "; ++" + var_name + ") {\n";
+            out = out + khud.gen_stmt(s["body"], level + 1);
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+        warna agar (kind == "ForEach") {
+            pakad item = sanitize_identifier(s["var_name"]);
+            pakad coll = khud.gen_expr(s["collection"]);
+            pakad out = ind + "for (auto &&" + item + " : " + coll + ") {\n";
+            out = out + khud.gen_stmt(s["body"], level + 1);
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+        warna agar (kind == "Return") {
+            agar (s["value"] != nalla) {
+                ye_le ind + "return " + khud.gen_expr(s["value"]) + ";\n";
+            } warna {
+                ye_le ind + "return MemeValue();\n";
+            }
+        }
+        warna agar (kind == "Break") {
+            ye_le ind + "break;\n";
+        }
+        warna agar (kind == "Continue") {
+            ye_le ind + "continue;\n";
+        }
+        warna agar (kind == "Throw") {
+            ye_le ind + "throw MemeValue(" + khud.gen_expr(s["expression"]) + ");\n";
+        }
+        warna agar (kind == "TryCatch") {
+            pakad cvar = "err";
+            agar (s["catch_var"] != "") {
+                cvar = "" + sanitize_identifier(s["catch_var"]);
+            }
+            pakad out = ind + "{\n";
+            agar (s["finally_block"] != nalla) {
+                out = out + ind + "    auto _finally_guard = make_scope_guard([&]() {\n";
+                out = out + khud.gen_stmt(s["finally_block"], level + 2);
+                out = out + ind + "    });\n";
+            }
+            out = out + ind + "    try {\n";
+            out = out + khud.gen_stmt(s["try_block"], level + 2);
+            agar (s["catch_block"] != nalla) {
+                out = out + ind + "    } catch (const MemeValue &" + cvar + ") {\n";
+                out = out + khud.gen_stmt(s["catch_block"], level + 2);
+                out = out + ind + "    } catch (const std::exception &_ex) {\n";
+                out = out + ind + "        MemeValue " + cvar + " = MemeValue(std::string(_ex.what()));\n";
+                out = out + khud.gen_stmt(s["catch_block"], level + 2);
+            }
+            out = out + ind + "    }\n";
+            out = out + ind + "}\n";
+            ye_le out;
+        }
+
+        ye_le "";
+    }
+
+    kaam gen_class(c) {
+        pakad name = c["name"];
+        pakad out = "struct " + name + " : public std::enable_shared_from_this<" + name + "> {\n";
+
+        // Collect fields assigned or accessed on khud
+        khud.curr_field_map = {};
+        ghoom i in 0..c["methods"].length() {
+            pakad m = c["methods"][i];
+            khud.find_fields_in_stmt(m["body"]);
+        }
+        pakad raw_fields = khud.curr_field_map.keys();
+        pakad fields = sort_strings(raw_fields);
+        ghoom i in 0..fields.length() {
+            out = out + "    MemeValue " + fields[i] + ";\n";
+        }
+
+        pakad has_zero_ctor = 0;
+        ghoom i in 0..c["methods"].length() {
+            pakad m = c["methods"][i];
+            pakad m_name = m["name"];
+            agar (m_name == "shuru" || m_name == "init" || m_name == "constructor") {
+                agar (m["params"].length() == 0) {
+                    has_zero_ctor = 1;
+                }
+            }
+        }
+        agar (has_zero_ctor == 0) {
+            out = out + "\n    " + name + "() = default;\n";
+        }
+
+        // Emit constructor & methods
+        ghoom i in 0..c["methods"].length() {
+            pakad m = c["methods"][i];
+            pakad m_name = m["name"];
+            agar (m_name == "shuru" || m_name == "init" || m_name == "constructor") {
+                pakad params = "";
+                ghoom p in 0..m["params"].length() {
+                    agar (p > 0) { params = params + ", "; }
+                    params = params + "const auto &" + sanitize_identifier(m["params"][p]);
+                }
+                out = out + "    " + name + "(" + params + ") {\n";
+                out = out + khud.gen_stmt(m["body"], 2);
+                out = out + "    }\n";
+            } warna {
+                pakad params = "";
+                ghoom p in 0..m["params"].length() {
+                    agar (p > 0) { params = params + ", "; }
+                    params = params + "const auto &" + sanitize_identifier(m["params"][p]);
+                }
+                out = out + "    MemeValue " + sanitize_identifier(m_name) + "(" + params + ") {\n";
+                out = out + khud.gen_stmt(m["body"], 2);
+                out = out + "        return MemeValue();\n";
+                out = out + "    }\n";
+            }
+        }
+        out = out + "};\n\n";
+        ye_le out;
+    }
+
+    kaam gen_function(f) {
+        pakad name = sanitize_identifier(f["name"]);
+        pakad params = "";
+        ghoom i in 0..f["params"].length() {
+            agar (i > 0) { params = params + ", "; }
+            params = params + "const auto &" + sanitize_identifier(f["params"][i]);
+        }
+        pakad out = "inline MemeValue " + name + "(" + params + ") {\n";
+        out = out + khud.gen_stmt(f["body"], 1);
+        out = out + "    return MemeValue();\n";
+        out = out + "}\n\n";
+        ye_le out;
+    }
+
+    kaam generate(program) {
+        pakad class_list = [];
+        pakad func_list = [];
+        pakad top_stmts = [];
+
+        ghoom i in 0..program["statements"].length() {
+            pakad s = program["statements"][i];
+            agar (s["kind"] == "ClassDecl") {
+                class_list.push(s);
+                khud.known_classes[s["name"]] = 1;
+            } warna agar (s["kind"] == "FuncDecl") {
+                func_list.push(s);
+                khud.known_functions[s["name"]] = 1;
+            } warna {
+                top_stmts.push(s);
+            }
+        }
+
+        pakad out = "// ==================================================================\n";
+        out = out + "// Automatically generated by MEMElang Self-Hosted Compiler\n";
+        out = out + "// ==================================================================\n\n";
+        out = out + "#if __has_include(\"src/compiler/MemeRuntime.h\")\n";
+        out = out + "#include \"src/compiler/MemeRuntime.h\"\n";
+        out = out + "#elif __has_include(\"MemeRuntime.h\")\n";
+        out = out + "#include \"MemeRuntime.h\"\n";
+        out = out + "#else\n";
+        out = out + "#include \"src/compiler/MemeRuntime.h\"\n";
+        out = out + "#endif\n\n";
+
+        // Forward declare classes
+        ghoom i in 0..class_list.length() {
+            out = out + "struct " + class_list[i]["name"] + ";\n";
+        }
+        agar (class_list.length() > 0) { out = out + "\n"; }
+
+        // Forward declare functions
+        ghoom i in 0..func_list.length() {
+            pakad f = func_list[i];
+            pakad fn_name = sanitize_identifier(f["name"]);
+            pakad params = "";
+            ghoom p in 0..f["params"].length() {
+                agar (p > 0) { params = params + ", "; }
+                params = params + "const auto &" + sanitize_identifier(f["params"][p]);
+            }
+            out = out + "inline MemeValue " + fn_name + "(" + params + ");\n";
+        }
+        agar (func_list.length() > 0) { out = out + "\n"; }
+
+        // Emit classes
+        ghoom i in 0..class_list.length() {
+            out = out + khud.gen_class(class_list[i]);
+        }
+
+        // Emit functions
+        ghoom i in 0..func_list.length() {
+            out = out + khud.gen_function(func_list[i]);
+        }
+
+        // Emit main entrypoint
+        out = out + "int main(int argc, char* argv[]) {\n";
+        out = out + "    sys.args.clear();\n";
+        out = out + "    for (int _i = 0; _i < argc; ++_i) {\n";
+        out = out + "        sys.args.push_back(std::string(argv[_i]));\n";
+        out = out + "    }\n\n";
+        out = out + "    try {\n";
+        ghoom i in 0..top_stmts.length() {
+            out = out + khud.gen_stmt(top_stmts[i], 2);
+        }
+        agar (khud.known_functions.has("main")) {
+            out = out + "        meme_user_main();\n";
+        }
+        out = out + "    } catch (const MemeReturnSignal &_sig) {\n";
+        out = out + "        return 0;\n";
+        out = out + "    }\n";
+        out = out + "\n    return 0;\n";
+        out = out + "}\n";
+
+        ye_le out;
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 6. CLI Driver & Toolchain Shellout
+// ----------------------------------------------------------------------------
+
+kaam print_usage() {
+    dikha "🎭 MEMElang Self-Hosted Compiler (compiler.meme)";
+    dikha "Usage: ./meme compiler.meme <source.meme> [-o <binary>] [--keep-cpp] [-c] [-v]";
+    dikha "Options:";
+    dikha "  -o <binary>   Specify output binary path (default: <source_stem>)";
+    dikha "  --keep-cpp    Preserve intermediate generated .cpp file";
+    dikha "  -c            Compile to C++ only, do not invoke clang++";
+    dikha "  -v, --verbose Enable verbose build output";
+    dikha "  -h, --help    Show this help message";
+}
+
+kaam run_compiler() {
+    agar (sys.args.length() <= 1) {
+        print_usage();
+        sys.exit(1);
+    }
+
+    pakad input_path = "";
+    pakad output_binary = "";
+    pakad keep_cpp = false;
+    pakad emit_cpp_only = false;
+    pakad verbose = false;
+
+    pakad i = 1;
+    jabtak (i < sys.args.length()) {
+        pakad arg = sys.args[i];
+        agar (arg == "-o" || arg == "--output") {
+            i = i + 1;
+            agar (i < sys.args.length()) { output_binary = "" + sys.args[i]; }
+        } warna agar (arg == "--keep-cpp") {
+            keep_cpp = true;
+        } warna agar (arg == "-c") {
+            emit_cpp_only = true;
+            keep_cpp = true;
+        } warna agar (arg == "-v" || arg == "--verbose") {
+            verbose = true;
+        } warna agar (arg == "-h" || arg == "--help") {
+            print_usage();
+            sys.exit(0);
+        } warna agar (arg.starts_with("-")) {
+            dikha "❌ Error: Unknown CLI flag: " + arg;
+            sys.exit(1);
+        } warna agar (input_path == "") {
+            input_path = "" + arg;
+        } warna {
+            dikha "❌ Error: Multiple input files not supported: " + arg;
+            sys.exit(1);
+        }
+        i = i + 1;
+    }
+
+    agar (input_path == "") {
+        dikha "❌ Error: No source file specified!";
+        print_usage();
+        sys.exit(1);
+    }
+
+    agar (!file.exists(input_path)) {
+        dikha "❌ Error: Source file '" + input_path + "' not found!";
+        sys.exit(1);
+    }
+
+    // Default output binary name
+    agar (output_binary == "") {
+        output_binary = "" + input_path;
+        agar (output_binary.ends_with(".meme")) {
+            output_binary = "" + output_binary.slice(0, output_binary.length() - 5);
+        }
+    }
+
+    pakad cpp_path = output_binary + ".cpp";
+
+    // Read source code
+    pakad source_code = file.read(input_path);
+
+    // Lexical scanning
+    pakad tokens = tokenize(source_code);
+
+    // Parsing
+    pakad parser = new Parser(tokens);
+    pakad program_ast = parser.parse_program();
+
+    // Code generation
+    pakad generator = new CodeGenerator();
+    pakad cpp_code = generator.generate(program_ast);
+
+    // Write C++ target
+    file.write(cpp_path, cpp_code);
+
+    agar (emit_cpp_only) {
+        agar (verbose) { dikha "✔ C++ target emitted at: " + cpp_path; }
+        sys.exit(0);
+    }
+
+    // Remove pre-existing binary if present
+    agar (file.exists(output_binary)) {
+        file.remove(output_binary);
+    }
+
+    // Shellout to host clang++
+    pakad clang_cmd = "clang++ -std=c++20 -O3 -I. -I src/compiler \"" + cpp_path + "\" -o \"" + output_binary + "\" 2>&1";
+    agar (verbose) { dikha "Executing: " + clang_cmd; }
+
+    pakad build_output = sys.exec(clang_cmd);
+
+    agar (!file.exists(output_binary)) {
+        dikha "❌ Clang++ Native Compilation Failed:\n" + build_output;
+        sys.exit(1);
+    }
+
+    agar (verbose) {
+        dikha "✔ Success: Native binary generated at " + output_binary;
+    }
+}
+
+run_compiler();

@@ -15,6 +15,87 @@
 #include <variant>
 #include <algorithm>
 #include <stdexcept>
+#include <fstream>
+#include <filesystem>
+#include <cstdlib>
+#include <cstdio>
+
+// ==========================================
+// 0. RAII ScopeGuard & Signals
+// ==========================================
+
+template <typename F>
+class ScopeGuard {
+    F func;
+    bool active = true;
+public:
+    explicit ScopeGuard(F f) : func(std::move(f)) {}
+    ~ScopeGuard() {
+        if (active) {
+            try { func(); } catch (...) {}
+        }
+    }
+    ScopeGuard(const ScopeGuard &) = delete;
+    ScopeGuard &operator=(const ScopeGuard &) = delete;
+    ScopeGuard(ScopeGuard &&other) noexcept : func(std::move(other.func)), active(other.active) {
+        other.active = false;
+    }
+    void dismiss() { active = false; }
+};
+
+template <typename F>
+inline ScopeGuard<F> make_scope_guard(F f) {
+    return ScopeGuard<F>(std::move(f));
+}
+
+class MemeValue;
+
+struct MemeReturnSignal {
+    std::shared_ptr<MemeValue> value;
+    explicit MemeReturnSignal(const MemeValue &v);
+};
+
+// ==========================================
+// 0.1 String List Helper (sys.args, file.lines)
+// ==========================================
+
+struct MemeStringList : public std::vector<std::string> {
+    using std::vector<std::string>::vector;
+    MemeStringList() = default;
+    MemeStringList(const std::vector<std::string> &v) : std::vector<std::string>(v) {}
+    MemeStringList(std::vector<std::string> &&v) : std::vector<std::string>(std::move(v)) {}
+
+    size_t length() const { return size(); }
+    size_t lambai() const { return size(); }
+
+    std::string &operator[](size_t idx);
+    const std::string &operator[](size_t idx) const;
+    std::string &operator[](int idx);
+    const std::string &operator[](int idx) const;
+    std::string &operator[](long long idx);
+    const std::string &operator[](long long idx) const;
+    std::string &operator[](unsigned long long idx);
+    const std::string &operator[](unsigned long long idx) const;
+    std::string &operator[](const MemeValue &idx);
+    const std::string &operator[](const MemeValue &idx) const;
+    std::string &operator[](MemeValue &idx);
+    const std::string &operator[](MemeValue &idx) const;
+
+    std::string to_string() const {
+        std::string res = "[";
+        for (size_t idx = 0; idx < size(); ++idx) {
+            if (idx > 0) res += ", ";
+            res += "\"" + (*this)[idx] + "\"";
+        }
+        res += "]";
+        return res;
+    }
+};
+
+inline std::ostream &operator<<(std::ostream &os, const MemeStringList &l) {
+    os << l.to_string();
+    return os;
+}
 
 // ==========================================
 // 1. Dynamic Polymorphic MemeValue
@@ -30,7 +111,10 @@ public:
         TYPE_STRING = 4,
         TYPE_LIST = 5,
         TYPE_POINTER = 6,
-        TYPE_OBJECT = 7
+        TYPE_OBJECT = 7,
+        TYPE_MAP = 8,
+        TYPE_OPTION = 9,
+        TYPE_RESULT = 10
     };
 
     Type type = TYPE_NALLA;
@@ -39,8 +123,12 @@ public:
     bool b_val = false;
     std::string s_val = "";
     std::vector<MemeValue> list_val = {};
+    std::unordered_map<std::string, MemeValue> map_val = {};
+    std::vector<std::string> map_keys = {};
     void *ptr_val = nullptr;
     std::shared_ptr<void> obj_val = nullptr;
+    bool opt_res_flag = false;
+    mutable std::shared_ptr<MemeValue> inner_val = nullptr;
 
     MemeValue() : type(TYPE_NALLA) {}
     MemeValue(std::nullptr_t) : type(TYPE_NALLA) {}
@@ -49,11 +137,52 @@ public:
     MemeValue(double v) : type(TYPE_FLOAT), f_val(v) {}
     MemeValue(float v) : type(TYPE_FLOAT), f_val(static_cast<double>(v)) {}
     MemeValue(bool v) : type(TYPE_BOOL), b_val(v) {}
-    MemeValue(const char *s) : type(TYPE_STRING), s_val(s) {}
+    MemeValue(const char *s) : type(TYPE_STRING), s_val(s ? s : "") {}
     MemeValue(const std::string &s) : type(TYPE_STRING), s_val(s) {}
     MemeValue(std::vector<MemeValue> l) : type(TYPE_LIST), list_val(std::move(l)) {}
     MemeValue(void *p) : type(TYPE_POINTER), ptr_val(p) {}
     MemeValue(std::shared_ptr<void> obj) : type(TYPE_OBJECT), obj_val(std::move(obj)) {}
+    MemeValue(std::unordered_map<std::string, MemeValue> m)
+        : type(TYPE_MAP), map_val(std::move(m)) {
+        for (const auto &pair : map_val) {
+            map_keys.push_back(pair.first);
+        }
+    }
+    MemeValue(std::initializer_list<std::pair<std::string, MemeValue>> init)
+        : type(TYPE_MAP) {
+        for (const auto &pair : init) {
+            if (map_val.find(pair.first) == map_val.end()) {
+                map_keys.push_back(pair.first);
+            }
+            map_val[pair.first] = pair.second;
+        }
+    }
+    MemeValue(const std::vector<std::string> &vec) : type(TYPE_LIST) {
+        list_val.reserve(vec.size());
+        for (const auto &s : vec) {
+            list_val.push_back(MemeValue(s));
+        }
+    }
+    MemeValue(const MemeStringList &vec) : type(TYPE_LIST) {
+        list_val.reserve(vec.size());
+        for (const auto &s : vec) {
+            list_val.push_back(MemeValue(s));
+        }
+    }
+
+    // Resilient pointer operator
+    MemeValue *operator->() { return this; }
+    const MemeValue *operator->() const { return this; }
+
+    // Range-for iterability
+    auto begin() { return list_val.begin(); }
+    auto end() { return list_val.end(); }
+    auto begin() const { return list_val.begin(); }
+    auto end() const { return list_val.end(); }
+
+    operator std::string() const {
+        return to_string();
+    }
 
     // Truthiness
     bool is_truthy() const {
@@ -64,6 +193,9 @@ public:
         case TYPE_BOOL: return b_val;
         case TYPE_STRING: return !s_val.empty();
         case TYPE_LIST: return !list_val.empty();
+        case TYPE_MAP: return !map_val.empty();
+        case TYPE_OPTION: return opt_res_flag;
+        case TYPE_RESULT: return opt_res_flag;
         case TYPE_POINTER: return ptr_val != nullptr;
         case TYPE_OBJECT: return obj_val != nullptr;
         }
@@ -127,6 +259,31 @@ public:
             res += "]";
             return res;
         }
+        case TYPE_MAP: {
+            std::string res = "{";
+            for (size_t idx = 0; idx < map_keys.size(); ++idx) {
+                if (idx > 0) res += ", ";
+                const auto &k = map_keys[idx];
+                res += "\"" + k + "\": ";
+                auto it = map_val.find(k);
+                if (it != map_val.end()) {
+                    if (it->second.type == TYPE_STRING) {
+                        res += "\"" + it->second.s_val + "\"";
+                    } else {
+                        res += it->second.to_string();
+                    }
+                } else {
+                    res += "nalla";
+                }
+            }
+            res += "}";
+            return res;
+        }
+        case TYPE_OPTION:
+            return opt_res_flag ? ("Some(" + (inner_val ? inner_val->to_string() : "nalla") + ")") : "None";
+        case TYPE_RESULT:
+            return opt_res_flag ? ("Ok(" + (inner_val ? inner_val->to_string() : "nalla") + ")")
+                                : ("Err(" + (inner_val ? inner_val->to_string() : "nalla") + ")");
         case TYPE_POINTER: return "<patta " + std::to_string(reinterpret_cast<uintptr_t>(ptr_val)) + ">";
         case TYPE_OBJECT: return "<object>";
         }
@@ -230,8 +387,16 @@ public:
     bool operator!=(std::nullptr_t) const { return type != TYPE_NALLA; }
     bool operator==(int64_t v) const { return type == TYPE_INT ? i_val == v : as_double() == static_cast<double>(v); }
     bool operator!=(int64_t v) const { return !(*this == v); }
+    bool operator<(int64_t v) const { return type == TYPE_INT ? i_val < v : as_double() < static_cast<double>(v); }
+    bool operator<=(int64_t v) const { return type == TYPE_INT ? i_val <= v : as_double() <= static_cast<double>(v); }
+    bool operator>(int64_t v) const { return type == TYPE_INT ? i_val > v : as_double() > static_cast<double>(v); }
+    bool operator>=(int64_t v) const { return type == TYPE_INT ? i_val >= v : as_double() >= static_cast<double>(v); }
     bool operator==(double v) const { return as_double() == v; }
     bool operator!=(double v) const { return !(*this == v); }
+    bool operator<(double v) const { return as_double() < v; }
+    bool operator<=(double v) const { return as_double() <= v; }
+    bool operator>(double v) const { return as_double() > v; }
+    bool operator>=(double v) const { return as_double() >= v; }
 
     bool operator==(const MemeValue &other) const {
         if (type == TYPE_INT && other.type == TYPE_INT) return i_val == other.i_val;
@@ -239,6 +404,34 @@ public:
         if (type == TYPE_BOOL && other.type == TYPE_BOOL) return b_val == other.b_val;
         if (type == TYPE_STRING && other.type == TYPE_STRING) return s_val == other.s_val;
         if (type == TYPE_NALLA && other.type == TYPE_NALLA) return true;
+        if (type == TYPE_MAP && other.type == TYPE_MAP) {
+            if (map_val.size() != other.map_val.size()) return false;
+            for (const auto &pair : map_val) {
+                auto it = other.map_val.find(pair.first);
+                if (it == other.map_val.end() || it->second != pair.second) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (type == TYPE_OPTION && other.type == TYPE_OPTION) {
+            if (opt_res_flag != other.opt_res_flag) return false;
+            if (!opt_res_flag) return true;
+            if (inner_val && other.inner_val) return *inner_val == *other.inner_val;
+            return inner_val == other.inner_val;
+        }
+        if (type == TYPE_RESULT && other.type == TYPE_RESULT) {
+            if (opt_res_flag != other.opt_res_flag) return false;
+            if (inner_val && other.inner_val) return *inner_val == *other.inner_val;
+            return inner_val == other.inner_val;
+        }
+        if (type == TYPE_LIST && other.type == TYPE_LIST) {
+            if (list_val.size() != other.list_val.size()) return false;
+            for (size_t i = 0; i < list_val.size(); ++i) {
+                if (list_val[i] != other.list_val[i]) return false;
+            }
+            return true;
+        }
         if ((type == TYPE_INT || type == TYPE_FLOAT) && (other.type == TYPE_INT || other.type == TYPE_FLOAT)) {
             return as_double() == other.as_double();
         }
@@ -286,12 +479,130 @@ public:
         return list_val[index];
     }
 
+    MemeValue &operator[](int index) {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    const MemeValue &operator[](int index) const {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    MemeValue &operator[](unsigned int index) {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    const MemeValue &operator[](unsigned int index) const {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    MemeValue &operator[](long index) {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    const MemeValue &operator[](long index) const {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    MemeValue &operator[](long long index) {
+        if (type == TYPE_STRING) {
+            int64_t origIdx = index;
+            int64_t sz = static_cast<int64_t>(s_val.size());
+            if (index < 0) index += sz;
+            if (index < 0 || static_cast<size_t>(index) >= s_val.size()) {
+                throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                         " maang rahe ho par string length sirf " + std::to_string(sz) + " hai!");
+            }
+            inner_val = std::make_shared<MemeValue>(std::string(1, s_val[static_cast<size_t>(index)]));
+            return *inner_val;
+        }
+        if (type != TYPE_LIST) {
+            type = TYPE_LIST;
+        }
+        int64_t origIdx = index;
+        int64_t sz = static_cast<int64_t>(list_val.size());
+        if (index < 0) index += sz;
+        if (index < 0 || static_cast<size_t>(index) >= list_val.size()) {
+            throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                     " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
+        }
+        return list_val[static_cast<size_t>(index)];
+    }
+
+    const MemeValue &operator[](long long index) const {
+        if (type == TYPE_STRING) {
+            int64_t origIdx = index;
+            int64_t sz = static_cast<int64_t>(s_val.size());
+            if (index < 0) index += sz;
+            if (index < 0 || static_cast<size_t>(index) >= s_val.size()) {
+                throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                         " maang rahe ho par string length sirf " + std::to_string(sz) + " hai!");
+            }
+            inner_val = std::make_shared<MemeValue>(std::string(1, s_val[static_cast<size_t>(index)]));
+            return *inner_val;
+        }
+        if (type != TYPE_LIST) {
+            static const MemeValue nilVal;
+            return nilVal;
+        }
+        int64_t origIdx = index;
+        int64_t sz = static_cast<int64_t>(list_val.size());
+        if (index < 0) index += sz;
+        if (index < 0 || static_cast<size_t>(index) >= list_val.size()) {
+            throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                     " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
+        }
+        return list_val[static_cast<size_t>(index)];
+    }
+
+    MemeValue &operator[](unsigned long long index) {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    const MemeValue &operator[](unsigned long long index) const {
+        return (*this)[static_cast<long long>(index)];
+    }
+
+    MemeValue &operator[](const std::string &key) {
+        if (type != TYPE_MAP) {
+            type = TYPE_MAP;
+        }
+        if (map_val.find(key) == map_val.end()) {
+            map_keys.push_back(key);
+        }
+        return map_val[key];
+    }
+
+    const MemeValue &operator[](const std::string &key) const {
+        if (type != TYPE_MAP) {
+            static const MemeValue nilVal;
+            return nilVal;
+        }
+        auto it = map_val.find(key);
+        if (it != map_val.end()) return it->second;
+        static const MemeValue nilVal;
+        return nilVal;
+    }
+
+    MemeValue &operator[](const char *key) {
+        return (*this)[std::string(key ? key : "")];
+    }
+
+    const MemeValue &operator[](const char *key) const {
+        return (*this)[std::string(key ? key : "")];
+    }
+
     MemeValue &operator[](const MemeValue &index) {
-        return (*this)[static_cast<size_t>(index.as_int())];
+        if (type == TYPE_MAP || index.type == TYPE_STRING) {
+            return (*this)[index.to_string()];
+        }
+        return (*this)[index.as_int()];
     }
 
     const MemeValue &operator[](const MemeValue &index) const {
-        return (*this)[static_cast<size_t>(index.as_int())];
+        if (type == TYPE_MAP || index.type == TYPE_STRING) {
+            return (*this)[index.to_string()];
+        }
+        return (*this)[index.as_int()];
     }
 
     // Methods
@@ -309,13 +620,502 @@ public:
     size_t size() const {
         if (type == TYPE_LIST) return list_val.size();
         if (type == TYPE_STRING) return s_val.size();
+        if (type == TYPE_MAP) return map_val.size();
         return 0;
     }
 
     size_t length() const {
         return size();
     }
+
+    size_t lambai() const {
+        return size();
+    }
+
+    // Map methods
+    bool has(const std::string &key) const {
+        if (type == TYPE_MAP) {
+            return map_val.find(key) != map_val.end();
+        }
+        if (type == TYPE_STRING) {
+            return s_val.find(key) != std::string::npos;
+        }
+        return false;
+    }
+    bool has(const MemeValue &key) const { return has(key.to_string()); }
+    bool has(const char *key) const { return has(std::string(key ? key : "")); }
+    bool hai_kya(const std::string &key) const { return has(key); }
+    bool hai_kya(const MemeValue &key) const { return has(key); }
+    bool contains(const std::string &key) const { return has(key); }
+    bool contains(const MemeValue &key) const { return has(key); }
+
+    MemeValue keys() const {
+        std::vector<MemeValue> res;
+        if (type == TYPE_MAP) {
+            res.reserve(map_keys.size());
+            for (const auto &k : map_keys) {
+                res.push_back(MemeValue(k));
+            }
+        }
+        return MemeValue(res);
+    }
+    MemeValue chaabi() const { return keys(); }
+
+    MemeValue values() const {
+        std::vector<MemeValue> res;
+        if (type == TYPE_MAP) {
+            res.reserve(map_keys.size());
+            for (const auto &k : map_keys) {
+                auto it = map_val.find(k);
+                if (it != map_val.end()) {
+                    res.push_back(it->second);
+                }
+            }
+        }
+        return MemeValue(res);
+    }
+    MemeValue maal() const { return values(); }
+
+    bool remove(const std::string &key) {
+        if (type != TYPE_MAP) return false;
+        auto it = map_val.find(key);
+        if (it == map_val.end()) return false;
+        map_val.erase(it);
+        for (auto kit = map_keys.begin(); kit != map_keys.end(); ++kit) {
+            if (*kit == key) {
+                map_keys.erase(kit);
+                break;
+            }
+        }
+        return true;
+    }
+    bool remove(const MemeValue &key) { return remove(key.to_string()); }
+    bool hata(const std::string &key) { return remove(key); }
+    bool hata(const MemeValue &key) { return remove(key); }
+
+    MemeValue get(const std::string &key, const MemeValue &def = MemeValue()) const {
+        if (type != TYPE_MAP) return def;
+        auto it = map_val.find(key);
+        if (it != map_val.end()) return it->second;
+        return def;
+    }
+    MemeValue get(const MemeValue &key, const MemeValue &def = MemeValue()) const {
+        return get(key.to_string(), def);
+    }
+    MemeValue la(const std::string &key, const MemeValue &def = MemeValue()) const {
+        return get(key, def);
+    }
+    MemeValue la(const MemeValue &key, const MemeValue &def = MemeValue()) const {
+        return get(key, def);
+    }
+
+    // String utility methods
+    MemeValue charAt(int64_t i) const {
+        if (type != TYPE_STRING) return MemeValue("");
+        int64_t sz = static_cast<int64_t>(s_val.size());
+        if (i < 0) i += sz;
+        if (i < 0 || i >= sz) {
+            throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(i) + " string ki lambai se bahar hai!");
+        }
+        return MemeValue(std::string(1, s_val[static_cast<size_t>(i)]));
+    }
+    MemeValue charAt(const MemeValue &idx) const { return charAt(idx.as_int()); }
+    MemeValue akshar(int64_t i) const { return charAt(i); }
+    MemeValue akshar(const MemeValue &idx) const { return charAt(idx.as_int()); }
+
+    MemeValue chars() const {
+        std::vector<MemeValue> res;
+        if (type == TYPE_STRING) {
+            res.reserve(s_val.size());
+            for (char ch : s_val) {
+                res.push_back(MemeValue(std::string(1, ch)));
+            }
+        }
+        return MemeValue(res);
+    }
+    MemeValue akshar_list() const { return chars(); }
+
+    MemeValue slice(int64_t start, int64_t end = INT64_MIN) const {
+        if (type != TYPE_STRING) return MemeValue("");
+        int64_t sz = static_cast<int64_t>(s_val.size());
+        if (start < 0) start += sz;
+        if (start < 0) start = 0;
+        if (start > sz) start = sz;
+
+        if (end == INT64_MIN) {
+            end = sz;
+        } else {
+            if (end < 0) end += sz;
+            if (end < 0) end = 0;
+            if (end > sz) end = sz;
+        }
+
+        if (start >= end) return MemeValue("");
+        return MemeValue(s_val.substr(static_cast<size_t>(start), static_cast<size_t>(end - start)));
+    }
+    MemeValue slice(const MemeValue &start) const { return slice(start.as_int()); }
+    MemeValue slice(const MemeValue &start, const MemeValue &end) const { return slice(start.as_int(), end.as_int()); }
+    MemeValue kaat(int64_t start, int64_t end = INT64_MIN) const { return slice(start, end); }
+    MemeValue kaat(const MemeValue &start) const { return slice(start); }
+    MemeValue kaat(const MemeValue &start, const MemeValue &end) const { return slice(start, end); }
+    MemeValue substring(int64_t start, int64_t end = INT64_MIN) const { return slice(start, end); }
+    MemeValue substring(const MemeValue &start, const MemeValue &end) const { return slice(start, end); }
+
+    bool starts_with(const std::string &prefix) const {
+        if (type != TYPE_STRING) return false;
+        return s_val.rfind(prefix, 0) == 0;
+    }
+    bool starts_with(const MemeValue &prefix) const { return starts_with(prefix.to_string()); }
+    bool startsWith(const std::string &prefix) const { return starts_with(prefix); }
+    bool startsWith(const MemeValue &prefix) const { return starts_with(prefix.to_string()); }
+    bool shuru_hota(const std::string &prefix) const { return starts_with(prefix); }
+    bool shuru_hota(const MemeValue &prefix) const { return starts_with(prefix.to_string()); }
+
+    bool ends_with(const std::string &suffix) const {
+        if (type != TYPE_STRING) return false;
+        if (suffix.size() > s_val.size()) return false;
+        return s_val.compare(s_val.size() - suffix.size(), suffix.size(), suffix) == 0;
+    }
+    bool ends_with(const MemeValue &suffix) const { return ends_with(suffix.to_string()); }
+    bool endsWith(const std::string &suffix) const { return ends_with(suffix); }
+    bool endsWith(const MemeValue &suffix) const { return ends_with(suffix.to_string()); }
+    bool khatam_hota(const std::string &suffix) const { return ends_with(suffix); }
+    bool khatam_hota(const MemeValue &suffix) const { return ends_with(suffix.to_string()); }
+
+    int64_t find(const std::string &sub) const {
+        if (type != TYPE_STRING) return -1LL;
+        size_t pos = s_val.find(sub);
+        return pos == std::string::npos ? -1LL : static_cast<int64_t>(pos);
+    }
+    int64_t find(const MemeValue &sub) const { return find(sub.to_string()); }
+    int64_t dhund(const std::string &sub) const { return find(sub); }
+    int64_t dhund(const MemeValue &sub) const { return find(sub.to_string()); }
+    int64_t indexOf(const std::string &sub) const { return find(sub); }
+    int64_t indexOf(const MemeValue &sub) const { return find(sub.to_string()); }
+    int64_t kahan(const std::string &sub) const { return find(sub); }
+    int64_t kahan(const MemeValue &sub) const { return find(sub.to_string()); }
+
+    MemeValue split(const std::string &sep) const {
+        std::vector<MemeValue> res;
+        if (type != TYPE_STRING) return MemeValue(res);
+        if (sep.empty()) {
+            for (char ch : s_val) {
+                res.push_back(MemeValue(std::string(1, ch)));
+            }
+        } else {
+            size_t start = 0;
+            size_t pos = 0;
+            while ((pos = s_val.find(sep, start)) != std::string::npos) {
+                res.push_back(MemeValue(s_val.substr(start, pos - start)));
+                start = pos + sep.length();
+            }
+            res.push_back(MemeValue(s_val.substr(start)));
+        }
+        return MemeValue(res);
+    }
+    MemeValue split(const MemeValue &sep) const { return split(sep.to_string()); }
+    MemeValue tod(const std::string &sep) const { return split(sep); }
+    MemeValue tod(const MemeValue &sep) const { return split(sep.to_string()); }
+
+    MemeValue replace(const std::string &old_str, const std::string &new_str) const {
+        if (type != TYPE_STRING) return *this;
+        if (old_str.empty()) return *this;
+        std::string res = s_val;
+        size_t pos = 0;
+        while ((pos = res.find(old_str, pos)) != std::string::npos) {
+            res.replace(pos, old_str.length(), new_str);
+            pos += new_str.length();
+        }
+        return MemeValue(res);
+    }
+    MemeValue replace(const MemeValue &o, const MemeValue &n) const {
+        return replace(o.to_string(), n.to_string());
+    }
+    MemeValue badal(const std::string &o, const std::string &n) const { return replace(o, n); }
+    MemeValue badal(const MemeValue &o, const MemeValue &n) const { return replace(o, n); }
+
+    MemeValue trim() const {
+        if (type != TYPE_STRING) return *this;
+        size_t first = s_val.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) return MemeValue("");
+        size_t last = s_val.find_last_not_of(" \t\r\n");
+        return MemeValue(s_val.substr(first, last - first + 1));
+    }
+    MemeValue saaf() const { return trim(); }
+    MemeValue strip() const { return trim(); }
+
+    MemeValue to_upper() const {
+        if (type != TYPE_STRING) return *this;
+        std::string res = s_val;
+        for (char &c : res) c = std::toupper(static_cast<unsigned char>(c));
+        return MemeValue(res);
+    }
+    MemeValue upper() const { return to_upper(); }
+    MemeValue chilla() const { return to_upper(); }
+
+    MemeValue to_lower() const {
+        if (type != TYPE_STRING) return *this;
+        std::string res = s_val;
+        for (char &c : res) c = std::tolower(static_cast<unsigned char>(c));
+        return MemeValue(res);
+    }
+    MemeValue lower() const { return to_lower(); }
+    MemeValue dheere_bol() const { return to_lower(); }
+
+    // Option / Result methods
+    bool is_some() const { return type == TYPE_OPTION && opt_res_flag; }
+    bool is_none() const { return type == TYPE_OPTION && !opt_res_flag; }
+    bool isSome() const { return is_some(); }
+    bool isNone() const { return is_none(); }
+
+    bool is_ok() const { return type == TYPE_RESULT && opt_res_flag; }
+    bool is_err() const { return type == TYPE_RESULT && !opt_res_flag; }
+    bool isOk() const { return is_ok(); }
+    bool isErr() const { return is_err(); }
+    bool sahi_hai() const { return is_ok() || is_some(); }
+    bool galat_hai() const { return is_err() || is_none(); }
+
+    MemeValue unwrap() const {
+        if (type == TYPE_OPTION) {
+            if (!opt_res_flag || !inner_val) throw std::runtime_error("Option is None!");
+            return *inner_val;
+        }
+        if (type == TYPE_RESULT) {
+            if (!opt_res_flag || !inner_val) {
+                throw std::runtime_error("Result is Err: " + (inner_val ? inner_val->to_string() : ""));
+            }
+            return *inner_val;
+        }
+        return *this;
+    }
+    MemeValue khol() const { return unwrap(); }
+
+    MemeValue unwrap_err() const {
+        if (type == TYPE_RESULT) {
+            if (opt_res_flag) throw std::runtime_error("Result is Ok!");
+            return inner_val ? *inner_val : MemeValue();
+        }
+        throw std::runtime_error("Not a Result type!");
+    }
+    MemeValue khol_galat() const { return unwrap_err(); }
+
+    MemeValue unwrap_or(const MemeValue &def) const {
+        if (type == TYPE_OPTION) {
+            return (opt_res_flag && inner_val) ? *inner_val : def;
+        }
+        if (type == TYPE_RESULT) {
+            return (opt_res_flag && inner_val) ? *inner_val : def;
+        }
+        return *this;
+    }
+    MemeValue khol_ya_fir(const MemeValue &def) const { return unwrap_or(def); }
 };
+
+inline std::string &MemeStringList::operator[](size_t idx) {
+    if (idx >= this->size()) {
+        thread_local std::string empty;
+        empty.clear();
+        return empty;
+    }
+    return std::vector<std::string>::operator[](idx);
+}
+
+inline const std::string &MemeStringList::operator[](size_t idx) const {
+    if (idx >= this->size()) {
+        static const std::string empty = "";
+        return empty;
+    }
+    return std::vector<std::string>::operator[](idx);
+}
+
+inline std::string &MemeStringList::operator[](long long idx) {
+    int64_t sz = static_cast<int64_t>(this->size());
+    if (idx < 0) idx += sz;
+    if (idx < 0 || static_cast<size_t>(idx) >= this->size()) {
+        thread_local std::string empty;
+        empty.clear();
+        return empty;
+    }
+    return std::vector<std::string>::operator[](static_cast<size_t>(idx));
+}
+
+inline const std::string &MemeStringList::operator[](long long idx) const {
+    int64_t sz = static_cast<int64_t>(this->size());
+    if (idx < 0) idx += sz;
+    if (idx < 0 || static_cast<size_t>(idx) >= this->size()) {
+        static const std::string empty = "";
+        return empty;
+    }
+    return std::vector<std::string>::operator[](static_cast<size_t>(idx));
+}
+
+inline std::string &MemeStringList::operator[](int idx) {
+    return (*this)[static_cast<long long>(idx)];
+}
+
+inline const std::string &MemeStringList::operator[](int idx) const {
+    return (*this)[static_cast<long long>(idx)];
+}
+
+inline std::string &MemeStringList::operator[](unsigned long long idx) {
+    if (idx >= this->size()) {
+        thread_local std::string empty;
+        empty.clear();
+        return empty;
+    }
+    return std::vector<std::string>::operator[](static_cast<size_t>(idx));
+}
+
+inline const std::string &MemeStringList::operator[](unsigned long long idx) const {
+    if (idx >= this->size()) {
+        static const std::string empty = "";
+        return empty;
+    }
+    return std::vector<std::string>::operator[](static_cast<size_t>(idx));
+}
+
+inline std::string &MemeStringList::operator[](const MemeValue &idx) {
+    return (*this)[idx.as_int()];
+}
+
+inline const std::string &MemeStringList::operator[](const MemeValue &idx) const {
+    return (*this)[idx.as_int()];
+}
+
+inline std::string &MemeStringList::operator[](MemeValue &idx) {
+    return (*this)[idx.as_int()];
+}
+
+inline const std::string &MemeStringList::operator[](MemeValue &idx) const {
+    return (*this)[idx.as_int()];
+}
+inline MemeReturnSignal::MemeReturnSignal(const MemeValue &v)
+    : value(std::make_shared<MemeValue>(v)) {}
+
+inline MemeValue Some(const MemeValue &v) {
+    MemeValue val;
+    val.type = MemeValue::TYPE_OPTION;
+    val.opt_res_flag = true;
+    val.inner_val = std::make_shared<MemeValue>(v);
+    return val;
+}
+inline MemeValue Kuch(const MemeValue &v) { return Some(v); }
+
+inline MemeValue Ok(const MemeValue &v) {
+    MemeValue val;
+    val.type = MemeValue::TYPE_RESULT;
+    val.opt_res_flag = true;
+    val.inner_val = std::make_shared<MemeValue>(v);
+    return val;
+}
+inline MemeValue Sahi(const MemeValue &v) { return Ok(v); }
+
+inline MemeValue Err(const MemeValue &v) {
+    MemeValue val;
+    val.type = MemeValue::TYPE_RESULT;
+    val.opt_res_flag = false;
+    val.inner_val = std::make_shared<MemeValue>(v);
+    return val;
+}
+inline MemeValue Galat(const MemeValue &v) { return Err(v); }
+
+struct NoneVal : public MemeValue {
+    NoneVal() {
+        type = TYPE_OPTION;
+        opt_res_flag = false;
+        inner_val = nullptr;
+    }
+    MemeValue operator()() const {
+        return *this;
+    }
+};
+inline const NoneVal None;
+inline const NoneVal Khali;
+
+inline MemeValue make_map(std::initializer_list<std::pair<std::string, MemeValue>> entries = {}) {
+    return MemeValue(entries);
+}
+inline MemeValue make_map(const std::vector<std::pair<std::string, MemeValue>> &entries) {
+    std::unordered_map<std::string, MemeValue> m;
+    std::vector<std::string> keys;
+    for (const auto &p : entries) {
+        if (m.find(p.first) == m.end()) {
+            keys.push_back(p.first);
+        }
+        m[p.first] = p.second;
+    }
+    MemeValue res(m);
+    res.map_keys = keys;
+    return res;
+}
+
+// Standalone String Utilities
+inline std::string meme_charAt(const std::string &str, int64_t i) {
+    int64_t sz = static_cast<int64_t>(str.size());
+    if (i < 0) i += sz;
+    if (i < 0 || i >= sz) {
+        throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(i) + " string ki lambai se bahar hai!");
+    }
+    return std::string(1, str[static_cast<size_t>(i)]);
+}
+inline MemeValue meme_charAt(const MemeValue &val, int64_t i) { return val.charAt(i); }
+
+inline std::vector<std::string> meme_chars(const std::string &str) {
+    std::vector<std::string> res;
+    res.reserve(str.size());
+    for (char ch : str) {
+        res.push_back(std::string(1, ch));
+    }
+    return res;
+}
+inline MemeValue meme_chars(const MemeValue &val) { return val.chars(); }
+
+inline std::string meme_slice(const std::string &str, int64_t start, int64_t end = INT64_MIN) {
+    int64_t sz = static_cast<int64_t>(str.size());
+    if (start < 0) start += sz;
+    if (start < 0) start = 0;
+    if (start > sz) start = sz;
+
+    if (end == INT64_MIN) {
+        end = sz;
+    } else {
+        if (end < 0) end += sz;
+        if (end < 0) end = 0;
+        if (end > sz) end = sz;
+    }
+
+    if (start >= end) return "";
+    return str.substr(static_cast<size_t>(start), static_cast<size_t>(end - start));
+}
+inline MemeValue meme_slice(const MemeValue &val, int64_t start, int64_t end = INT64_MIN) { return val.slice(start, end); }
+
+inline bool meme_starts_with(const std::string &str, const std::string &prefix) {
+    return str.rfind(prefix, 0) == 0;
+}
+inline bool meme_starts_with(const MemeValue &val, const std::string &prefix) { return val.starts_with(prefix); }
+
+inline bool meme_ends_with(const std::string &str, const std::string &suffix) {
+    if (suffix.size() > str.size()) return false;
+    return str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+inline bool meme_ends_with(const MemeValue &val, const std::string &suffix) { return val.ends_with(suffix); }
+
+inline int64_t meme_find(const std::string &str, const std::string &sub) {
+    size_t pos = str.find(sub);
+    return pos == std::string::npos ? -1LL : static_cast<int64_t>(pos);
+}
+inline int64_t meme_find(const MemeValue &val, const std::string &sub) { return val.find(sub); }
+
+inline size_t meme_length(const std::string &str) { return str.size(); }
+inline size_t meme_length(const MemeValue &val) { return val.length(); }
+
+inline std::string meme_trim(const std::string &str) {
+    size_t first = str.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    size_t last = str.find_last_not_of(" \t\r\n");
+    return str.substr(first, last - first + 1);
+}
+inline MemeValue meme_trim(const MemeValue &val) { return val.trim(); }
 
 inline std::ostream &operator<<(std::ostream &os, const MemeValue &v) {
     os << v.to_string();
@@ -324,12 +1124,30 @@ inline std::ostream &operator<<(std::ostream &os, const MemeValue &v) {
 
 inline MemeValue operator+(int64_t a, const MemeValue &b) { return MemeValue(a) + b; }
 inline MemeValue operator+(double a, const MemeValue &b) { return MemeValue(a) + b; }
+inline std::string operator+(const std::string &a, const MemeValue &b) { return a + b.to_string(); }
+inline std::string operator+(const MemeValue &a, const std::string &b) { return a.to_string() + b; }
+inline std::string operator+(const char *a, const MemeValue &b) { return std::string(a ? a : "") + b.to_string(); }
+inline std::string operator+(const MemeValue &a, const char *b) { return a.to_string() + std::string(b ? b : ""); }
 inline MemeValue operator-(int64_t a, const MemeValue &b) { return MemeValue(a) - b; }
 inline MemeValue operator-(double a, const MemeValue &b) { return MemeValue(a) - b; }
 inline MemeValue operator*(int64_t a, const MemeValue &b) { return MemeValue(a) * b; }
 inline MemeValue operator*(double a, const MemeValue &b) { return MemeValue(a) * b; }
 inline MemeValue operator/(int64_t a, const MemeValue &b) { return MemeValue(a) / b; }
 inline MemeValue operator/(double a, const MemeValue &b) { return MemeValue(a) / b; }
+
+inline bool operator==(int64_t a, const MemeValue &b) { return b == a; }
+inline bool operator!=(int64_t a, const MemeValue &b) { return b != a; }
+inline bool operator<(int64_t a, const MemeValue &b) { return b > a; }
+inline bool operator<=(int64_t a, const MemeValue &b) { return b >= a; }
+inline bool operator>(int64_t a, const MemeValue &b) { return b < a; }
+inline bool operator>=(int64_t a, const MemeValue &b) { return b <= a; }
+
+inline bool operator==(double a, const MemeValue &b) { return b == a; }
+inline bool operator!=(double a, const MemeValue &b) { return b != a; }
+inline bool operator<(double a, const MemeValue &b) { return b > a; }
+inline bool operator<=(double a, const MemeValue &b) { return b >= a; }
+inline bool operator>(double a, const MemeValue &b) { return b < a; }
+inline bool operator>=(double a, const MemeValue &b) { return b <= a; }
 
 // Global truthiness helper
 template <typename T>
@@ -348,8 +1166,462 @@ inline bool is_truthy(const T &val) {
 }
 
 // ==========================================
+// 1.5 Safe Subscript Helper (meme_index)
+// ==========================================
+
+// Strings
+inline std::string meme_index(const std::string &s, int64_t idx) {
+    int64_t origIdx = idx;
+    int64_t sz = static_cast<int64_t>(s.size());
+    if (idx < 0) idx += sz;
+    if (idx < 0 || static_cast<size_t>(idx) >= s.size()) {
+        throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                 " maang rahe ho par string length sirf " + std::to_string(sz) + " hai!");
+    }
+    return std::string(1, s[static_cast<size_t>(idx)]);
+}
+inline std::string meme_index(std::string &s, int64_t idx) {
+    return meme_index(static_cast<const std::string &>(s), idx);
+}
+inline std::string meme_index(std::string &&s, int64_t idx) {
+    return meme_index(static_cast<const std::string &>(s), idx);
+}
+inline std::string meme_index(const std::string &s, int idx) {
+    return meme_index(s, static_cast<int64_t>(idx));
+}
+inline std::string meme_index(std::string &s, int idx) {
+    return meme_index(s, static_cast<int64_t>(idx));
+}
+inline std::string meme_index(std::string &&s, int idx) {
+    return meme_index(static_cast<const std::string &>(s), static_cast<int64_t>(idx));
+}
+inline std::string meme_index(const std::string &s, size_t idx) {
+    return meme_index(s, static_cast<int64_t>(idx));
+}
+inline std::string meme_index(std::string &s, size_t idx) {
+    return meme_index(s, static_cast<int64_t>(idx));
+}
+inline std::string meme_index(std::string &&s, size_t idx) {
+    return meme_index(static_cast<const std::string &>(s), static_cast<int64_t>(idx));
+}
+inline std::string meme_index(const std::string &s, const MemeValue &idx) {
+    return meme_index(s, idx.as_int());
+}
+inline std::string meme_index(std::string &s, const MemeValue &idx) {
+    return meme_index(s, idx.as_int());
+}
+inline std::string meme_index(std::string &&s, const MemeValue &idx) {
+    return meme_index(static_cast<const std::string &>(s), idx.as_int());
+}
+inline std::string meme_index(const std::string &s, MemeValue &idx) {
+    return meme_index(s, idx.as_int());
+}
+inline std::string meme_index(std::string &s, MemeValue &idx) {
+    return meme_index(s, idx.as_int());
+}
+inline std::string meme_index(std::string &&s, MemeValue &idx) {
+    return meme_index(static_cast<const std::string &>(s), idx.as_int());
+}
+
+inline std::string meme_index(const char *s, int64_t idx) {
+    return meme_index(std::string(s ? s : ""), idx);
+}
+inline std::string meme_index(const char *s, int idx) {
+    return meme_index(std::string(s ? s : ""), static_cast<int64_t>(idx));
+}
+inline std::string meme_index(const char *s, size_t idx) {
+    return meme_index(std::string(s ? s : ""), static_cast<int64_t>(idx));
+}
+inline std::string meme_index(const char *s, const MemeValue &idx) {
+    return meme_index(std::string(s ? s : ""), idx.as_int());
+}
+inline std::string meme_index(const char *s, MemeValue &idx) {
+    return meme_index(std::string(s ? s : ""), idx.as_int());
+}
+
+// Vector
+template <typename T>
+inline T &meme_index(std::vector<T> &v, int64_t idx) {
+    int64_t origIdx = idx;
+    int64_t sz = static_cast<int64_t>(v.size());
+    if (idx < 0) idx += sz;
+    if (idx < 0 || static_cast<size_t>(idx) >= v.size()) {
+        throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                 " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
+    }
+    return v[static_cast<size_t>(idx)];
+}
+
+template <typename T>
+inline const T &meme_index(const std::vector<T> &v, int64_t idx) {
+    int64_t origIdx = idx;
+    int64_t sz = static_cast<int64_t>(v.size());
+    if (idx < 0) idx += sz;
+    if (idx < 0 || static_cast<size_t>(idx) >= v.size()) {
+        throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                 " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
+    }
+    return v[static_cast<size_t>(idx)];
+}
+
+template <typename T>
+inline T &meme_index(std::vector<T> &v, int idx) {
+    return meme_index(v, static_cast<int64_t>(idx));
+}
+template <typename T>
+inline const T &meme_index(const std::vector<T> &v, int idx) {
+    return meme_index(v, static_cast<int64_t>(idx));
+}
+template <typename T>
+inline T &meme_index(std::vector<T> &v, size_t idx) {
+    return meme_index(v, static_cast<int64_t>(idx));
+}
+template <typename T>
+inline const T &meme_index(const std::vector<T> &v, size_t idx) {
+    return meme_index(v, static_cast<int64_t>(idx));
+}
+template <typename T>
+inline T &meme_index(std::vector<T> &v, const MemeValue &idx) {
+    return meme_index(v, idx.as_int());
+}
+template <typename T>
+inline const T &meme_index(const std::vector<T> &v, const MemeValue &idx) {
+    return meme_index(v, idx.as_int());
+}
+template <typename T>
+inline T &meme_index(std::vector<T> &v, MemeValue &idx) {
+    return meme_index(v, idx.as_int());
+}
+template <typename T>
+inline const T &meme_index(const std::vector<T> &v, MemeValue &idx) {
+    return meme_index(v, idx.as_int());
+}
+
+// MemeValue
+inline MemeValue &meme_index(MemeValue &val, int64_t idx) {
+    return val[idx];
+}
+inline const MemeValue &meme_index(const MemeValue &val, int64_t idx) {
+    return val[idx];
+}
+inline MemeValue &meme_index(MemeValue &val, int idx) {
+    return val[static_cast<long long>(idx)];
+}
+inline const MemeValue &meme_index(const MemeValue &val, int idx) {
+    return val[static_cast<long long>(idx)];
+}
+inline MemeValue &meme_index(MemeValue &val, size_t idx) {
+    return val[idx];
+}
+inline const MemeValue &meme_index(const MemeValue &val, size_t idx) {
+    return val[idx];
+}
+inline MemeValue &meme_index(MemeValue &val, const std::string &key) {
+    return val[key];
+}
+inline const MemeValue &meme_index(const MemeValue &val, const std::string &key) {
+    return val[key];
+}
+inline MemeValue &meme_index(MemeValue &val, const char *key) {
+    return val[key];
+}
+inline const MemeValue &meme_index(const MemeValue &val, const char *key) {
+    return val[key];
+}
+inline MemeValue &meme_index(MemeValue &val, const MemeValue &key) {
+    return val[key];
+}
+inline const MemeValue &meme_index(const MemeValue &val, const MemeValue &key) {
+    return val[key];
+}
+inline MemeValue &meme_index(MemeValue &val, MemeValue &key) {
+    return val[key];
+}
+inline const MemeValue &meme_index(const MemeValue &val, MemeValue &key) {
+    return val[key];
+}
+
+// MemeStringList
+inline std::string &meme_index(MemeStringList &list, int64_t idx) {
+    return list[idx];
+}
+inline const std::string &meme_index(const MemeStringList &list, int64_t idx) {
+    return list[idx];
+}
+inline std::string &meme_index(MemeStringList &list, int idx) {
+    return list[idx];
+}
+inline const std::string &meme_index(const MemeStringList &list, int idx) {
+    return list[idx];
+}
+inline std::string &meme_index(MemeStringList &list, size_t idx) {
+    return list[idx];
+}
+inline const std::string &meme_index(const MemeStringList &list, size_t idx) {
+    return list[idx];
+}
+inline std::string &meme_index(MemeStringList &list, const MemeValue &idx) {
+    return list[idx];
+}
+inline const std::string &meme_index(const MemeStringList &list, const MemeValue &idx) {
+    return list[idx];
+}
+inline std::string &meme_index(MemeStringList &list, MemeValue &idx) {
+    return list[idx];
+}
+inline const std::string &meme_index(const MemeStringList &list, MemeValue &idx) {
+    return list[idx];
+}
+
+// Fallback template for map and custom types
+template <typename T>
+struct is_std_vector : std::false_type {};
+
+template <typename T, typename Alloc>
+struct is_std_vector<std::vector<T, Alloc>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_std_vector_v = is_std_vector<std::remove_cvref_t<T>>::value;
+
+template <typename T>
+concept MemeIndexExcluded = 
+    is_std_vector_v<T> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::string> ||
+    std::is_same_v<std::remove_cvref_t<T>, MemeValue> ||
+    std::is_same_v<std::remove_cvref_t<T>, MemeStringList> ||
+    std::is_same_v<std::remove_cvref_t<T>, const char *> ||
+    std::is_same_v<std::remove_cvref_t<T>, char *>;
+
+template <typename T, typename K>
+requires (!MemeIndexExcluded<T>)
+inline decltype(auto) meme_index(T &&target, K &&key) {
+    return std::forward<T>(target)[std::forward<K>(key)];
+}
+
+template <typename T, typename K>
+inline auto meme_index_read(const T &target, K &&key) {
+    return meme_index(target, std::forward<K>(key));
+}
+
+// ==========================================
 // 2. Standard Modules & Builtins
 // ==========================================
+
+struct FileModule {
+    FileModule *operator->() { return this; }
+    const FileModule *operator->() const { return this; }
+
+    std::string read(const std::string &path) {
+        std::ifstream f(path);
+        if (!f.is_open()) {
+            throw std::runtime_error("File gayab ho gayi! Path: '" + path + "'");
+        }
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    }
+    std::string read(const MemeValue &path) { return read(path.to_string()); }
+    std::string padh(const std::string &path) { return read(path); }
+    std::string padh(const MemeValue &path) { return read(path); }
+
+    bool write(const std::string &path, const std::string &content) {
+        std::ofstream f(path, std::ios::trunc);
+        if (!f.is_open()) {
+            throw std::runtime_error("File kholne mein lafda ho gaya! Path: '" + path + "'");
+        }
+        f << content;
+        return true;
+    }
+    bool write(const MemeValue &path, const MemeValue &content) {
+        return write(path.to_string(), content.to_string());
+    }
+    bool write(const std::string &path, const MemeValue &content) {
+        return write(path, content.to_string());
+    }
+    bool write(const MemeValue &path, const std::string &content) {
+        return write(path.to_string(), content);
+    }
+    bool likh(const std::string &path, const std::string &content) { return write(path, content); }
+    bool likh(const MemeValue &path, const MemeValue &content) { return write(path, content); }
+    bool likh(const std::string &path, const MemeValue &content) { return write(path, content); }
+    bool likh(const MemeValue &path, const std::string &content) { return write(path, content); }
+
+    bool append(const std::string &path, const std::string &content) {
+        std::ofstream f(path, std::ios::app);
+        if (!f.is_open()) {
+            throw std::runtime_error("File kholne mein lafda ho gaya! Path: '" + path + "'");
+        }
+        f << content;
+        return true;
+    }
+    bool append(const MemeValue &path, const MemeValue &content) {
+        return append(path.to_string(), content.to_string());
+    }
+    bool append(const std::string &path, const MemeValue &content) {
+        return append(path, content.to_string());
+    }
+    bool append(const MemeValue &path, const std::string &content) {
+        return append(path.to_string(), content);
+    }
+    bool jod(const std::string &path, const std::string &content) { return append(path, content); }
+    bool jod(const MemeValue &path, const MemeValue &content) { return append(path, content); }
+    bool jod(const std::string &path, const MemeValue &content) { return append(path, content); }
+    bool jod(const MemeValue &path, const std::string &content) { return append(path, content); }
+
+    bool exists(const std::string &path) {
+        std::error_code ec;
+        return std::filesystem::exists(path, ec);
+    }
+    bool exists(const MemeValue &path) { return exists(path.to_string()); }
+    bool hai_kya(const std::string &path) { return exists(path); }
+    bool hai_kya(const MemeValue &path) { return exists(path); }
+
+    MemeStringList lines(const std::string &path) {
+        std::ifstream f(path);
+        if (!f.is_open()) {
+            throw std::runtime_error("File gayab ho gayi! Path: '" + path + "'");
+        }
+        MemeStringList res;
+        std::string line;
+        while (std::getline(f, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            res.push_back(line);
+        }
+        return res;
+    }
+    MemeStringList lines(const MemeValue &path) { return lines(path.to_string()); }
+    MemeStringList read_lines(const std::string &path) { return lines(path); }
+    MemeStringList read_lines(const MemeValue &path) { return lines(path); }
+
+    bool remove(const std::string &path) {
+        std::error_code ec;
+        return std::filesystem::remove(path, ec);
+    }
+    bool remove(const MemeValue &path) { return remove(path.to_string()); }
+    bool hatao(const std::string &path) { return remove(path); }
+    bool hatao(const MemeValue &path) { return remove(path); }
+
+    bool copy(const std::string &src, const std::string &dst) {
+        std::error_code ec;
+        return std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    bool copy(const MemeValue &src, const MemeValue &dst) {
+        return copy(src.to_string(), dst.to_string());
+    }
+    bool nakal(const std::string &src, const std::string &dst) { return copy(src, dst); }
+    bool nakal(const MemeValue &src, const MemeValue &dst) { return copy(src, dst); }
+
+    bool rename(const std::string &src, const std::string &dst) {
+        std::error_code ec;
+        std::filesystem::rename(src, dst, ec);
+        return !ec;
+    }
+    bool rename(const MemeValue &src, const MemeValue &dst) {
+        return rename(src.to_string(), dst.to_string());
+    }
+    bool badlo(const std::string &src, const std::string &dst) { return rename(src, dst); }
+    bool badlo(const MemeValue &src, const MemeValue &dst) { return rename(src, dst); }
+};
+
+struct SystummModule {
+    SystummModule *operator->() { return this; }
+    const SystummModule *operator->() const { return this; }
+
+    MemeStringList args;
+
+    void init(int argc, char *argv[]) {
+        args.clear();
+        for (int i = 0; i < argc; ++i) {
+            args.push_back(argv[i] ? argv[i] : "");
+        }
+    }
+
+    std::string exec(const std::string &cmd) {
+        if (std::getenv("MEME_HEADLESS")) {
+            return "[HEADLESS: executed " + cmd + "]";
+        }
+        FILE *pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            throw std::runtime_error("Systumm hang ho gaya! Command run nahi hui: " + cmd);
+        }
+        char buffer[256];
+        std::string result;
+        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            result += buffer;
+        }
+        pclose(pipe);
+        return result;
+    }
+    std::string exec(const MemeValue &cmd) { return exec(cmd.to_string()); }
+    std::string chala(const std::string &cmd) { return exec(cmd); }
+    std::string chala(const MemeValue &cmd) { return exec(cmd); }
+
+    std::string cwd() {
+        return std::filesystem::current_path().string();
+    }
+    std::string kahan() { return cwd(); }
+
+    std::string platform() {
+#if defined(__EMSCRIPTEN__)
+        return "wasm";
+#elif defined(_WIN32)
+        return "windows";
+#elif defined(__APPLE__)
+        return "mac";
+#elif defined(__linux__)
+        return "linux";
+#else
+        return "unknown";
+#endif
+    }
+    std::string kaun() { return platform(); }
+
+    void exit(int code = 0) {
+        std::exit(code);
+    }
+    void exit(const MemeValue &code) {
+        std::exit(static_cast<int>(code.as_int()));
+    }
+    void nikal(int code = 0) { exit(code); }
+    void nikal(const MemeValue &code) { exit(code); }
+
+    std::string env(const std::string &key, const std::string &def = "") {
+        const char *v = std::getenv(key.c_str());
+        return v ? std::string(v) : def;
+    }
+    std::string env(const MemeValue &key, const MemeValue &def = MemeValue("")) {
+        return env(key.to_string(), def.to_string());
+    }
+
+    bool set_env(const std::string &key, const std::string &val) {
+#ifdef _WIN32
+        return _putenv_s(key.c_str(), val.c_str()) == 0;
+#else
+        return setenv(key.c_str(), val.c_str(), 1) == 0;
+#endif
+    }
+    bool set_env(const MemeValue &key, const MemeValue &val) {
+        return set_env(key.to_string(), val.to_string());
+    }
+
+    bool chdir(const std::string &path) {
+        std::error_code ec;
+        std::filesystem::current_path(path, ec);
+        if (ec) {
+            throw std::runtime_error("Rasta bhatak gaye! Directory change nahi ho saki: " + path);
+        }
+        return true;
+    }
+    bool chdir(const MemeValue &path) { return chdir(path.to_string()); }
+    bool jao(const std::string &path) { return chdir(path); }
+    bool jao(const MemeValue &path) { return chdir(path); }
+};
+
+inline FileModule file;
+inline FileModule dastavez;
+inline SystummModule sys;
+inline SystummModule os;
+inline SystummModule systumm;
 
 struct SamayModule {
     double ab() {
@@ -765,11 +2037,33 @@ inline std::string runtime_resolve_style_ansi(const std::string &rawStyle) {
 template <typename T>
 inline std::string meme_to_string_fmt(const T &val) {
     if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
-        return val ? "sahi" : "galat";
+        return val ? "true" : "false";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        if (val.type == MemeValue::TYPE_BOOL) {
+            return val.b_val ? "true" : "false";
+        }
+        return val.to_string();
     } else if constexpr (std::is_same_v<std::decay_t<T>, std::string>) {
         return val;
     } else if constexpr (std::is_same_v<std::decay_t<T>, const char *>) {
-        return std::string(val);
+        return std::string(val ? val : "");
+    } else {
+        std::ostringstream ss;
+        ss << val;
+        return ss.str();
+    }
+}
+
+template <typename T>
+inline std::string meme_to_string_print(const T &val) {
+    if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
+        return val ? "han" : "nhi";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        return val.to_string();
+    } else if constexpr (std::is_same_v<std::decay_t<T>, std::string>) {
+        return val;
+    } else if constexpr (std::is_same_v<std::decay_t<T>, const char *>) {
+        return std::string(val ? val : "");
     } else {
         std::ostringstream ss;
         ss << val;
@@ -783,7 +2077,7 @@ void print_dikha(const Args&... args) {
     auto print_one = [&](const auto &val) {
         if (!first) std::cout << " ";
         first = false;
-        std::cout << runtime_format_rich_text(meme_to_string_fmt(val));
+        std::cout << runtime_format_rich_text(meme_to_string_print(val));
     };
     (print_one(args), ...);
     std::cout << "\n";
@@ -791,9 +2085,9 @@ void print_dikha(const Args&... args) {
 
 template <typename E, typename S, typename St, typename... Args>
 void print_dikha_opts(const E &endVal, const S &sepVal, const St &styleVal, const Args&... args) {
-    std::string endStr = meme_to_string_fmt(endVal);
-    std::string sepStr = meme_to_string_fmt(sepVal);
-    std::string styleStr = meme_to_string_fmt(styleVal);
+    std::string endStr = meme_to_string_print(endVal);
+    std::string sepStr = meme_to_string_print(sepVal);
+    std::string styleStr = meme_to_string_print(styleVal);
     std::string stylePrefix = runtime_resolve_style_ansi(styleStr);
     std::string styleReset = stylePrefix.empty() ? "" : "\033[0m";
 
@@ -804,7 +2098,7 @@ void print_dikha_opts(const E &endVal, const S &sepVal, const St &styleVal, cons
     auto print_one = [&](const auto &val) {
         if (!first) std::cout << sepStr;
         first = false;
-        std::cout << runtime_format_rich_text(meme_to_string_fmt(val));
+        std::cout << runtime_format_rich_text(meme_to_string_print(val));
     };
     (print_one(args), ...);
     if (!styleReset.empty()) {

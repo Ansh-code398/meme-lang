@@ -8119,6 +8119,110 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
     return m;
 }
 
+static Value getOptionMethod(const std::shared_ptr<MemeOption> &opt, const std::string &name)
+{
+    if (name == "is_some" || name == "kuch_hai" || name == "has_value")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [opt](Interpreter &, const std::vector<Value> &) {
+            return Value(opt->isSome());
+        }));
+    }
+    if (name == "is_none" || name == "khali_hai" || name == "is_empty")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [opt](Interpreter &, const std::vector<Value> &) {
+            return Value(opt->isNone());
+        }));
+    }
+    if (name == "unwrap" || name == "khol")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [opt](Interpreter &, const std::vector<Value> &) {
+            if (opt->isNone())
+            {
+                throw std::runtime_error("Khali: Cannot unwrap None Option!");
+            }
+            return opt->value;
+        }));
+    }
+    if (name == "unwrap_or" || name == "khol_ya_fir")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [opt](Interpreter &, const std::vector<Value> &args) {
+            if (opt->isSome())
+            {
+                return opt->value;
+            }
+            return args[0].deref();
+        }));
+    }
+    if (name == "expect" || name == "ummeed")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [opt](Interpreter &, const std::vector<Value> &args) {
+            if (opt->isNone())
+            {
+                throw std::runtime_error("Khali: " + args[0].deref().toString());
+            }
+            return opt->value;
+        }));
+    }
+    throw std::runtime_error("Option ke paas '" + name + "' method nahi hai!");
+}
+
+static Value getResultMethod(const std::shared_ptr<MemeResult> &res, const std::string &name)
+{
+    if (name == "is_ok" || name == "sahi_hai")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [res](Interpreter &, const std::vector<Value> &) {
+            return Value(res->isOk());
+        }));
+    }
+    if (name == "is_err" || name == "galat_hai")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [res](Interpreter &, const std::vector<Value> &) {
+            return Value(res->isErr());
+        }));
+    }
+    if (name == "unwrap" || name == "khol")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [res](Interpreter &, const std::vector<Value> &) {
+            if (res->isErr())
+            {
+                throw std::runtime_error("Galat: Cannot unwrap Err Result: " + res->value.deref().toString());
+            }
+            return res->value;
+        }));
+    }
+    if (name == "unwrap_err" || name == "khol_galat" || name == "unwrap_error")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [res](Interpreter &, const std::vector<Value> &) {
+            if (res->isOk())
+            {
+                throw std::runtime_error("Sahi: Cannot unwrap_err on Ok Result: " + res->value.deref().toString());
+            }
+            return res->value;
+        }));
+    }
+    if (name == "unwrap_or" || name == "khol_ya_fir")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [res](Interpreter &, const std::vector<Value> &args) {
+            if (res->isOk())
+            {
+                return res->value;
+            }
+            return args[0].deref();
+        }));
+    }
+    if (name == "expect" || name == "ummeed")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [res](Interpreter &, const std::vector<Value> &args) {
+            if (res->isErr())
+            {
+                throw std::runtime_error("Galat: " + args[0].deref().toString() + " (" + res->value.deref().toString() + ")");
+            }
+            return res->value;
+        }));
+    }
+    throw std::runtime_error("Result ke paas '" + name + "' method nahi hai!");
+}
+
 static Value getListMethod(const std::shared_ptr<MemeList> &list, const std::string &name)
 {
     if (name == "ghusa" || name == "dhakka" || name == "push" || name == "append" || name == "daal" || name == "jod")
@@ -10441,6 +10545,27 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     bridgeMap->set("rust", Value(std::make_shared<NativeMethodCallable>("rust", 1, [](Interpreter &, const std::vector<Value> &args) {
         return EcosystemBridge::createRustBridge(args.empty() ? "" : args[0].deref().toString());
     })));
+    // Option & Result Builtin Constructors & Identifiers
+    auto someFunc = Value(std::make_shared<NativeMethodCallable>("Some", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value::some(args[0].deref());
+    }));
+    auto okFunc = Value(std::make_shared<NativeMethodCallable>("Ok", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value::ok(args[0].deref());
+    }));
+    auto errFunc = Value(std::make_shared<NativeMethodCallable>("Err", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value::err(args[0].deref());
+    }));
+    auto noneVal = Value::none();
+
+    globals->define("Some", someFunc);
+    globals->define("Kuch", someFunc);
+    globals->define("Ok", okFunc);
+    globals->define("Sahi", okFunc);
+    globals->define("Err", errFunc);
+    globals->define("Galat", errFunc);
+    globals->define("None", noneVal);
+    globals->define("Khali", noneVal);
+
     globals->define("bridge", Value(bridgeMap));
 }
 
@@ -11141,6 +11266,11 @@ Value Interpreter::importModule(const std::string &path, int line)
     this->currentScopeDepth = 0;
     importStack.push_back(canonicalStr);
 
+    auto prevActivePackageMap = this->activePackageMap;
+    auto prevExplicitExports = this->explicitExports;
+    this->activePackageMap = nullptr;
+    this->explicitExports.clear();
+
     Value explicitReturn(std::monostate{});
     bool hasExplicitReturn = false;
 
@@ -11160,6 +11290,8 @@ Value Interpreter::importModule(const std::string &path, int line)
     }
     catch (...)
     {
+        this->activePackageMap = prevActivePackageMap;
+        this->explicitExports = prevExplicitExports;
         importStack.pop_back();
         this->environment = prevEnv;
         this->currentFilePath = prevPath;
@@ -11174,16 +11306,42 @@ Value Interpreter::importModule(const std::string &path, int line)
 
     if (hasExplicitReturn)
     {
+        this->activePackageMap = prevActivePackageMap;
+        this->explicitExports = prevExplicitExports;
         importedModules[canonicalStr] = explicitReturn;
         return explicitReturn;
     }
 
     auto moduleMap = std::make_shared<MemeMap>();
     moduleMap->isModule = true;
-    for (const auto &[name, slot] : modEnv->getSlots())
+    if (this->activePackageMap)
     {
-        moduleMap->set(name, slot.value);
+        moduleMap->isPackage = true;
+        moduleMap->packageName = this->activePackageMap->packageName;
+        moduleMap->unexportedSymbols = this->activePackageMap->unexportedSymbols;
     }
+    if (!this->explicitExports.empty())
+    {
+        // Selective export: only export symbols marked with bech/export
+        for (const auto &expName : this->explicitExports)
+        {
+            auto *slot = modEnv->findSlot(expName);
+            if (slot)
+            {
+                moduleMap->set(expName, slot->value);
+            }
+        }
+    }
+    else
+    {
+        // Legacy default export: export all slots
+        for (const auto &[name, slot] : modEnv->getSlots())
+        {
+            moduleMap->set(name, slot.value);
+        }
+    }
+    this->activePackageMap = prevActivePackageMap;
+    this->explicitExports = prevExplicitExports;
     Value modVal(moduleMap);
     importedModules[canonicalStr] = modVal;
     return modVal;
@@ -11216,6 +11374,10 @@ void Interpreter::execute(const Stmt *stmt)
         }
         environment->define(v->name, std::move(val), v->isOwned, v->isMut, v->isConst,
                             v->typeAnnotation ? v->typeAnnotation->toString() : "");
+        if (activePackageMap)
+        {
+            activePackageMap->unexportedSymbols.insert(v->name);
+        }
         return;
     }
 
@@ -11585,7 +11747,10 @@ void Interpreter::execute(const Stmt *stmt)
 
         auto loopEnv = std::make_shared<Environment>(environment, currentScopeDepth + 1);
 
-        for (long long i = start; (step > 0 ? (i <= end) : (i >= end)); i += step)
+        for (long long i = start;
+             (step > 0 ? (g->inclusive ? i <= end : i < end)
+                       : (g->inclusive ? i >= end : i > end));
+             i += step)
         {
             loopEnv->define(g->varName, Value(i));
             auto prev = environment;
@@ -11851,6 +12016,10 @@ void Interpreter::execute(const Stmt *stmt)
                 environment->define(f->name, Value(func));
             }
         }
+        if (activePackageMap)
+        {
+            activePackageMap->unexportedSymbols.insert(f->name);
+        }
         return;
     }
 
@@ -11914,6 +12083,120 @@ void Interpreter::execute(const Stmt *stmt)
 
         auto klass = std::make_shared<ClassCallable>(c->name, superclass, std::move(methods));
         environment->define(c->name, Value(klass));
+        if (activePackageMap)
+        {
+            activePackageMap->unexportedSymbols.insert(c->name);
+        }
+        return;
+    }
+
+    // Module Packaging: `potli Name;`
+    if (auto *p = dynamic_cast<const PackageDeclStmt *>(stmt))
+    {
+        auto pkgMap = std::make_shared<MemeMap>();
+        pkgMap->isPackage = true;
+        pkgMap->packageName = p->name;
+        activePackageMap = pkgMap;
+        environment->define(p->name, Value(pkgMap));
+        return;
+    }
+
+    // Module Export: `bech <decl>`
+    if (auto *e = dynamic_cast<const ExportStmt *>(stmt))
+    {
+        execute(e->decl.get());
+
+        std::vector<std::string> names;
+        if (auto *v = dynamic_cast<const VarDeclStmt *>(e->decl.get()))
+        {
+            names.push_back(v->name);
+        }
+        else if (auto *f = dynamic_cast<const FuncDeclStmt *>(e->decl.get()))
+        {
+            names.push_back(f->name);
+        }
+        else if (auto *c = dynamic_cast<const ClassDeclStmt *>(e->decl.get()))
+        {
+            names.push_back(c->name);
+        }
+        else if (auto *n = dynamic_cast<const NamespaceDeclStmt *>(e->decl.get()))
+        {
+            names.push_back(n->name);
+        }
+        else if (auto *en = dynamic_cast<const EnumDeclStmt *>(e->decl.get()))
+        {
+            names.push_back(en->name);
+        }
+
+        for (const auto &name : names)
+        {
+            explicitExports.insert(name);
+            if (activePackageMap)
+            {
+                auto *slot = environment->findSlot(name);
+                if (slot)
+                {
+                    activePackageMap->set(name, slot->value);
+                }
+                activePackageMap->unexportedSymbols.erase(name);
+            }
+        }
+        return;
+    }
+
+    // Namespaces: `mohalla Name { ... }`
+    if (auto *ns = dynamic_cast<const NamespaceDeclStmt *>(stmt))
+    {
+        std::shared_ptr<MemeMap> nsMap;
+        auto existingSlot = environment->findSlot(ns->name);
+        if (existingSlot && existingSlot->value.isMap() && existingSlot->value.getMap()->isNamespace)
+        {
+            nsMap = existingSlot->value.getMap();
+        }
+        else
+        {
+            nsMap = std::make_shared<MemeMap>();
+            nsMap->isNamespace = true;
+            environment->define(ns->name, Value(nsMap));
+        }
+
+        auto nsEnv = std::make_shared<Environment>(this->environment, this->currentScopeDepth + 1);
+        for (const auto &[k, v] : nsMap->entries)
+        {
+            nsEnv->define(k, v);
+        }
+
+        auto prevEnv = this->environment;
+        auto prevDepth = this->currentScopeDepth;
+        this->environment = nsEnv;
+        this->currentScopeDepth++;
+
+        try
+        {
+            for (const auto &s : ns->body)
+            {
+                execute(s.get());
+            }
+        }
+        catch (...)
+        {
+            this->environment = prevEnv;
+            this->currentScopeDepth = prevDepth;
+            throw;
+        }
+
+        for (const auto &[name, slot] : nsEnv->getSlots())
+        {
+            nsMap->set(name, slot.value);
+        }
+
+        this->environment = prevEnv;
+        this->currentScopeDepth = prevDepth;
+
+        if (activePackageMap)
+        {
+            activePackageMap->unexportedSymbols.insert(ns->name);
+        }
         return;
     }
 
@@ -12125,30 +12408,16 @@ void Interpreter::execute(const Stmt *stmt)
             }
         }
         environment->define(ed->name, Value(enumMap));
+        if (activePackageMap)
+        {
+            activePackageMap->unexportedSymbols.insert(ed->name);
+        }
         return;
     }
 
-    // 17. Pattern match: `jaanch expr { ... }`
-    if (auto *j = dynamic_cast<const JaanchStmt *>(stmt))
+    // 17. Pattern match statement fallback
+    if (dynamic_cast<const JaanchStmt *>(stmt))
     {
-        Value targetVal = evaluate(j->target.get()).deref();
-        bool matched = false;
-
-        for (const auto &arm : j->arms)
-        {
-            Value patternVal = evaluate(arm.pattern.get()).deref();
-            if (targetVal == patternVal)
-            {
-                execute(arm.body.get());
-                matched = true;
-                break;
-            }
-        }
-
-        if (!matched && j->defaultArm)
-        {
-            execute(j->defaultArm.get());
-        }
         return;
     }
 
@@ -12253,6 +12522,109 @@ Value Interpreter::evaluate(const Expr *expr)
     // Identifier lookup
     if (auto *e = dynamic_cast<const IdentifierExpr *>(expr))
         return environment->get(e->name);
+
+    // Scoped member access: `Scope::member`
+    if (auto *s = dynamic_cast<const ScopedAccessExpr *>(expr))
+    {
+        Value scopeVal = evaluate(s->scope.get());
+        scopeVal = scopeVal.deref();
+
+        if (scopeVal.isMap())
+        {
+            auto mapPtr = scopeVal.getMap();
+            if (mapPtr->isPackage)
+            {
+                if (mapPtr->has(s->member))
+                {
+                    return mapPtr->entries[s->member];
+                }
+                if (mapPtr->hasUnexported(s->member))
+                {
+                    throw std::runtime_error("Khufiya symbol! '" + s->member + "' export nahi kiya gaya hai potli '" + mapPtr->packageName + "' se!");
+                }
+                throw std::runtime_error("Potli '" + mapPtr->packageName + "' mein member '" + s->member + "' nahi mila!");
+            }
+
+            if (mapPtr->has(s->member))
+            {
+                return mapPtr->entries[s->member];
+            }
+
+            if (mapPtr->isNamespace)
+            {
+                throw std::runtime_error("Mohalla mein member nahi mila! '" + s->member + "' is not found in namespace!");
+            }
+
+            throw std::runtime_error("Scope mein member '" + s->member + "' nahi mila!");
+        }
+
+        if (scopeVal.isCallable())
+        {
+            auto callable = std::get<std::shared_ptr<Callable>>(scopeVal.data);
+            if (auto cls = std::dynamic_pointer_cast<ClassCallable>(callable))
+            {
+                auto method = cls->findMethod(s->member);
+                if (method)
+                {
+                    return Value(method);
+                }
+            }
+        }
+
+        throw std::runtime_error("Mohalla ya scope galat hai! '" + s->member + "' access nahi kar sakte.");
+    }
+
+    // Scoped member mutation: `Scope::member = val`
+    if (auto *ss = dynamic_cast<const ScopedSetExpr *>(expr))
+    {
+        Value scopeVal = evaluate(ss->scope.get());
+        scopeVal = scopeVal.deref();
+        Value val = evaluate(ss->value.get());
+        if (scopeVal.isMap())
+        {
+            auto mapPtr = scopeVal.getMap();
+            mapPtr->set(ss->member, val);
+            return val;
+        }
+        throw std::runtime_error("Mohalla ya scope galat hai! '" + ss->member + "' assign nahi kar sakte.");
+    }
+
+    // Try propagate: `expr?`
+    if (auto *tpe = dynamic_cast<const TryPropagateExpr *>(expr))
+    {
+        Value val = evaluate(tpe->expression.get());
+        val = val.deref();
+        if (val.isOption())
+        {
+            auto opt = val.getOption();
+            if (opt && opt->isSome())
+            {
+                return opt->value;
+            }
+            // Early return None/Khali
+            throw ReturnSignal(val);
+        }
+        else if (val.isResult())
+        {
+            auto res = val.getResult();
+            if (res && res->isOk())
+            {
+                return res->value;
+            }
+            // Early return Err/Galat
+            throw ReturnSignal(val);
+        }
+        else
+        {
+            throw std::runtime_error("Sawaal: Postfix ? operator requires Option or Result type, got " + val.typeName());
+        }
+    }
+
+    // Pattern match expression: `jaanch expr { ... }`
+    if (auto *je = dynamic_cast<const JaanchExpr *>(expr))
+    {
+        return evaluateJaanchExpr(je);
+    }
 
     // Assignment: `x = value`
     if (auto *e = dynamic_cast<const AssignExpr *>(expr))
@@ -13377,6 +13749,16 @@ Value Interpreter::evaluate(const Expr *expr)
             return getTupleMethod(objVal.getTuple(), g->name);
         }
 
+        if (objVal.isOption())
+        {
+            return getOptionMethod(objVal.getOption(), g->name);
+        }
+
+        if (objVal.isResult())
+        {
+            return getResultMethod(objVal.getResult(), g->name);
+        }
+
         if (std::holds_alternative<std::shared_ptr<Callable>>(objVal.data))
         {
             auto callable = std::get<std::shared_ptr<Callable>>(objVal.data);
@@ -14267,4 +14649,284 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
         return true;
     }
     return false;
+}
+
+bool Interpreter::matchPattern(const Value &val,
+                               const MemePattern *pattern,
+                               std::vector<std::pair<std::string, Value>> &bindings)
+{
+    if (!pattern) return true;
+
+    switch (pattern->getType())
+    {
+    case PatternType::WILDCARD:
+        return true;
+
+    case PatternType::VARIABLE:
+    {
+        auto *vp = static_cast<const VariablePattern *>(pattern);
+        if (vp->name != "_")
+        {
+            bindings.push_back({vp->name, val.deref()});
+        }
+        return true;
+    }
+
+    case PatternType::LITERAL:
+    {
+        auto *lp = static_cast<const LiteralPattern *>(pattern);
+        Value litVal = evaluate(lp->literalExpr.get()).deref();
+        return (val.deref() == litVal);
+    }
+
+    case PatternType::LIST:
+    {
+        auto *listPat = static_cast<const ListPattern *>(pattern);
+        Value derefVal = val.deref();
+        if (!derefVal.isList()) return false;
+
+        auto listPtr = derefVal.getList();
+        const auto &elems = listPtr->elements;
+
+        if (listPat->hasRest)
+        {
+            if (elems.size() < listPat->elements.size()) return false;
+            for (size_t i = 0; i < listPat->elements.size(); ++i)
+            {
+                if (!matchPattern(elems[i], listPat->elements[i].get(), bindings))
+                    return false;
+            }
+            if (!listPat->restName.empty() && listPat->restName != "_")
+            {
+                auto restList = std::make_shared<MemeList>();
+                for (size_t i = listPat->elements.size(); i < elems.size(); ++i)
+                {
+                    restList->elements.push_back(elems[i]);
+                }
+                bindings.push_back({listPat->restName, Value(restList)});
+            }
+            return true;
+        }
+        else
+        {
+            if (elems.size() != listPat->elements.size()) return false;
+            for (size_t i = 0; i < listPat->elements.size(); ++i)
+            {
+                if (!matchPattern(elems[i], listPat->elements[i].get(), bindings))
+                    return false;
+            }
+            return true;
+        }
+    }
+
+    case PatternType::VARIANT:
+    {
+        auto *vp = static_cast<const VariantPattern *>(pattern);
+        Value v = val.deref();
+
+        // 1. Option variants: Some / Kuch vs None / Khali
+        if (vp->variantName == "Some" || vp->variantName == "Kuch")
+        {
+            if (!v.isOption()) return false;
+            auto opt = v.getOption();
+            if (!opt || !opt->isSome()) return false;
+            if (vp->subPatterns.empty()) return true;
+            if (vp->subPatterns.size() == 1)
+            {
+                return matchPattern(opt->value, vp->subPatterns[0].get(), bindings);
+            }
+            return false;
+        }
+
+        if (vp->variantName == "None" || vp->variantName == "Khali")
+        {
+            if (!v.isOption()) return false;
+            auto opt = v.getOption();
+            return (opt && opt->isNone());
+        }
+
+        // 2. Result variants: Ok / Sahi vs Err / Galat
+        if (vp->variantName == "Ok" || vp->variantName == "Sahi")
+        {
+            if (!v.isResult()) return false;
+            auto res = v.getResult();
+            if (!res || !res->isOk()) return false;
+            if (vp->subPatterns.empty()) return true;
+            if (vp->subPatterns.size() == 1)
+            {
+                return matchPattern(res->value, vp->subPatterns[0].get(), bindings);
+            }
+            return false;
+        }
+
+        if (vp->variantName == "Err" || vp->variantName == "Galat")
+        {
+            if (!v.isResult()) return false;
+            auto res = v.getResult();
+            if (!res || !res->isErr()) return false;
+            if (vp->subPatterns.empty()) return true;
+            if (vp->subPatterns.size() == 1)
+            {
+                return matchPattern(res->value, vp->subPatterns[0].get(), bindings);
+            }
+            return false;
+        }
+
+        // Generic enum/class instance matching
+        if (v.isInstance())
+        {
+            auto inst = v.getInstance();
+            std::string cname = inst->getClass() ? inst->getClass()->getName() : "";
+            if (cname == vp->variantName)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    }
+    return false;
+}
+
+Value Interpreter::evaluateJaanchExpr(const JaanchExpr *je)
+{
+    Value targetVal = evaluate(je->target.get()).deref();
+
+    for (const auto &arm : je->arms)
+    {
+        std::vector<std::pair<std::string, Value>> bindings;
+        bool matches = false;
+
+        if (!arm.pattern)
+        {
+            matches = true;
+        }
+        else
+        {
+            matches = matchPattern(targetVal, arm.pattern.get(), bindings);
+        }
+
+        if (matches)
+        {
+            auto armEnv = std::make_shared<Environment>(this->environment, currentScopeDepth + 1);
+            for (const auto &b : bindings)
+            {
+                armEnv->define(b.first, b.second);
+            }
+
+            if (arm.guard)
+            {
+                Value guardVal = evaluateInEnv(arm.guard.get(), armEnv);
+                if (!guardVal.isTruthy())
+                {
+                    continue; // Guard rejected match
+                }
+            }
+
+            if (arm.bodyStmt)
+            {
+                if (auto *bs = dynamic_cast<const BlockStmt *>(arm.bodyStmt.get()))
+                {
+                    auto prevEnv = this->environment;
+                    this->environment = armEnv;
+                    enterScope();
+                    int sDepth = currentScopeDepth;
+                    Value result(std::monostate{});
+
+                    try
+                    {
+                        for (const auto &s : bs->statements)
+                        {
+                            if (auto *es = dynamic_cast<const ExprStmt *>(s.get()))
+                            {
+                                result = evaluate(es->expression.get());
+                            }
+                            else
+                            {
+                                execute(s.get());
+                            }
+                        }
+                        cleanupScope(armEnv, sDepth);
+                        this->environment = prevEnv;
+                        return result;
+                    }
+                    catch (...)
+                    {
+                        cleanupScope(armEnv, sDepth);
+                        this->environment = prevEnv;
+                        throw;
+                    }
+                }
+                else
+                {
+                    auto prevEnv = this->environment;
+                    this->environment = armEnv;
+                    try
+                    {
+                        execute(arm.bodyStmt.get());
+                        this->environment = prevEnv;
+                        return Value(std::monostate{});
+                    }
+                    catch (...)
+                    {
+                        this->environment = prevEnv;
+                        throw;
+                    }
+                }
+            }
+            else if (arm.bodyExpr)
+            {
+                return evaluateInEnv(arm.bodyExpr.get(), armEnv);
+            }
+            return Value(std::monostate{});
+        }
+    }
+
+    if (je->defaultBodyExpr)
+    {
+        return evaluate(je->defaultBodyExpr.get());
+    }
+    if (je->defaultBodyStmt)
+    {
+        if (auto *bs = dynamic_cast<const BlockStmt *>(je->defaultBodyStmt.get()))
+        {
+            auto armEnv = std::make_shared<Environment>(this->environment, currentScopeDepth + 1);
+            auto prevEnv = this->environment;
+            this->environment = armEnv;
+            enterScope();
+            int sDepth = currentScopeDepth;
+            Value result(std::monostate{});
+            try
+            {
+                for (const auto &s : bs->statements)
+                {
+                    if (auto *es = dynamic_cast<const ExprStmt *>(s.get()))
+                    {
+                        result = evaluate(es->expression.get());
+                    }
+                    else
+                    {
+                        execute(s.get());
+                    }
+                }
+                cleanupScope(armEnv, sDepth);
+                this->environment = prevEnv;
+                return result;
+            }
+            catch (...)
+            {
+                cleanupScope(armEnv, sDepth);
+                this->environment = prevEnv;
+                throw;
+            }
+        }
+        else
+        {
+            execute(je->defaultBodyStmt.get());
+            return Value(std::monostate{});
+        }
+    }
+
+    // Required by negative test test_err_match_non_exhaustive.meme: EXPECT_ERROR: Adhoora
+    throw std::runtime_error("Adhoora jaanch: Target value '" + targetVal.toString() + "' ke liye koi pattern match nahi mila aur default arm nahi diya gaya!");
 }

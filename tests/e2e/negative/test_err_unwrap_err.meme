@@ -1,0 +1,9 @@
+// ==============================================================================
+// MEMElang Negative E2E Test: Unhandled Unwrap on Err/Galat
+// EXPECT_ERROR: Galat
+// ==============================================================================
+
+pakad res = Galat("Kaboom! System crashed!");
+// Direct unwrap on Galat / Err must trigger fatal error
+pakad val = res.unwrap();
+dikha val;

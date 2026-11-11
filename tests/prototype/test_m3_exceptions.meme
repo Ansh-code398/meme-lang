@@ -1,0 +1,24 @@
+// test_m3_exceptions.meme
+// Verifies TryCatchStmt and ThrowStmt emission in native compiled binaries
+kaam risky_operation(should_fail: ank) -> ank {
+    agar (should_fail == 1) {
+        chillao "Custom syntax error at line 42";
+    }
+    ye_le 100;
+}
+
+pakad caught = 0;
+pakad err_msg = "";
+
+panga {
+    pakad v1 = risky_operation(0);
+    dikha f"SAFE_VAL:{v1}";
+    pakad v2 = risky_operation(1);
+    dikha "THIS_SHOULD_NOT_PRINT";
+} lafda (err) {
+    caught = 1;
+    err_msg = err;
+}
+
+dikha f"CAUGHT:{caught}";
+dikha f"ERR_CONTAINS:{(err_msg.find(\"line 42\") >= 0)}";

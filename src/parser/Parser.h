@@ -496,6 +496,51 @@ public:
     }
 };
 
+class ScopedAccessExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> scope;
+    std::string member;
+
+    ScopedAccessExpr(std::unique_ptr<Expr> scope, std::string member, int line = 0)
+        : Expr(line), scope(std::move(scope)), member(std::move(member)) {}
+
+    std::string toString() const override
+    {
+        return (scope ? scope->toString() : "") + "::" + member;
+    }
+};
+
+class ScopedSetExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> scope;
+    std::string member;
+    std::unique_ptr<Expr> value;
+
+    ScopedSetExpr(std::unique_ptr<Expr> scope, std::string member, std::unique_ptr<Expr> value, int line = 0)
+        : Expr(line), scope(std::move(scope)), member(std::move(member)), value(std::move(value)) {}
+
+    std::string toString() const override
+    {
+        return "(" + (scope ? scope->toString() : "") + "::" + member + " = " + (value ? value->toString() : "") + ")";
+    }
+};
+
+class TryPropagateExpr : public Expr
+{
+public:
+    std::unique_ptr<Expr> expression;
+
+    TryPropagateExpr(std::unique_ptr<Expr> expression, int line = 0)
+        : Expr(line), expression(std::move(expression)) {}
+
+    std::string toString() const override
+    {
+        return (expression ? expression->toString() : "") + "?";
+    }
+};
+
 // ==========================================
 // 2. Statement AST Hierarchy (Stmt)
 // ==========================================
@@ -1031,19 +1076,22 @@ public:
     std::unique_ptr<Expr> end;
     std::unique_ptr<Expr> step; // nullptr if default (+1 or -1 depending on direction)
     std::unique_ptr<Stmt> body;
+    bool inclusive = true;
 
     GhoomStmt(const std::string &varName,
               std::unique_ptr<Expr> start,
               std::unique_ptr<Expr> end,
               std::unique_ptr<Expr> step,
               std::unique_ptr<Stmt> body,
-              int line = 0)
+              int line = 0,
+              bool inclusive = true)
         : Stmt(line),
           varName(varName),
           start(std::move(start)),
           end(std::move(end)),
           step(std::move(step)),
-          body(std::move(body)) {}
+          body(std::move(body)),
+          inclusive(inclusive) {}
 
     std::string toString() const override
     {
@@ -1192,6 +1240,55 @@ struct EnumMember
     std::unique_ptr<Expr> value; // nullptr if auto-increment
 };
 
+class PackageDeclStmt : public Stmt
+{
+public:
+    std::string name;
+
+    PackageDeclStmt(std::string name, int line = 0)
+        : Stmt(line), name(std::move(name)) {}
+
+    std::string toString() const override
+    {
+        return "potli " + name + ";";
+    }
+};
+
+class ExportStmt : public Stmt
+{
+public:
+    std::unique_ptr<Stmt> decl;
+
+    ExportStmt(std::unique_ptr<Stmt> decl, int line = 0)
+        : Stmt(line), decl(std::move(decl)) {}
+
+    std::string toString() const override
+    {
+        return "bech " + (decl ? decl->toString() : "");
+    }
+};
+
+class NamespaceDeclStmt : public Stmt
+{
+public:
+    std::string name;
+    std::vector<std::unique_ptr<Stmt>> body;
+
+    NamespaceDeclStmt(std::string name, std::vector<std::unique_ptr<Stmt>> body, int line = 0)
+        : Stmt(line), name(std::move(name)), body(std::move(body)) {}
+
+    std::string toString() const override
+    {
+        std::string res = "mohalla " + name + " {\n";
+        for (const auto &s : body)
+        {
+            if (s) res += "  " + s->toString() + "\n";
+        }
+        res += "}";
+        return res;
+    }
+};
+
 class EnumDeclStmt : public Stmt
 {
 public:
@@ -1207,11 +1304,124 @@ public:
     }
 };
 
-// 16. Pattern Match Statement: `jaanch expr { val1 => { ... } baaki => { ... } }`
-struct JaanchArm
-{
-    std::unique_ptr<Expr> pattern; // nullptr if baaki/default
-    std::unique_ptr<Stmt> body;
+// ==========================================
+// Advanced Pattern Matching AST Nodes
+// ==========================================
+
+enum class PatternType {
+    WILDCARD,
+    LITERAL,
+    VARIABLE,
+    VARIANT,
+    LIST
+};
+
+class MemePattern {
+public:
+    int line = 0;
+    explicit MemePattern(int line = 0) : line(line) {}
+    virtual ~MemePattern() = default;
+    virtual PatternType getType() const = 0;
+    virtual std::string toString() const = 0;
+};
+
+class WildcardPattern : public MemePattern {
+public:
+    explicit WildcardPattern(int line = 0) : MemePattern(line) {}
+    PatternType getType() const override { return PatternType::WILDCARD; }
+    std::string toString() const override { return "_"; }
+};
+
+class LiteralPattern : public MemePattern {
+public:
+    std::unique_ptr<Expr> literalExpr;
+    explicit LiteralPattern(std::unique_ptr<Expr> expr, int line = 0)
+        : MemePattern(line), literalExpr(std::move(expr)) {}
+    PatternType getType() const override { return PatternType::LITERAL; }
+    std::string toString() const override { return literalExpr ? literalExpr->toString() : ""; }
+};
+
+class VariablePattern : public MemePattern {
+public:
+    std::string name;
+    explicit VariablePattern(std::string name, int line = 0)
+        : MemePattern(line), name(std::move(name)) {}
+    PatternType getType() const override { return PatternType::VARIABLE; }
+    std::string toString() const override { return name; }
+};
+
+class VariantPattern : public MemePattern {
+public:
+    std::string variantName;
+    std::vector<std::shared_ptr<MemePattern>> subPatterns;
+    VariantPattern(std::string name, std::vector<std::shared_ptr<MemePattern>> subs, int line = 0)
+        : MemePattern(line), variantName(std::move(name)), subPatterns(std::move(subs)) {}
+    PatternType getType() const override { return PatternType::VARIANT; }
+    std::string toString() const override {
+        std::string s = variantName;
+        if (!subPatterns.empty()) {
+            s += "(";
+            for (size_t i = 0; i < subPatterns.size(); ++i) {
+                if (i > 0) s += ", ";
+                s += subPatterns[i]->toString();
+            }
+            s += ")";
+        }
+        return s;
+    }
+};
+
+class ListPattern : public MemePattern {
+public:
+    std::vector<std::shared_ptr<MemePattern>> elements;
+    bool hasRest = false;
+    std::string restName;
+    ListPattern(std::vector<std::shared_ptr<MemePattern>> elems, bool hasRest = false, std::string restName = "", int line = 0)
+        : MemePattern(line), elements(std::move(elems)), hasRest(hasRest), restName(std::move(restName)) {}
+    PatternType getType() const override { return PatternType::LIST; }
+    std::string toString() const override {
+        std::string s = "[";
+        for (size_t i = 0; i < elements.size(); ++i) {
+            if (i > 0) s += ", ";
+            s += elements[i]->toString();
+        }
+        if (hasRest) {
+            if (!elements.empty()) s += ", ";
+            s += "..." + restName;
+        }
+        s += "]";
+        return s;
+    }
+};
+
+struct JaanchArm {
+    std::shared_ptr<MemePattern> pattern; // nullptr if fallback (warna/baaki/default)
+    std::unique_ptr<Expr> guard;       // nullptr if no guard ('agar' / 'if')
+    std::unique_ptr<Expr> bodyExpr;    // expression arm body
+    std::unique_ptr<Stmt> bodyStmt;    // block arm body: `{ ... }`
+};
+
+class JaanchExpr : public Expr {
+public:
+    std::unique_ptr<Expr> target;
+    std::vector<JaanchArm> arms;
+    std::unique_ptr<Expr> defaultBodyExpr;
+    std::unique_ptr<Stmt> defaultBodyStmt;
+
+    JaanchExpr(std::unique_ptr<Expr> target,
+               std::vector<JaanchArm> arms,
+               std::unique_ptr<Expr> defaultBodyExpr = nullptr,
+               std::unique_ptr<Stmt> defaultBodyStmt = nullptr,
+               int line = 0)
+        : Expr(line),
+          target(std::move(target)),
+          arms(std::move(arms)),
+          defaultBodyExpr(std::move(defaultBodyExpr)),
+          defaultBodyStmt(std::move(defaultBodyStmt)) {}
+
+    std::string toString() const override {
+        return "jaanch " + (target ? target->toString() : "") + " { ... }";
+    }
 };
 
 class JaanchStmt : public Stmt
@@ -1229,7 +1439,7 @@ public:
 
     std::string toString() const override
     {
-        return "jaanch " + target->toString() + " { ... }";
+        return "jaanch " + (target ? target->toString() : "") + " { ... }";
     }
 };
 
@@ -1266,7 +1476,8 @@ public:
                (tok.type == TokenType::DEREF && tok.value == "val") ||
                (tok.type == TokenType::ADDRESS_OF && (tok.value == "ptr" || tok.value == "addr")) ||
                (tok.type == TokenType::UDHAAR && tok.value == "ref") ||
-               (tok.type == TokenType::UDHAAR_BADAL && tok.value == "mut_ref");
+               (tok.type == TokenType::UDHAAR_BADAL && tok.value == "mut_ref") ||
+               (tok.type == TokenType::POOCH && tok.value == "input");
     }
 
     bool isFunctionName(const Token &tok) const
@@ -1385,6 +1596,12 @@ public:
             return parseThrowStmt();
         case TokenType::IMPORT:
             return parseImportStmt();
+        case TokenType::PACKAGE:
+            return parsePackageDeclStmt();
+        case TokenType::EXPORT:
+            return parseExportStmt();
+        case TokenType::NAMESPACE:
+            return parseNamespaceDeclStmt();
         case TokenType::AVTAR:
             return parseEnumDeclStmt();
         case TokenType::JAANCH:
@@ -2370,9 +2587,16 @@ public:
         if (peek().type == TokenType::MEIN)
         {
             current++; // consume 'mein' / 'andar'
-            std::unique_ptr<Expr> collection = parseLogicalOr();
+            std::unique_ptr<Expr> startOrCollection = parseLogicalOr();
+            if (peek().type == TokenType::DOT_DOT)
+            {
+                current++; // consume '..'
+                std::unique_ptr<Expr> endExpr = parseLogicalOr();
+                std::unique_ptr<Stmt> body = parseBlockStmt();
+                return std::make_unique<GhoomStmt>(varName, std::move(startOrCollection), std::move(endExpr), nullptr, std::move(body), line, false);
+            }
             std::unique_ptr<Stmt> body = parseBlockStmt();
-            return std::make_unique<GhumaMeinStmt>(varName, std::move(collection), std::move(body), line);
+            return std::make_unique<GhumaMeinStmt>(varName, std::move(startOrCollection), std::move(body), line);
         }
 
         if (peek().type != TokenType::SE)
@@ -2825,11 +3049,200 @@ public:
         return std::make_unique<EnumDeclStmt>(enumName, std::move(members), line);
     }
 
-    // 16. `jaanch expr { val1 => { ... } baaki => { ... } }`
-    std::unique_ptr<Stmt> parseJaanchStmt()
+    std::unique_ptr<Stmt> parsePackageDeclStmt()
+    {
+        checkNotError();
+        int line = peek().line;
+        current++; // consume 'potli' / 'package'
+        checkNotError();
+        if (peek().type != TokenType::IDENTIFIER)
+        {
+            errorAt(peek(), "Potli (package) ka naam likho! Mila: '" + peek().value + "'");
+        }
+        std::string name = peek().value;
+        current++; // consume package name
+        checkNotError();
+        if (peek().type == TokenType::SEMICOLON)
+        {
+            current++;
+        }
+        return std::make_unique<PackageDeclStmt>(name, line);
+    }
+
+    std::unique_ptr<Stmt> parseExportStmt()
+    {
+        checkNotError();
+        int line = peek().line;
+        current++; // consume 'bech' / 'export'
+        checkNotError();
+        auto inner = parseStatement();
+        return std::make_unique<ExportStmt>(std::move(inner), line);
+    }
+
+    std::unique_ptr<Stmt> parseNamespaceDeclStmt()
+    {
+        checkNotError();
+        int line = peek().line;
+        current++; // consume 'mohalla' / 'namespace'
+        checkNotError();
+        if (peek().type != TokenType::IDENTIFIER)
+        {
+            errorAt(peek(), "Mohalla (namespace) ka naam likho! Mila: '" + peek().value + "'");
+        }
+        std::string name = peek().value;
+        current++; // consume namespace name
+        checkNotError();
+        if (peek().type != TokenType::OPEN_BRACE)
+        {
+            errorAt(peek(), "Mohalla body shuru karne ke liye '{' lagana padta hai! Mila: '" + peek().value + "'");
+        }
+        current++; // consume '{'
+        std::vector<std::unique_ptr<Stmt>> body;
+        while (peek().type != TokenType::CLOSE_BRACE && peek().type != TokenType::END_OF_FILE)
+        {
+            if (peek().type == TokenType::SEMICOLON)
+            {
+                current++;
+                continue;
+            }
+            body.push_back(parseStatement());
+        }
+        checkNotError();
+        if (peek().type == TokenType::END_OF_FILE)
+        {
+            errorAt(line, "Mohalla ka darwaza khula chhod diya! '}' lagao.");
+        }
+        current++; // consume '}'
+        if (peek().type == TokenType::SEMICOLON)
+        {
+            current++;
+        }
+        return std::make_unique<NamespaceDeclStmt>(name, std::move(body), line);
+    }
+
+    std::shared_ptr<MemePattern> parsePattern()
+    {
+        checkNotError();
+        Token tok = peek();
+
+        // 1. Wildcard: `_`
+        if (isIdentifierOrVal(tok) && tok.value == "_")
+        {
+            current++;
+            return std::make_shared<WildcardPattern>(tok.line);
+        }
+
+        // 2. List Pattern: `[]`, `[x]`, `[a, b]`, `[head, ...tail]`, `[head, *tail]`
+        if (tok.type == TokenType::OPEN_SQUARE_BRACKET)
+        {
+            int listLine = tok.line;
+            current++; // consume '['
+            std::vector<std::shared_ptr<MemePattern>> elements;
+            bool hasRest = false;
+            std::string restName = "";
+
+            while (peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::END_OF_FILE)
+            {
+                checkNotError();
+                if (peek().type == TokenType::ELLIPSIS || peek().type == TokenType::DEREF || peek().type == TokenType::MULTIPLY)
+                {
+                    current++; // consume '...' or '*'
+                    checkNotError();
+                    if (isIdentifierOrVal(peek()))
+                    {
+                        restName = peek().value;
+                        current++;
+                    }
+                    hasRest = true;
+                    if (peek().type == TokenType::COMMA) current++;
+                    break;
+                }
+
+                elements.push_back(parsePattern());
+                if (peek().type == TokenType::COMMA)
+                {
+                    current++; // consume ','
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                errorAt(peek(), "Pattern matching mein list band karne ke liye ']' lagana bhool gaye!");
+            }
+            current++; // consume ']'
+            return std::make_shared<ListPattern>(std::move(elements), hasRest, restName, listLine);
+        }
+
+        // 3. Variant or Variable Identifier
+        if (isIdentifierOrVal(tok))
+        {
+            std::string name = tok.value;
+            int line = tok.line;
+
+            // Nullary Option variants: `Khali`, `None`
+            if ((name == "Khali" || name == "None") && peekNext().type != TokenType::OPEN_PAREN)
+            {
+                current++;
+                return std::make_shared<VariantPattern>(name, std::vector<std::shared_ptr<MemePattern>>{}, line);
+            }
+
+            // Variant with parameters: `Some(...)`, `Kuch(...)`, `Ok(...)`, `Sahi(...)`, `Err(...)`, `Galat(...)`, `VariantName(...)`
+            if (peekNext().type == TokenType::OPEN_PAREN)
+            {
+                current++; // consume identifier
+                current++; // consume '('
+                std::vector<std::shared_ptr<MemePattern>> subs;
+                if (peek().type != TokenType::CLOSE_PAREN)
+                {
+                    while (true)
+                    {
+                        subs.push_back(parsePattern());
+                        if (peek().type == TokenType::COMMA)
+                        {
+                            current++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                if (peek().type != TokenType::CLOSE_PAREN)
+                {
+                    errorAt(peek(), "Variant pattern ke arguments band karne ke liye ')' lagao!");
+                }
+                current++; // consume ')'
+                return std::make_shared<VariantPattern>(name, std::move(subs), line);
+            }
+
+            // Simple variable binding pattern: `x`, `head`, `reason`
+            current++;
+            return std::make_shared<VariablePattern>(name, line);
+        }
+
+        // 4. Literals: ints, negative ints, floats, strings, booleans, null
+        if (tok.type == TokenType::INT_LITERAL || tok.type == TokenType::BYTE_LITERAL ||
+            tok.type == TokenType::FLOAT_LITERAL || tok.type == TokenType::STRING_LITERAL ||
+            tok.type == TokenType::FSTRING_LITERAL || tok.type == TokenType::HAN ||
+            tok.type == TokenType::NHI || tok.type == TokenType::KUCH_NHI ||
+            tok.type == TokenType::MINUS)
+        {
+            std::unique_ptr<Expr> litExpr = parseUnary();
+            return std::make_shared<LiteralPattern>(std::move(litExpr), tok.line);
+        }
+
+        errorAt(tok, "Pattern syntax galat hai! Mila: '" + tok.value + "'");
+        return nullptr;
+    }
+
+    std::unique_ptr<Expr> parseJaanchExpr()
     {
         int line = peek().line;
-        current++; // consume 'jaanch'
+        current++; // consume 'jaanch' / 'match'
         checkNotError();
 
         auto target = parseLogicalOr();
@@ -2844,16 +3257,18 @@ public:
         checkNotError();
 
         std::vector<JaanchArm> arms;
-        std::unique_ptr<Stmt> defaultArm = nullptr;
+        std::unique_ptr<Expr> defaultBodyExpr = nullptr;
+        std::unique_ptr<Stmt> defaultBodyStmt = nullptr;
 
         while (peek().type != TokenType::CLOSE_BRACE && peek().type != TokenType::END_OF_FILE)
         {
             checkNotError();
 
-            bool isDefault = (peek().type == TokenType::BAAKI || peek().type == TokenType::WARNA);
+            // Check for fallback keywords: `warna`, `nahi_toh`, `else`, `baaki`, `default`
+            bool isDefault = (peek().type == TokenType::WARNA || peek().type == TokenType::BAAKI);
             if (isDefault)
             {
-                current++; // consume 'baaki' / 'warna'
+                current++; // consume default keyword
                 checkNotError();
                 if (peek().type != TokenType::ARROW)
                 {
@@ -2862,21 +3277,32 @@ public:
                 current++; // consume '=>'
                 checkNotError();
 
-                std::unique_ptr<Stmt> armBody;
                 if (peek().type == TokenType::OPEN_BRACE)
                 {
-                    armBody = parseBlockStmt();
+                    defaultBodyStmt = parseBlockStmt();
                 }
                 else
                 {
-                    armBody = parseStatement();
+                    defaultBodyExpr = parseAssignment();
                 }
-                defaultArm = std::move(armBody);
             }
             else
             {
-                auto patternExpr = parseLogicalOr();
+                auto pattern = parsePattern();
                 checkNotError();
+
+                std::unique_ptr<Expr> guard = nullptr;
+                // Guard expression: `agar cond` or `if cond` (lexed as TokenType::DEKH)
+                if (peek().type == TokenType::DEKH)
+                {
+                    current++; // consume 'agar' / 'if'
+                    checkNotError();
+                    bool prevInGuard = inJaanchGuard;
+                    inJaanchGuard = true;
+                    guard = parseLogicalOr();
+                    inJaanchGuard = prevInGuard;
+                    checkNotError();
+                }
 
                 if (peek().type != TokenType::ARROW)
                 {
@@ -2885,19 +3311,21 @@ public:
                 current++; // consume '=>'
                 checkNotError();
 
-                std::unique_ptr<Stmt> armBody;
+                std::unique_ptr<Expr> armExpr = nullptr;
+                std::unique_ptr<Stmt> armStmt = nullptr;
                 if (peek().type == TokenType::OPEN_BRACE)
                 {
-                    armBody = parseBlockStmt();
+                    armStmt = parseBlockStmt();
                 }
                 else
                 {
-                    armBody = parseStatement();
+                    armExpr = parseAssignment();
                 }
-                arms.push_back({std::move(patternExpr), std::move(armBody)});
+
+                arms.push_back({std::move(pattern), std::move(guard), std::move(armExpr), std::move(armStmt)});
             }
 
-            // Optional trailing comma or semicolon between arms
+            // Optional trailing comma or semicolon
             if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON)
             {
                 current++;
@@ -2910,7 +3338,15 @@ public:
         }
         current++; // consume '}'
 
-        return std::make_unique<JaanchStmt>(std::move(target), std::move(arms), std::move(defaultArm), line);
+        return std::make_unique<JaanchExpr>(std::move(target), std::move(arms), std::move(defaultBodyExpr), std::move(defaultBodyStmt), line);
+    }
+
+    // 16. `jaanch expr { val1 => { ... } baaki => { ... } }`
+    std::unique_ptr<Stmt> parseJaanchStmt()
+    {
+        int line = peek().line;
+        auto expr = parseJaanchExpr();
+        return std::make_unique<ExprStmt>(std::move(expr), line);
     }
 
     // 17. Expression Statement: `x = 10;` or `x + 1;`
@@ -2996,6 +3432,11 @@ public:
             if (auto *get = dynamic_cast<GetExpr *>(expr.get()))
             {
                 return std::make_unique<SetExpr>(std::move(get->object), get->name, std::move(value), eqLine);
+            }
+
+            if (auto *scoped = dynamic_cast<ScopedAccessExpr *>(expr.get()))
+            {
+                return std::make_unique<ScopedSetExpr>(std::move(scoped->scope), scoped->member, std::move(value), eqLine);
             }
 
             if (auto *idx = dynamic_cast<IndexExpr *>(expr.get()))
@@ -3235,7 +3676,57 @@ public:
             return std::make_unique<MoveExpr>(std::move(operand), op.line);
         }
 
+        if (peek().type == TokenType::IDENTIFIER && (peek().value == "new" || peek().value == "naya"))
+        {
+            current++;
+            return parseUnary();
+        }
+
         return parseCall();
+    }
+
+    bool isTernaryQuestionAhead() const
+    {
+        if (peek().type != TokenType::QUESTION) return false;
+        if (current + 1 < tokens.size() && tokens[current + 1].type == TokenType::QUESTION)
+        {
+            return false;
+        }
+        int parenDepth = 0;
+        int bracketDepth = 0;
+        int braceDepth = 0;
+        for (size_t i = current + 1; i < tokens.size(); ++i)
+        {
+            const auto &tok = tokens[i];
+            if (tok.type == TokenType::SEMICOLON || tok.type == TokenType::END_OF_FILE)
+            {
+                return false;
+            }
+            if (tok.type == TokenType::OPEN_PAREN) parenDepth++;
+            else if (tok.type == TokenType::CLOSE_PAREN)
+            {
+                if (parenDepth == 0) return false;
+                parenDepth--;
+            }
+            else if (tok.type == TokenType::OPEN_SQUARE_BRACKET) bracketDepth++;
+            else if (tok.type == TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                if (bracketDepth == 0) return false;
+                bracketDepth--;
+            }
+            else if (tok.type == TokenType::OPEN_BRACE) braceDepth++;
+            else if (tok.type == TokenType::CLOSE_BRACE)
+            {
+                if (braceDepth == 0) return false;
+                braceDepth--;
+            }
+            else if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0)
+            {
+                if (tok.type == TokenType::COLON) return true;
+                if (tok.type == TokenType::COMMA) return false;
+            }
+        }
+        return false;
     }
 
     // Postfix function call & property access layer: `f(1, 2)`, `obj.prop`, `obj.method(1)`
@@ -3273,6 +3764,20 @@ public:
                 current++; // consume property name
                 expr = std::make_unique<GetExpr>(std::move(expr), propName, dotLine);
             }
+            else if (peek().type == TokenType::DOUBLE_COLON)
+            {
+                int colonLine = peek().line;
+                current++; // consume '::'
+                checkNotError();
+                if (peek().type != TokenType::IDENTIFIER &&
+                    (peek().value.empty() || (!std::isalpha(static_cast<unsigned char>(peek().value[0])) && peek().value[0] != '_')))
+                {
+                    errorAt(peek(), "'::' ke baad member ya identifier ka naam chahiye! Mila: '" + peek().value + "'");
+                }
+                std::string memberName = peek().value;
+                current++; // consume member name
+                expr = std::make_unique<ScopedAccessExpr>(std::move(expr), memberName, colonLine);
+            }
             else if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
             {
                 // CRITICAL FIX: If optional semicolons are used, a '[' on a new line
@@ -3291,6 +3796,12 @@ public:
                 }
                 current++; // consume ']'
                 expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index), bracketLine);
+            }
+            else if (peek().type == TokenType::QUESTION && !isTernaryQuestionAhead())
+            {
+                int qLine = peek().line;
+                current++; // consume '?'
+                expr = std::make_unique<TryPropagateExpr>(std::move(expr), qLine);
             }
             else
             {
@@ -3719,9 +4230,17 @@ public:
             current++;
             return std::make_unique<NullExpr>(token.line);
 
+        case TokenType::JAANCH:
+            return parseJaanchExpr();
+
         case TokenType::POOCH:
         {
             int poochLine = token.line;
+            if (token.value == "input" && peek().type != TokenType::OPEN_PAREN)
+            {
+                current++;
+                return std::make_unique<IdentifierExpr>(token.value, poochLine);
+            }
             current++; // consume 'pooch'
             std::unique_ptr<Expr> prompt = nullptr;
             if (peek().type == TokenType::OPEN_PAREN)
@@ -4009,7 +4528,7 @@ public:
 
         case TokenType::IDENTIFIER:
         {
-            if (peekNext().type == TokenType::ARROW)
+            if (!inJaanchGuard && peekNext().type == TokenType::ARROW)
             {
                 int arrowLine = token.line;
                 std::string paramName = token.value;
@@ -4403,6 +4922,7 @@ public:
 private:
     const std::vector<Token> tokens;
     size_t current;
+    bool inJaanchGuard = false;
 
     // Invariant: tokens always ends with TokenType::END_OF_FILE,
     // and no parser rule ever advances `current` past TokenType::END_OF_FILE.
@@ -4433,8 +4953,23 @@ private:
 
         size_t i = current + offset + 1;
         int parenDepth = 1;
+        bool hasComparisonOrLogic = false;
         while (i < tokens.size() && tokens[i].type != TokenType::END_OF_FILE)
         {
+            if (parenDepth == 1)
+            {
+                if (tokens[i].type == TokenType::GREATER_THAN ||
+                    tokens[i].type == TokenType::LESS_THAN ||
+                    tokens[i].type == TokenType::EQUAL ||
+                    tokens[i].type == TokenType::NOT_EQUAL ||
+                    tokens[i].type == TokenType::LESS_THAN_EQUAL ||
+                    tokens[i].type == TokenType::GREATER_THAN_EQUAL ||
+                    tokens[i].type == TokenType::AUR ||
+                    tokens[i].type == TokenType::YA)
+                {
+                    hasComparisonOrLogic = true;
+                }
+            }
             if (tokens[i].type == TokenType::OPEN_PAREN)
             {
                 parenDepth++;
@@ -4444,6 +4979,7 @@ private:
                 parenDepth--;
                 if (parenDepth == 0)
                 {
+                    if (hasComparisonOrLogic) return false;
                     if (i + 1 < tokens.size() && tokens[i + 1].type == TokenType::ARROW)
                     {
                         return true;

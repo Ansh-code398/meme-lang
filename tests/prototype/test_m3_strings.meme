@@ -1,0 +1,30 @@
+// test_m3_strings.meme
+// Verifies string manipulation: charAt, chars, slice, length, starts_with, find, trim
+pakad text = "   fn calculate_sum(a: ank, b: ank) -> ank   ";
+pakad trimmed = text.trim();
+dikha f"TRIMMED_LEN:{trimmed.length()}";
+
+// starts_with
+dikha f"STARTS_FN:{trimmed.starts_with(\"fn\")}";
+dikha f"STARTS_SANCHA:{trimmed.starts_with(\"sancha\")}";
+
+// find
+pakad paren_pos = trimmed.find("(");
+dikha f"PAREN_POS:{paren_pos}";
+
+// slice / substring
+pakad fn_keyword = trimmed.slice(0, 2);
+dikha f"SLICE_KW:{fn_keyword}";
+
+pakad fn_name = trimmed.slice(3, paren_pos);
+dikha f"FN_NAME:{fn_name}";
+
+// charAt
+dikha f"CHAR_0:{fn_name.charAt(0)}";
+dikha f"CHAR_3:{fn_name.charAt(3)}";
+
+// chars list
+pakad ch_list = fn_keyword.chars();
+dikha f"CHARS_COUNT:{ch_list.length()}";
+dikha f"CH_0:{ch_list[0]}";
+dikha f"CH_1:{ch_list[1]}";

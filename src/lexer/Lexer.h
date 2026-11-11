@@ -63,6 +63,10 @@ enum class TokenType
     // Module Imports
     IMPORT,
     AS,
+    PACKAGE,
+    EXPORT,
+    NAMESPACE,
+    DOUBLE_COLON,
 
     // Enums & Pattern Matching
     AVTAR,
@@ -94,6 +98,7 @@ enum class TokenType
     OPEN_BRACE,
     CLOSE_BRACE,
     DOT,
+    DOT_DOT,
     ELLIPSIS,
     OPEN_SQUARE_BRACKET,
     CLOSE_SQUARE_BRACKET,
@@ -309,6 +314,24 @@ public:
             {"import", TokenType::IMPORT},
             {"jaise", TokenType::AS},
             {"as", TokenType::AS},
+
+            // Module Packaging & Exports
+            {"potli", TokenType::PACKAGE},
+            {"dibbi", TokenType::PACKAGE},
+            {"bundle", TokenType::PACKAGE},
+            {"package", TokenType::PACKAGE},
+            {"pkg", TokenType::PACKAGE},
+            {"bech", TokenType::EXPORT},
+            {"khula", TokenType::EXPORT},
+            {"baahar", TokenType::EXPORT},
+            {"export", TokenType::EXPORT},
+            {"pub", TokenType::EXPORT},
+
+            // Namespaces
+            {"mohalla", TokenType::NAMESPACE},
+            {"pados", TokenType::NAMESPACE},
+            {"namespace", TokenType::NAMESPACE},
+            {"ns", TokenType::NAMESPACE},
 
             // Enums & Pattern Matching
             {"avtar", TokenType::AVTAR},
@@ -1044,6 +1067,12 @@ public:
                     advance(); // 3rd dot
                     tokens.push_back({TokenType::ELLIPSIS, "...", tokenLine, tokenColumn});
                 }
+                else if (peekNext() == '.')
+                {
+                    advance(); // 1st dot
+                    advance(); // 2nd dot
+                    tokens.push_back({TokenType::DOT_DOT, "..", tokenLine, tokenColumn});
+                }
                 else
                 {
                     advance();
@@ -1080,8 +1109,17 @@ public:
                 break;
 
             case ':':
-                advance();
-                tokens.push_back({TokenType::COLON, ":", tokenLine, tokenColumn});
+                if (peekNext() == ':')
+                {
+                    advance(); // 1st :
+                    advance(); // 2nd :
+                    tokens.push_back({TokenType::DOUBLE_COLON, "::", tokenLine, tokenColumn});
+                }
+                else
+                {
+                    advance();
+                    tokens.push_back({TokenType::COLON, ":", tokenLine, tokenColumn});
+                }
                 break;
 
             case '?':
@@ -1233,6 +1271,8 @@ public:
             return "COMMA";
         case TokenType::DOT:
             return "DOT";
+        case TokenType::DOT_DOT:
+            return "DOT_DOT";
         case TokenType::ELLIPSIS:
             return "ELLIPSIS";
 
@@ -1252,6 +1292,14 @@ public:
             return "CLOSE_SQUARE_BRACKET";
         case TokenType::COLON:
             return "COLON";
+        case TokenType::DOUBLE_COLON:
+            return "DOUBLE_COLON";
+        case TokenType::PACKAGE:
+            return "PACKAGE";
+        case TokenType::EXPORT:
+            return "EXPORT";
+        case TokenType::NAMESPACE:
+            return "NAMESPACE";
         case TokenType::QUESTION:
             return "QUESTION";
 
