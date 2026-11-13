@@ -328,6 +328,41 @@ pakad items = 42;
 dikha f"Processed {items} items in {time}ms";
 ```
 
+### Environment Variables (`env` / `paryavaran` / `dotenv`)
+
+MEMElang provides first-class environment variable support with full parity across both the tree-walking interpreter and AOT native binaries:
+
+```meme
+// Available globally or via module import
+bula "env" jaise env;             // also: bula "paryavaran" jaise p; bula "dotenv" jaise d;
+
+// 1. Reading environment variables
+pakad port = env.get("PORT", "3000");   // or env.la("PORT")
+pakad db_url = env("DATABASE_URL");     // direct callable syntax
+pakad host = env["HOST"];               // map index syntax
+
+// 2. Setting and unsetting
+env.set("APP_ENV", "production");       // or env.rakh(...)
+env["CACHE_TTL"] = "3600";              // map index assignment
+env.delete("TEMP_KEY");                 // or env.hatao(...)
+
+// 3. Inspection and membership
+dekh env.has("API_KEY") {               // or env.hai(...)
+    dikha "API key is configured!";
+}
+pakad all_vars = env.all();             // or env.sab() -> Map of all env vars
+
+// 4. Loading .env files (with variable expansion, quotes, comments, export prefix)
+env.load(".env.local", sach);           // or env.chadhau(".env")
+
+// 5. Parsing .env strings into Maps
+pakad cfg = env.parse("HOST=127.0.0.1\nPORT=8080\nURL=\"http://${HOST}:${PORT}/v1\"");
+dikha cfg["URL"];                       // http://127.0.0.1:8080/v1
+```
+
+* **Automatic `.env` Loading**: Both the tree-walking interpreter (`./meme`) and AOT-compiled native machine binaries automatically load `.env` from the working directory on launch.
+* **CLI `--env-file` Flag**: Run scripts with custom environments: `./meme --env-file=.env.production app.meme`.
+
 ---
 
 ## 🧠 Self-Hosting Compiler
@@ -367,6 +402,7 @@ diff meme_stage2.cpp meme_stage3.cpp   # → 0 diff lines ✅
 | `math` | `ganit` | `sqrt`, `pow`, `floor`, `ceil`, `abs`, `sin`, `cos`, `log` |
 | `random` | `takdeer` | `int`, `float`, `choice`, `shuffle`, `seed` |
 | `file` | `fs` | `read`, `write`, `exists`, `lines`, `append`, `delete` |
+| `env` | `paryavaran`, `dotenv` | `get`, `set`, `has`, `delete`, `all`, `load`, `parse` |
 | `systumm` | `sys` | `args`, `exec`, `cwd`, `platform`, `exit`, `env` |
 | `crypto` | `raaz` | `sha256`, `md5`, `hmac`, `base64_encode/decode` |
 | `datetime` | `samay` | `now`, `parse`, `format`, `diff`, `utc` |

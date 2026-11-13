@@ -289,6 +289,7 @@ public:
                 }
                 if (objStr == "samay" || objStr == "itertools" || objStr == "math" ||
                     objStr == "sys" || objStr == "systumm" || objStr == "os" || objStr == "file" ||
+                    objStr == "env" || objStr == "paryavaran" || objStr == "dotenv" ||
                     method == "push_back" || method == "pop_back" || method == "size" || method == "length" || method == "lambai" ||
                     method == "is_ok" || method == "is_err" || method == "is_some" || method == "is_none" ||
                     method == "unwrap" || method == "unwrap_err" || method == "unwrap_or") {
@@ -330,7 +331,8 @@ public:
                 return "this->" + prop;
             }
             if (objStr == "samay" || objStr == "itertools" || objStr == "math" ||
-                objStr == "sys" || objStr == "systumm" || objStr == "os" || objStr == "file") {
+                objStr == "sys" || objStr == "systumm" || objStr == "os" || objStr == "file" ||
+                objStr == "env" || objStr == "paryavaran" || objStr == "dotenv") {
                 return objStr + "." + prop;
             }
             return objStr + "->" + prop;
@@ -965,6 +967,10 @@ public:
                 if (alias != "sys" && alias != "systumm" && alias != "os") {
                     out << indent() << "auto &" << alias << " = sys;\n";
                 }
+            } else if (imp->path == "env" || imp->path == "paryavaran" || imp->path == "dotenv") {
+                if (alias != "env" && alias != "paryavaran" && alias != "dotenv") {
+                    out << indent() << "auto &" << alias << " = env;\n";
+                }
             } else if (imp->path == "file") {
                 if (alias != "file") {
                     out << indent() << "auto &" << alias << " = file;\n";
@@ -1270,7 +1276,8 @@ public:
         out << "    sys.args.clear();\n";
         out << "    for (int _i = 0; _i < argc; ++_i) {\n";
         out << "        sys.args.push_back(std::string(argv[_i]));\n";
-        out << "    }\n\n";
+        out << "    }\n";
+        out << "    env.auto_load();\n\n";
         out << "    try {\n";
         out << mainBody.str();
         out << "\n    } catch (const MemeReturnSignal &_sig) {\n";
@@ -1305,6 +1312,10 @@ public:
                 } else if (imp->path == "sys" || imp->path == "systumm" || imp->path == "os") {
                     if (alias != "sys" && alias != "systumm" && alias != "os") {
                         globalDecls << "inline SystummModule &" << alias << " = sys;\n";
+                    }
+                } else if (imp->path == "env" || imp->path == "paryavaran" || imp->path == "dotenv") {
+                    if (alias != "env" && alias != "paryavaran" && alias != "dotenv") {
+                        globalDecls << "inline EnvModule &" << alias << " = env;\n";
                     }
                 } else if (imp->path == "file") {
                     if (alias != "file") {

@@ -39,6 +39,16 @@
 #include <ws2tcpip.h>
 #endif
 
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#define meme_environ (*_NSGetEnviron())
+#elif !defined(_WIN32)
+extern char **environ;
+#define meme_environ environ
+#else
+#define meme_environ _environ
+#endif
+
 thread_local std::unordered_set<const void *> activePrintPointers;
 
 static double toDouble(const Value &val)
@@ -4818,6 +4828,337 @@ static std::shared_ptr<MemeMap> createSystummModule(Interpreter &interpreter)
 #endif
         return Value(simulatedClipboard);
     })));
+
+    return m;
+}
+
+static std::vector<std::pair<std::string, std::string>> parseDotEnvLines(const std::string &content)
+{
+    std::vector<std::pair<std::string, std::string>> result;
+    std::istringstream stream(content);
+    std::string line;
+    std::unordered_map<std::string, std::string> localVars;
+
+    while (std::getline(stream, line))
+    {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+
+        size_t start = line.find_first_not_of(" \t");
+        if (start == std::string::npos) continue;
+        if (line[start] == '#') continue;
+
+        if (line.compare(start, 7, "export ") == 0)
+        {
+            start += 7;
+            start = line.find_first_not_of(" \t", start);
+            if (start == std::string::npos) continue;
+        }
+
+        size_t eq = line.find('=', start);
+        if (eq == std::string::npos) continue;
+
+        std::string key = line.substr(start, eq - start);
+        size_t keyEnd = key.find_last_not_of(" \t");
+        if (keyEnd == std::string::npos) continue;
+        key = key.substr(0, keyEnd + 1);
+
+        std::string rawVal = line.substr(eq + 1);
+        size_t valStart = rawVal.find_first_not_of(" \t");
+        std::string val = "";
+
+        if (valStart != std::string::npos)
+        {
+            char firstChar = rawVal[valStart];
+            if (firstChar == '"')
+            {
+                size_t i = valStart + 1;
+                while (i < rawVal.size())
+                {
+                    if (rawVal[i] == '\\' && i + 1 < rawVal.size())
+                    {
+                        char next = rawVal[i + 1];
+                        if (next == 'n') val += '\n';
+                        else if (next == 't') val += '\t';
+                        else if (next == 'r') val += '\r';
+                        else if (next == '"') val += '"';
+                        else if (next == '\\') val += '\\';
+                        else { val += '\\'; val += next; }
+                        i += 2;
+                    }
+                    else if (rawVal[i] == '"')
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        val += rawVal[i++];
+                    }
+                }
+            }
+            else if (firstChar == '\'')
+            {
+                size_t closeQuote = rawVal.find('\'', valStart + 1);
+                if (closeQuote != std::string::npos)
+                {
+                    val = rawVal.substr(valStart + 1, closeQuote - (valStart + 1));
+                }
+                else
+                {
+                    val = rawVal.substr(valStart + 1);
+                }
+            }
+            else
+            {
+                std::string sub = rawVal.substr(valStart);
+                size_t hashPos = std::string::npos;
+                for (size_t i = 0; i < sub.size(); ++i)
+                {
+                    if (sub[i] == '#' && (i > 0 && (sub[i - 1] == ' ' || sub[i - 1] == '\t')))
+                    {
+                        hashPos = i - 1;
+                        break;
+                    }
+                }
+                if (hashPos != std::string::npos)
+                {
+                    sub = sub.substr(0, hashPos);
+                }
+                size_t lastNonSpace = sub.find_last_not_of(" \t");
+                if (lastNonSpace != std::string::npos)
+                {
+                    val = sub.substr(0, lastNonSpace + 1);
+                }
+                else
+                {
+                    val = "";
+                }
+            }
+        }
+
+        std::string expanded = "";
+        for (size_t i = 0; i < val.size(); ++i)
+        {
+            if (val[i] == '$' && i + 1 < val.size())
+            {
+                if (val[i + 1] == '{')
+                {
+                    size_t closeBrace = val.find('}', i + 2);
+                    if (closeBrace != std::string::npos)
+                    {
+                        std::string varName = val.substr(i + 2, closeBrace - (i + 2));
+                        if (localVars.find(varName) != localVars.end())
+                        {
+                            expanded += localVars[varName];
+                        }
+                        else
+                        {
+                            const char *envVal = std::getenv(varName.c_str());
+                            if (envVal) expanded += envVal;
+                        }
+                        i = closeBrace;
+                        continue;
+                    }
+                }
+                else if (std::isalpha(static_cast<unsigned char>(val[i + 1])) || val[i + 1] == '_')
+                {
+                    size_t varEnd = i + 1;
+                    while (varEnd < val.size() && (std::isalnum(static_cast<unsigned char>(val[varEnd])) || val[varEnd] == '_'))
+                    {
+                        varEnd++;
+                    }
+                    std::string varName = val.substr(i + 1, varEnd - (i + 1));
+                    if (localVars.find(varName) != localVars.end())
+                    {
+                        expanded += localVars[varName];
+                    }
+                    else
+                    {
+                        const char *envVal = std::getenv(varName.c_str());
+                        if (envVal) expanded += envVal;
+                    }
+                    i = varEnd - 1;
+                    continue;
+                }
+            }
+            expanded += val[i];
+        }
+
+        localVars[key] = expanded;
+        result.push_back({key, expanded});
+    }
+
+    return result;
+}
+
+static std::shared_ptr<MemeMap> createEnvModule(Interpreter &interpreter)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+    m->isEnv = true;
+
+    auto getFn = Value(std::make_shared<NativeMethodCallable>("get", 1, 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string key = args[0].deref().toString();
+        const char *val = std::getenv(key.c_str());
+        if (val)
+        {
+            return Value(std::string(val));
+        }
+        return args.size() > 1 ? args[1] : Value(std::monostate{});
+    }));
+    m->set("get", getFn);
+    m->set("la", getFn);
+    m->set("__call__", getFn);
+    m->set("__chala__", getFn);
+
+    auto setFn = Value(std::make_shared<NativeMethodCallable>("set", 2, [m](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string key = args[0].deref().toString();
+        std::string val = args[1].deref().toString();
+#if !defined(__EMSCRIPTEN__)
+#ifdef _WIN32
+        _putenv_s(key.c_str(), val.c_str());
+#else
+        setenv(key.c_str(), val.c_str(), 1);
+#endif
+#endif
+        m->set(key, Value(val));
+        return Value(true);
+    }));
+    m->set("set", setFn);
+    m->set("rakh", setFn);
+
+    auto hasFn = Value(std::make_shared<NativeMethodCallable>("has", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string key = args[0].deref().toString();
+        return Value(std::getenv(key.c_str()) != nullptr);
+    }));
+    m->set("has", hasFn);
+    m->set("hai", hasFn);
+    m->set("contains", hasFn);
+
+    auto delFn = Value(std::make_shared<NativeMethodCallable>("delete", 1, [m](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string key = args[0].deref().toString();
+#if !defined(__EMSCRIPTEN__)
+#ifdef _WIN32
+        _putenv((key + "=").c_str());
+#else
+        unsetenv(key.c_str());
+#endif
+#endif
+        m->remove(key);
+        return Value(true);
+    }));
+    m->set("delete", delFn);
+    m->set("hatao", delFn);
+    m->set("unset", delFn);
+
+    auto allFn = Value(std::make_shared<NativeMethodCallable>("all", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto allMap = std::make_shared<MemeMap>();
+#if !defined(__EMSCRIPTEN__)
+        char **curEnv = meme_environ;
+        if (curEnv)
+        {
+            for (char **c = curEnv; *c; ++c)
+            {
+                std::string s(*c);
+                size_t eq = s.find('=');
+                if (eq != std::string::npos)
+                {
+                    allMap->set(s.substr(0, eq), Value(s.substr(eq + 1)));
+                }
+            }
+        }
+#endif
+        return Value(allMap);
+    }));
+    m->set("all", allFn);
+    m->set("sab", allFn);
+
+    auto parseFn = Value(std::make_shared<NativeMethodCallable>("parse", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string content = args[0].deref().toString();
+        auto parsedPairs = parseDotEnvLines(content);
+        auto resMap = std::make_shared<MemeMap>();
+        for (const auto &p : parsedPairs)
+        {
+            resMap->set(p.first, Value(p.second));
+        }
+        return Value(resMap);
+    }));
+    m->set("parse", parseFn);
+    m->set("samajh", parseFn);
+
+    auto loadFn = Value(std::make_shared<NativeMethodCallable>("load", 0, 2, [&interpreter, m](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string pathStr = args.empty() ? ".env" : args[0].deref().toString();
+        bool overwrite = args.size() > 1 ? args[1].isTruthy() : false;
+
+        std::filesystem::path targetPath = pathStr;
+        if (!std::filesystem::exists(targetPath))
+        {
+            if (!interpreter.getCurrentFilePath().empty())
+            {
+                auto scriptDir = std::filesystem::absolute(interpreter.getCurrentFilePath()).parent_path();
+                if (std::filesystem::exists(scriptDir / pathStr))
+                {
+                    targetPath = scriptDir / pathStr;
+                }
+            }
+        }
+
+        if (!std::filesystem::exists(targetPath))
+        {
+            std::filesystem::path checkDir = std::filesystem::current_path();
+            while (!checkDir.empty())
+            {
+                if (std::filesystem::exists(checkDir / pathStr))
+                {
+                    targetPath = checkDir / pathStr;
+                    break;
+                }
+                if (!checkDir.has_relative_path() || checkDir == checkDir.parent_path()) break;
+                checkDir = checkDir.parent_path();
+            }
+        }
+
+        if (!std::filesystem::exists(targetPath))
+        {
+            return Value(std::make_shared<MemeMap>());
+        }
+
+        std::ifstream file(targetPath);
+        if (!file.is_open())
+        {
+            return Value(std::make_shared<MemeMap>());
+        }
+
+        std::stringstream ss;
+        ss << file.rdbuf();
+        std::string content = ss.str();
+
+        auto pairs = parseDotEnvLines(content);
+        auto resMap = std::make_shared<MemeMap>();
+
+        for (const auto &kv : pairs)
+        {
+            const std::string &key = kv.first;
+            const std::string &val = kv.second;
+
+            bool shouldSet = overwrite || (std::getenv(key.c_str()) == nullptr);
+            if (shouldSet)
+            {
+#if !defined(__EMSCRIPTEN__)
+#ifdef _WIN32
+                _putenv_s(key.c_str(), val.c_str());
+#else
+                setenv(key.c_str(), val.c_str(), overwrite ? 1 : 0);
+#endif
+#endif
+                m->set(key, Value(val));
+            }
+            resMap->set(key, Value(val));
+        }
+
+        return Value(resMap);
+    }));
+    m->set("load", loadFn);
+    m->set("chadhau", loadFn);
 
     return m;
 }
@@ -10189,6 +10530,14 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     importedModules["sys"] = systummMod;
     importedModules["os"] = systummMod;
 
+    auto envMod = Value(createEnvModule(*this));
+    globals->define("env", envMod);
+    globals->define("paryavaran", envMod);
+    globals->define("dotenv", envMod);
+    importedModules["env"] = envMod;
+    importedModules["paryavaran"] = envMod;
+    importedModules["dotenv"] = envMod;
+
     auto cliMod = Value(createCliModule(*this));
     globals->define("cli", cliMod);
     importedModules["cli"] = cliMod;
@@ -10859,32 +11208,16 @@ static void autoLoadEnvFile(const std::filesystem::path &dir)
     if (!std::filesystem::exists(envFile)) return;
     std::ifstream f(envFile);
     if (!f.is_open()) return;
-    std::string line;
-    while (std::getline(f, line)) {
-        size_t start = line.find_first_not_of(" \t\r\n");
-        if (start == std::string::npos) continue;
-        if (line[start] == '#') continue;
-        size_t eq = line.find('=', start);
-        if (eq == std::string::npos) continue;
-        std::string key = line.substr(start, eq - start);
-        size_t keyEnd = key.find_last_not_of(" \t\r\n");
-        if (keyEnd != std::string::npos) key = key.substr(0, keyEnd + 1);
-        std::string val = line.substr(eq + 1);
-        size_t valStart = val.find_first_not_of(" \t\r\n");
-        if (valStart != std::string::npos) {
-            val = val.substr(valStart);
-            size_t valEnd = val.find_last_not_of(" \t\r\n");
-            if (valEnd != std::string::npos) val = val.substr(0, valEnd + 1);
-        } else {
-            val = "";
-        }
-        if (val.length() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
-            val = val.substr(1, val.length() - 2);
-        }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    auto pairs = parseDotEnvLines(ss.str());
+    for (const auto &p : pairs) {
 #ifndef _WIN32
-        setenv(key.c_str(), val.c_str(), 0);
+        setenv(p.first.c_str(), p.second.c_str(), 0);
 #else
-        _putenv_s(key.c_str(), val.c_str());
+        if (getenv(p.first.c_str()) == nullptr) {
+            _putenv_s(p.first.c_str(), p.second.c_str());
+        }
 #endif
     }
 }
@@ -14167,7 +14500,7 @@ Value Interpreter::evaluate(const Expr *expr)
             std::string key = idxVal.toString();
             if (map && map->has(key))
             {
-                return map->entries[key];
+                return map->get(key);
             }
             return Value(std::monostate{}); // returns nalla if key missing
         }
@@ -14280,6 +14613,17 @@ Value Interpreter::evaluate(const Expr *expr)
             if (map)
             {
                 map->set(key, val);
+                if (map->isEnv)
+                {
+                    std::string strVal = val.deref().toString();
+#if !defined(__EMSCRIPTEN__)
+#ifdef _WIN32
+                    _putenv_s(key.c_str(), strVal.c_str());
+#else
+                    setenv(key.c_str(), strVal.c_str(), 1);
+#endif
+#endif
+                }
             }
             return val;
         }

@@ -53,6 +53,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " --native <file> [args]    Compile and run immediately at 100% native CPU speed\n";
     std::cout << "  " << prog << " pakao <file> ...          Alias for compile (Cook/bake to native binary)\n";
     std::cout << "  " << prog << " --parse-only <file>       Parse and typecheck file without executing\n";
+    std::cout << "  " << prog << " [--env-file=<path>] ...   Load custom environment variables file before execution\n";
     std::cout << "  " << prog << " -h, --help                Show this help message\n";
 }
 
@@ -1947,6 +1948,76 @@ int main(int argc, char *argv[])
     catch (...)
     {
     }
+
+    // Pre-scan for custom --env-file
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        std::string envPath = "";
+        if (arg.rfind("--env-file=", 0) == 0)
+        {
+            envPath = arg.substr(11);
+        }
+        else if (arg == "--env-file" && i + 1 < argc)
+        {
+            envPath = argv[++i];
+        }
+        if (!envPath.empty())
+        {
+            std::ifstream ef(envPath);
+            if (ef.is_open())
+            {
+                std::string line;
+                while (std::getline(ef, line))
+                {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    size_t s = line.find_first_not_of(" \t");
+                    if (s == std::string::npos || line[s] == '#') continue;
+                    if (line.compare(s, 7, "export ") == 0) s = line.find_first_not_of(" \t", s + 7);
+                    size_t eq = line.find('=', s);
+                    if (eq == std::string::npos) continue;
+                    std::string k = line.substr(s, eq - s);
+                    size_t ke = k.find_last_not_of(" \t");
+                    if (ke != std::string::npos) k = k.substr(0, ke + 1);
+                    std::string v = line.substr(eq + 1);
+                    size_t vs = v.find_first_not_of(" \t");
+                    if (vs != std::string::npos) {
+                        v = v.substr(vs);
+                        size_t ve = v.find_last_not_of(" \t");
+                        if (ve != std::string::npos) v = v.substr(0, ve + 1);
+                    } else v = "";
+                    if (v.length() >= 2 && ((v.front() == '"' && v.back() == '"') || (v.front() == '\'' && v.back() == '\''))) {
+                        v = v.substr(1, v.length() - 2);
+                    }
+#ifndef _WIN32
+                    setenv(k.c_str(), v.c_str(), 1);
+#else
+                    _putenv_s(k.c_str(), v.c_str());
+#endif
+                }
+            }
+        }
+    }
+
+    // Filter out --env-file flags from argument list
+    std::vector<char *> cleanArgv;
+    cleanArgv.push_back(argv[0]);
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg.rfind("--env-file=", 0) == 0)
+        {
+            continue;
+        }
+        if (arg == "--env-file")
+        {
+            ++i;
+            continue;
+        }
+        cleanArgv.push_back(argv[i]);
+    }
+    argc = static_cast<int>(cleanArgv.size());
+    argv = cleanArgv.data();
 
     if (argc == 1)
     {

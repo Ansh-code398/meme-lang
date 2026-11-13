@@ -659,6 +659,7 @@ struct MemeMap
     bool isModule = false;
     bool isNamespace = false;
     bool isPackage = false;
+    bool isEnv = false;
     std::string packageName = "";
     std::unordered_set<std::string> unexportedSymbols;
 
@@ -679,9 +680,17 @@ struct MemeMap
 
     bool remove(const std::string &key)
     {
+        if (isEnv)
+        {
+#ifndef _WIN32
+            unsetenv(key.c_str());
+#else
+            _putenv((key + "=").c_str());
+#endif
+        }
         auto it = entries.find(key);
         if (it == entries.end())
-            return false;
+            return isEnv;
         entries.erase(it);
         for (auto kit = keyOrder.begin(); kit != keyOrder.end(); ++kit)
         {
@@ -696,7 +705,11 @@ struct MemeMap
 
     bool has(const std::string &key) const
     {
-        return entries.find(key) != entries.end();
+        if (entries.find(key) != entries.end())
+            return true;
+        if (isEnv)
+            return std::getenv(key.c_str()) != nullptr;
+        return false;
     }
 
     Value get(const std::string &key) const
@@ -704,6 +717,11 @@ struct MemeMap
         auto it = entries.find(key);
         if (it != entries.end())
             return it->second;
+        if (isEnv)
+        {
+            const char *v = std::getenv(key.c_str());
+            if (v) return Value(std::string(v));
+        }
         return Value(std::monostate{});
     }
 };

@@ -1443,6 +1443,26 @@ sancha CodeGenerator {
             out = out + ind + "}\n";
             ye_le out;
         }
+        warna agar (kind == "ImportStmt") {
+            pakad path = s["path"];
+            pakad alias = s["alias"];
+            agar (alias == "") { alias = path; }
+            alias = sanitize_identifier(alias);
+            agar (path == "sys" || path == "systumm" || path == "os") {
+                agar (alias != "sys" && alias != "systumm" && alias != "os") {
+                    ye_le ind + "auto &" + alias + " = sys;\n";
+                }
+            } warna agar (path == "env" || path == "paryavaran" || path == "dotenv") {
+                agar (alias != "env" && alias != "paryavaran" && alias != "dotenv") {
+                    ye_le ind + "auto &" + alias + " = env;\n";
+                }
+            } warna agar (path == "file" || path == "fs" || path == "dastavez") {
+                agar (alias != "file" && alias != "fs" && alias != "dastavez") {
+                    ye_le ind + "auto &" + alias + " = file;\n";
+                }
+            }
+            ye_le "";
+        }
 
         ye_le "";
     }
@@ -1583,7 +1603,8 @@ sancha CodeGenerator {
         out = out + "    sys.args.clear();\n";
         out = out + "    for (int _i = 0; _i < argc; ++_i) {\n";
         out = out + "        sys.args.push_back(std::string(argv[_i]));\n";
-        out = out + "    }\n\n";
+        out = out + "    }\n";
+        out = out + "    env.auto_load();\n\n";
         out = out + "    try {\n";
         ghoom i in 0..top_stmts.length() {
             out = out + khud.gen_stmt(top_stmts[i], 2);
