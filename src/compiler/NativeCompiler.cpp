@@ -540,6 +540,9 @@ public:
                 else if (t == "float" || t == "float64" || t == "point_wala") typeStr = "double";
                 else if (t == "bool" || t == "sahi_galat") typeStr = "bool";
                 else if (t == "str" || t == "string" || t == "bol") typeStr = "std::string";
+                else if (knownClasses.find(t) != knownClasses.end()) typeStr = "std::shared_ptr<" + t + ">";
+            } else if (v->initializer && dynamic_cast<const NullExpr *>(v->initializer.get())) {
+                typeStr = "MemeValue"; // Avoid deducing std::nullptr_t
             }
 
             if (v->initializer) {
@@ -663,7 +666,7 @@ public:
                 out << indent() << "return " << generateExpr(r->value.get()) << ";\n";
             } else {
                 if (isInsideFunction) {
-                    out << indent() << "return;\n";
+                    out << indent() << "return MemeValue();\n";
                 } else {
                     out << indent() << "return 0;\n";
                 }
@@ -1158,7 +1161,7 @@ public:
                 globalDecls << "    }\n";
             } else {
                 // Ordinary method
-                std::string methodRetType = "auto";
+                std::string methodRetType = "MemeValue";
                 bool usesPropagate = hasTryPropagate(m->body.get());
                 std::string classRet = findClassReturned(m->body.get());
                 if (!classRet.empty()) {
@@ -1200,6 +1203,8 @@ public:
                         globalDecls << indent() << "    return *(_sig.value);\n";
                         globalDecls << indent() << "}\n";
                         globalDecls << indent() << "return MemeValue();\n";
+                    } else if (methodRetType == "MemeValue") {
+                        globalDecls << indent() << "return MemeValue();\n";
                     }
                 }
                 indentLevel = 1;
@@ -1212,7 +1217,7 @@ public:
 
     void generateFunction(const FuncDeclStmt *f) {
         std::string fnName = sanitizeIdentifier(f->name);
-        std::string returnType = "auto";
+        std::string returnType = "MemeValue";
         bool usesPropagate = hasTryPropagate(f->body.get());
 
         std::string classRet = findClassReturned(f->body.get());
@@ -1232,7 +1237,7 @@ public:
         std::string paramDecl;
         for (size_t i = 0; i < f->paramList.size(); ++i) {
             if (i > 0) paramDecl += ", ";
-            paramDecl += "const auto &" + sanitizeIdentifier(f->paramList[i].name);
+            paramDecl += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
         }
 
         globalDecls << "inline " << returnType << " " << fnName << "(" << paramDecl << ") {\n";
@@ -1255,6 +1260,8 @@ public:
                 globalDecls << indent() << "} catch (const MemeReturnSignal &_sig) {\n";
                 globalDecls << indent() << "    return *(_sig.value);\n";
                 globalDecls << indent() << "}\n";
+                globalDecls << indent() << "return MemeValue();\n";
+            } else if (returnType == "MemeValue") {
                 globalDecls << indent() << "return MemeValue();\n";
             }
         }
@@ -1324,6 +1331,40 @@ public:
                 }
             }
         }
+
+        // Pass 0A: Forward declarations for all classes
+        for (const auto &stmt : program) {
+            if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
+                globalDecls << "struct " << sanitizeIdentifier(c->name) << ";\n";
+            }
+        }
+        globalDecls << "\n";
+
+        // Pass 0B: Forward declarations for all top-level functions
+        for (const auto &stmt : program) {
+            if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
+                std::string fnName = sanitizeIdentifier(f->name);
+                std::string retType = "MemeValue";
+                std::string classRet = findClassReturned(f->body.get());
+                if (!classRet.empty()) {
+                    retType = "std::shared_ptr<" + classRet + ">";
+                } else if (f->returnTypeAnnotation) {
+                    std::string t = f->returnTypeAnnotation->toString();
+                    if (t == "int" || t == "int64" || t == "ank") retType = "int64_t";
+                    else if (t == "float" || t == "float64" || t == "point_wala") retType = "double";
+                    else if (t == "bool" || t == "sahi_galat") retType = "bool";
+                    else if (t == "str" || t == "string" || t == "bol") retType = "std::string";
+                    else if (knownClasses.find(t) != knownClasses.end()) retType = "std::shared_ptr<" + t + ">";
+                }
+                std::string paramTypes;
+                for (size_t i = 0; i < f->paramList.size(); ++i) {
+                    if (i > 0) paramTypes += ", ";
+                    paramTypes += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
+                }
+                globalDecls << "inline " << retType << " " << fnName << "(" << paramTypes << ");\n";
+            }
+        }
+        globalDecls << "\n";
 
         // First pass: Classes
         for (const auto &stmt : program) {

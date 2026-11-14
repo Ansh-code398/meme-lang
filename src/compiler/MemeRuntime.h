@@ -144,6 +144,12 @@ public:
     MemeValue(std::nullptr_t) : type(TYPE_NALLA) {}
     MemeValue(int64_t v) : type(TYPE_INT), i_val(v) {}
     MemeValue(int v) : type(TYPE_INT), i_val(v) {}
+    MemeValue(size_t v) : type(TYPE_INT), i_val(static_cast<int64_t>(v)) {}
+    MemeValue &operator=(size_t v) {
+        type = TYPE_INT;
+        i_val = static_cast<int64_t>(v);
+        return *this;
+    }
     MemeValue(double v) : type(TYPE_FLOAT), f_val(v) {}
     MemeValue(float v) : type(TYPE_FLOAT), f_val(static_cast<double>(v)) {}
     MemeValue(bool v) : type(TYPE_BOOL), b_val(v) {}

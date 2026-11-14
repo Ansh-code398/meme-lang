@@ -46,16 +46,15 @@ def run_meme_code(code: str, env_vars=None, extra_args=None):
     return proc.returncode, proc.stdout, proc.stderr
 
 def run_test(name, fn):
-    print(f"  • {name}...", end=" ", flush=True)
     try:
         fn()
-        print("[PASS]")
+        print(f"[PASS] {name}")
         return True
     except AssertionError as e:
-        print(f"[FAIL] Assertion: {e}")
+        print(f"[FAIL] {name} Assertion: {e}")
         return False
     except Exception as e:
-        print(f"[ERROR] Exception: {e}")
+        print(f"[ERROR] {name} Exception: {e}")
         return False
 
 def test_env_basic_crud():

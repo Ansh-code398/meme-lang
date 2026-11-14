@@ -223,6 +223,8 @@ def main():
         "cross_combinations": TESTS_E2E_DIR / "test_cross_feature_combinations.meme",
         "real_world_scenarios": TESTS_E2E_DIR / "test_real_world_scenarios.meme",
         "compiler_bootstrap": TESTS_E2E_DIR / "test_compiler_bootstrap_e2e.py",
+        "m1_self_compile": TESTS_E2E_DIR / "test_m1_self_compile_e2e.py",
+        "env": TESTS_E2E_DIR / "test_env_e2e.py",
         "benchmarks": TESTS_E2E_DIR / "test_benchmarks_e2e.py",
         "build_tooling": TESTS_E2E_DIR / "test_build_tooling_e2e.py",
         "invariants": TESTS_E2E_DIR / "test_invariants_e2e.py",
@@ -292,10 +294,10 @@ def main():
             sys.exit(1)
 
     tier_map = {
-        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "benchmarks", "build_tooling", "invariants"],
-        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "benchmarks", "build_tooling", "invariants"],
-        "3": ["combinations", "cross_combinations", "compiler_bootstrap"],
-        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap"],
+        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "env", "benchmarks", "build_tooling", "invariants"],
+        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "env", "benchmarks", "build_tooling", "invariants"],
+        "3": ["combinations", "cross_combinations", "compiler_bootstrap", "m1_self_compile"],
+        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap", "m1_self_compile"],
         "5": ["tier5_adversarial_overloading", "tier5_adversarial_pointers"],
     }
 
