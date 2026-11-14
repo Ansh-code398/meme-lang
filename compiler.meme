@@ -29,6 +29,8 @@ kaam init_keywords() {
         "se": "SE", "from": "SE", "mein": "MEIN", "andar": "MEIN", "in": "MEIN",
         "bas_kar": "BAS", "bas": "BAS", "break": "BAS",
         "aage_badh": "CHAL", "chal": "CHAL", "continue": "CHAL",
+        "khatam": "KHATAM", "drop": "KHATAM",
+        "daayra": "DAAYRA", "scope": "DAAYRA",
         // Classes & OOP
         "biradari": "SANCHA", "vibe": "SANCHA", "class": "SANCHA", "sancha": "SANCHA", "roop": "SANCHA",
         "khud": "KHUD", "apun": "KHUD", "this": "KHUD", "self": "KHUD", "nepo": "NEPO",
@@ -603,6 +605,23 @@ sancha Parser {
         warna agar (khud.match_token("CHAL")) {
             khud.match_token("SEMICOLON");
             ye_le { "kind": "Continue" };
+        }
+        warna agar (khud.match_token("KHATAM")) {
+            agar (khud.match_token("SEMICOLON")) {
+                ye_le { "kind": "Break" };
+            }
+            pakad expr = khud.parse_expression();
+            khud.match_token("SEMICOLON");
+            ye_le { "kind": "Drop", "expr": expr };
+        }
+        warna agar (khud.match_token("DAAYRA")) {
+            agar (khud.match_token("SEMICOLON")) {
+                ye_le { "kind": "Continue" };
+            }
+            warna agar (khud.match_token("LBRACE")) {
+                pakad stmts = khud.parse_block_statements();
+                ye_le { "kind": "ScopeBlock", "statements": stmts };
+            }
         }
         warna agar (khud.match_token("LBRACE")) {
             ye_le khud.parse_block();
@@ -1415,6 +1434,18 @@ sancha CodeGenerator {
         }
         warna agar (kind == "Continue") {
             ye_le ind + "continue;\n";
+        }
+        warna agar (kind == "Drop") {
+            ye_le ind + khud.gen_expr(s["expr"]) + " = nullptr;\n";
+        }
+        warna agar (kind == "ScopeBlock") {
+            pakad out = ind + "{\n";
+            pakad stmts = s["statements"];
+            ghoom i in 0..stmts.length() {
+                out = out + khud.gen_stmt(stmts[i], level + 1);
+            }
+            out = out + ind + "}\n";
+            ye_le out;
         }
         warna agar (kind == "Throw") {
             ye_le ind + "throw MemeValue(" + khud.gen_expr(s["expression"]) + ");\n";

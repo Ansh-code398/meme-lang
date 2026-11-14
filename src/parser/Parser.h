@@ -2408,6 +2408,16 @@ public:
         current++; // consume 'daayra' / 'scope' / 'seema' / 'elaqa' / 'lifetime'
         checkNotError();
 
+        // If followed by semicolon, newline, or '}', treat as continue statement
+        if (peek().type == TokenType::SEMICOLON ||
+            peek().type == TokenType::CLOSE_BRACE ||
+            peek().type == TokenType::END_OF_FILE ||
+            (current > 0 && peek().line > tokens[current - 1].line))
+        {
+            consumeSemicolon();
+            return std::make_unique<ContinueStmt>(line);
+        }
+
         if (peek().type != TokenType::OPEN_BRACE)
         {
             errorAt(peek(),
@@ -2424,6 +2434,16 @@ public:
         int line = peek().line;
         current++; // consume 'khatam' / 'drop' / 'visarjan' / 'dispose' / 'alvida'
         checkNotError();
+
+        // If followed by semicolon, newline, or '}', treat as break statement
+        if (peek().type == TokenType::SEMICOLON ||
+            peek().type == TokenType::CLOSE_BRACE ||
+            peek().type == TokenType::END_OF_FILE ||
+            (current > 0 && peek().line > tokens[current - 1].line))
+        {
+            consumeSemicolon();
+            return std::make_unique<BreakStmt>(line);
+        }
 
         auto expr = parseAssignment();
         consumeSemicolon();
