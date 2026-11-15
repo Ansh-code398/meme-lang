@@ -1518,7 +1518,7 @@ Consequently, `locked` is always `false`, `m.lock()` is **never called**, and `S
 | **M7 (P2)** | Generics | `./meme tests/generics/test_box.meme && ./meme --native tests/generics/test_box.meme` | Monomorphized `Dabba[T]` compiles and passes type checks. |
 | **M8 (P2)** | Stack Safety | `./meme -e 'kaam f() { f(); } f();'` and native equivalent | Both exit with code 1 (no segfault / 139) with clean `Stack overflow` error. |
 | **M9 (P2)** | Debugger `#line` | `lldb --batch -o "b test.meme:5" -o "run" /tmp/test_debug` | LLDB sets breakpoint on `.meme` line and halts execution. |
-| **M10 (P2)** | Thread Safety | `./meme compile --tsan tests/threads/race_test.meme -o /tmp/tsan_test && /tmp/tsan_test` | Zero race conditions flagged by ThreadSanitizer. |
+| **M10 (P2)** | Thread Safety | `./meme compile --tsan tests/threads/race_test.meme -o /tmp/tsan_test && /tmp/tsan_test` | Zero race conditions flagged by ThreadSanitizer. ✅ **COMPLETED & VERIFIED** |
 
 ### 5.2 CI Pipeline Integration
 Every commit to `main` must execute:

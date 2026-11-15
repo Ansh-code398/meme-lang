@@ -41,15 +41,13 @@ private:
     struct ScopedEnvLock
     {
         std::recursive_mutex &m;
-        bool locked;
-        ScopedEnvLock(std::recursive_mutex &mutex)
-            : m(mutex), locked(Environment::activeThreadCount.load(std::memory_order_relaxed) > 0)
+        ScopedEnvLock(std::recursive_mutex &mutex) : m(mutex)
         {
-            if (locked) m.lock();
+            m.lock();
         }
         ~ScopedEnvLock()
         {
-            if (locked) m.unlock();
+            m.unlock();
         }
     };
 

@@ -232,6 +232,7 @@ def main():
         "m7_generics": TESTS_E2E_DIR / "test_m7_generics_e2e.py",
         "m8_stack_safety": TESTS_E2E_DIR / "test_m8_stack_safety_e2e.py",
         "m9_debugger": TESTS_E2E_DIR / "test_m9_debugger_e2e.py",
+        "m10_thread_safety": TESTS_E2E_DIR / "test_m10_thread_safety_e2e.py",
         "env": TESTS_E2E_DIR / "test_env_e2e.py",
         "benchmarks": TESTS_E2E_DIR / "test_benchmarks_e2e.py",
         "build_tooling": TESTS_E2E_DIR / "test_build_tooling_e2e.py",

@@ -3352,6 +3352,8 @@ static std::shared_ptr<MemeMap> createMutexMap()
         return Value(true);
     })));
     m->set("unlock", m->entries["khol"]);
+    m->set("pakad", m->entries["band"]);
+    m->set("chhod", m->entries["khol"]);
 
     m->set("surakshit", Value(std::make_shared<NativeMethodCallable>("surakshit", 1, [mtx](Interpreter &interp, const std::vector<Value> &args) -> Value {
         Value fnVal = args[0];
@@ -3408,6 +3410,13 @@ static std::shared_ptr<MemeMap> createThreadMap(const std::shared_ptr<ThreadHand
         return tState->join();
     })));
     m->set("join", m->entries["jod"]);
+    m->set("rok", m->entries["jod"]);
+    m->set("wait", m->entries["jod"]);
+
+    m->set("khatam", Value(std::make_shared<NativeMethodCallable>("khatam", 0, [tState](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(!tState->isAlive());
+    })));
+    m->set("is_done", m->entries["khatam"]);
 
     return m;
 }
@@ -3440,7 +3449,11 @@ static std::shared_ptr<MemeMap> createDhagaModule()
         }
         tState->done = true;
 #else
+        Environment::activeThreadCount.fetch_add(1, std::memory_order_seq_cst);
         std::thread([globalsPtr, fnVal, fnArgs, tState]() {
+            struct ActiveThreadGuard {
+                ~ActiveThreadGuard() { Environment::activeThreadCount.fetch_sub(1, std::memory_order_seq_cst); }
+            } _atg;
             try {
                 Interpreter childInterp;
                 childInterp.setGlobals(globalsPtr);
@@ -3497,7 +3510,11 @@ static std::shared_ptr<MemeMap> createDhagaModule()
             if (fnVal.isCallable()) tState->result = fnVal.getCallable()->call(interp, {});
             tState->done = true;
 #else
+            Environment::activeThreadCount.fetch_add(1, std::memory_order_seq_cst);
             std::thread([globalsPtr, fnVal, tState]() {
+                struct ActiveThreadGuard {
+                    ~ActiveThreadGuard() { Environment::activeThreadCount.fetch_sub(1, std::memory_order_seq_cst); }
+                } _atg;
                 try {
                     Interpreter childInterp;
                     childInterp.setGlobals(globalsPtr);
@@ -3673,7 +3690,11 @@ static std::shared_ptr<MemeMap> createKaamgarModule()
 
         for (size_t w = 0; w < numWorkers; ++w)
         {
+            Environment::activeThreadCount.fetch_add(1, std::memory_order_seq_cst);
             workers.emplace_back([globalsPtr, fnVal, inList, &results, &nextIdx, n]() {
+                struct ActiveThreadGuard {
+                    ~ActiveThreadGuard() { Environment::activeThreadCount.fetch_sub(1, std::memory_order_seq_cst); }
+                } _atg;
                 Interpreter child;
                 child.setGlobals(globalsPtr);
                 while (true)
@@ -10027,7 +10048,11 @@ Value Interpreter::executeAsyncFunction(UserFunction *fn, const std::vector<Valu
 #else
     auto globalsPtr = this->getGlobals();
     auto argsCopy = args;
+    Environment::activeThreadCount.fetch_add(1, std::memory_order_seq_cst);
     std::thread([globalsPtr, fn, argsCopy, state]() {
+        struct ActiveThreadGuard {
+            ~ActiveThreadGuard() { Environment::activeThreadCount.fetch_sub(1, std::memory_order_seq_cst); }
+        } _atg;
         try
         {
             Interpreter childInterp;

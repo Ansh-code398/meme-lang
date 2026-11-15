@@ -1712,7 +1712,7 @@ static void handleCompile(int argc, char *argv[])
         std::cout << formatRichText("[peela]Usage:[/] ./meme compile <file.meme> [-o output_binary] [--target=native|flutter|native-macos] [--keep-cpp] [-v]\n");
         return;
     }
-    std::string file = argv[2];
+    std::string file = "";
     std::string target = "native";
     std::string outputPath = "";
     bool keepCpp = false;
@@ -1721,7 +1721,7 @@ static void handleCompile(int argc, char *argv[])
     bool debug = false;
     bool tsan = false;
 
-    for (int i = 3; i < argc; ++i)
+    for (int i = 2; i < argc; ++i)
     {
         std::string a = argv[i];
         if ((a == "-o" || a == "--output") && i + 1 < argc)
@@ -1752,6 +1752,16 @@ static void handleCompile(int argc, char *argv[])
         {
             tsan = true;
         }
+        else if (!a.empty() && a[0] != '-' && file.empty())
+        {
+            file = a;
+        }
+    }
+
+    if (file.empty())
+    {
+        std::cout << formatRichText("[peela]Usage:[/] ./meme compile <file.meme> [-o output_binary] [--target=native|flutter|native-macos] [--keep-cpp] [-v] [--tsan]\n");
+        return;
     }
 
     std::filesystem::path p(file);

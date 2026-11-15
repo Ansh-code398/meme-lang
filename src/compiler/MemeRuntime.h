@@ -19,6 +19,10 @@
 #include <filesystem>
 #include <cstdlib>
 #include <cstdio>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
 
 #if defined(__APPLE__)
 #include <crt_externs.h>
@@ -134,6 +138,9 @@ inline std::ostream &operator<<(std::ostream &os, const MemeStringList &l) {
 // 1. Dynamic Polymorphic MemeValue
 // ==========================================
 
+struct MemeThreadHandle;
+struct MemeMutex;
+
 class MemeValue {
 public:
     enum Type : uint8_t {
@@ -162,6 +169,41 @@ public:
     std::shared_ptr<void> obj_val = nullptr;
     bool opt_res_flag = false;
     mutable std::shared_ptr<MemeValue> inner_val = nullptr;
+    std::shared_ptr<MemeMutex> mtx_val = nullptr;
+    std::shared_ptr<MemeThreadHandle> th_val = nullptr;
+
+    std::function<MemeValue()> fn0_val = nullptr;
+
+    MemeValue(const MemeMutex &mtx);
+    MemeValue(const MemeThreadHandle &th);
+    MemeValue(MemeValue (*fn)()) : type(TYPE_OBJECT), fn0_val(fn) {}
+
+    void lock() const;
+    void unlock() const;
+    void pakad() const { lock(); }
+    void chhod() const { unlock(); }
+    void band() const { lock(); }
+    bool try_lock() const;
+    bool koshish() const { return try_lock(); }
+
+    template<typename F>
+    auto surakshit(F &&f) const;
+    template<typename F>
+    auto with_lock(F &&f) const;
+
+    MemeValue join() const;
+    MemeValue rok() const { return join(); }
+    MemeValue jod() const { return join(); }
+    MemeValue wait() const { return join(); }
+    bool is_done() const;
+    bool khatam() const { return is_done(); }
+    bool chal_raha() const { return !is_done(); }
+    bool is_alive() const { return !is_done(); }
+
+    MemeValue operator()() const {
+        if (fn0_val) return fn0_val();
+        return *this;
+    }
 
     MemeValue() : type(TYPE_NALLA) {}
     MemeValue(std::nullptr_t) : type(TYPE_NALLA) {}
@@ -236,7 +278,7 @@ public:
         case TYPE_OPTION: return opt_res_flag;
         case TYPE_RESULT: return opt_res_flag;
         case TYPE_POINTER: return ptr_val != nullptr;
-        case TYPE_OBJECT: return obj_val != nullptr;
+        case TYPE_OBJECT: return obj_val != nullptr || mtx_val != nullptr || th_val != nullptr;
         }
         return false;
     }
@@ -324,7 +366,12 @@ public:
             return opt_res_flag ? ("Ok(" + (inner_val ? inner_val->to_string() : "nalla") + ")")
                                 : ("Err(" + (inner_val ? inner_val->to_string() : "nalla") + ")");
         case TYPE_POINTER: return "<patta " + std::to_string(reinterpret_cast<uintptr_t>(ptr_val)) + ">";
-        case TYPE_OBJECT: return "<object>";
+        case TYPE_OBJECT: {
+            if (mtx_val) return "<tala/mutex>";
+            if (th_val) return "<dhaga>";
+            if (fn0_val) return "<function>";
+            return "<object>";
+        }
         }
         return "nalla";
     }
@@ -471,6 +518,11 @@ public:
             }
             return true;
         }
+        if (type == TYPE_OBJECT && other.type == TYPE_OBJECT) {
+            if (mtx_val && other.mtx_val) return mtx_val == other.mtx_val;
+            if (th_val && other.th_val) return th_val == other.th_val;
+            return obj_val == other.obj_val;
+        }
         if ((type == TYPE_INT || type == TYPE_FLOAT) && (other.type == TYPE_INT || other.type == TYPE_FLOAT)) {
             return as_double() == other.as_double();
         }
@@ -510,36 +562,32 @@ public:
         return list_val[index];
     }
 
-    const MemeValue &operator[](size_t index) const {
-        if (type != TYPE_LIST || index >= list_val.size()) {
-            static const MemeValue nilVal;
-            return nilVal;
-        }
-        return list_val[index];
+    MemeValue &operator[](size_t index) const {
+        return const_cast<MemeValue *>(this)->operator[](index);
     }
 
     MemeValue &operator[](int index) {
         return (*this)[static_cast<long long>(index)];
     }
 
-    const MemeValue &operator[](int index) const {
-        return (*this)[static_cast<long long>(index)];
+    MemeValue &operator[](int index) const {
+        return (*const_cast<MemeValue *>(this))[static_cast<long long>(index)];
     }
 
     MemeValue &operator[](unsigned int index) {
         return (*this)[static_cast<long long>(index)];
     }
 
-    const MemeValue &operator[](unsigned int index) const {
-        return (*this)[static_cast<long long>(index)];
+    MemeValue &operator[](unsigned int index) const {
+        return (*const_cast<MemeValue *>(this))[static_cast<long long>(index)];
     }
 
     MemeValue &operator[](long index) {
         return (*this)[static_cast<long long>(index)];
     }
 
-    const MemeValue &operator[](long index) const {
-        return (*this)[static_cast<long long>(index)];
+    MemeValue &operator[](long index) const {
+        return (*const_cast<MemeValue *>(this))[static_cast<long long>(index)];
     }
 
     MemeValue &operator[](long long index) {
@@ -567,30 +615,8 @@ public:
         return list_val[static_cast<size_t>(index)];
     }
 
-    const MemeValue &operator[](long long index) const {
-        if (type == TYPE_STRING) {
-            int64_t origIdx = index;
-            int64_t sz = static_cast<int64_t>(s_val.size());
-            if (index < 0) index += sz;
-            if (index < 0 || static_cast<size_t>(index) >= s_val.size()) {
-                throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
-                                         " maang rahe ho par string length sirf " + std::to_string(sz) + " hai!");
-            }
-            inner_val = std::make_shared<MemeValue>(std::string(1, s_val[static_cast<size_t>(index)]));
-            return *inner_val;
-        }
-        if (type != TYPE_LIST) {
-            static const MemeValue nilVal;
-            return nilVal;
-        }
-        int64_t origIdx = index;
-        int64_t sz = static_cast<int64_t>(list_val.size());
-        if (index < 0) index += sz;
-        if (index < 0 || static_cast<size_t>(index) >= list_val.size()) {
-            throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
-                                     " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
-        }
-        return list_val[static_cast<size_t>(index)];
+    MemeValue &operator[](long long index) const {
+        return const_cast<MemeValue *>(this)->operator[](index);
     }
 
     MemeValue &operator[](unsigned long long index) {
@@ -611,22 +637,15 @@ public:
         return map_val[key];
     }
 
-    const MemeValue &operator[](const std::string &key) const {
-        if (type != TYPE_MAP) {
-            static const MemeValue nilVal;
-            return nilVal;
-        }
-        auto it = map_val.find(key);
-        if (it != map_val.end()) return it->second;
-        static const MemeValue nilVal;
-        return nilVal;
+    MemeValue &operator[](const std::string &key) const {
+        return const_cast<MemeValue *>(this)->operator[](key);
     }
 
     MemeValue &operator[](const char *key) {
         return (*this)[std::string(key ? key : "")];
     }
 
-    const MemeValue &operator[](const char *key) const {
+    MemeValue &operator[](const char *key) const {
         return (*this)[std::string(key ? key : "")];
     }
 
@@ -637,11 +656,8 @@ public:
         return (*this)[index.as_int()];
     }
 
-    const MemeValue &operator[](const MemeValue &index) const {
-        if (type == TYPE_MAP || index.type == TYPE_STRING) {
-            return (*this)[index.to_string()];
-        }
-        return (*this)[index.as_int()];
+    MemeValue &operator[](const MemeValue &index) const {
+        return const_cast<MemeValue *>(this)->operator[](index);
     }
 
     // Methods
@@ -927,7 +943,13 @@ public:
         }
         return *this;
     }
-    MemeValue khol() const { return unwrap(); }
+    MemeValue khol() const {
+        if (type == TYPE_OBJECT && mtx_val) {
+            unlock();
+            return MemeValue();
+        }
+        return unwrap();
+    }
 
     MemeValue unwrap_err() const {
         if (type == TYPE_RESULT) {
@@ -1340,44 +1362,44 @@ inline const T &meme_index(const std::vector<T> &v, MemeValue &idx) {
 inline MemeValue &meme_index(MemeValue &val, int64_t idx) {
     return val[idx];
 }
-inline const MemeValue &meme_index(const MemeValue &val, int64_t idx) {
-    return val[idx];
+inline MemeValue &meme_index(const MemeValue &val, int64_t idx) {
+    return const_cast<MemeValue &>(val)[idx];
 }
 inline MemeValue &meme_index(MemeValue &val, int idx) {
     return val[static_cast<long long>(idx)];
 }
-inline const MemeValue &meme_index(const MemeValue &val, int idx) {
-    return val[static_cast<long long>(idx)];
+inline MemeValue &meme_index(const MemeValue &val, int idx) {
+    return const_cast<MemeValue &>(val)[static_cast<long long>(idx)];
 }
 inline MemeValue &meme_index(MemeValue &val, size_t idx) {
     return val[idx];
 }
-inline const MemeValue &meme_index(const MemeValue &val, size_t idx) {
-    return val[idx];
+inline MemeValue &meme_index(const MemeValue &val, size_t idx) {
+    return const_cast<MemeValue &>(val)[idx];
 }
 inline MemeValue &meme_index(MemeValue &val, const std::string &key) {
     return val[key];
 }
-inline const MemeValue &meme_index(const MemeValue &val, const std::string &key) {
-    return val[key];
+inline MemeValue &meme_index(const MemeValue &val, const std::string &key) {
+    return const_cast<MemeValue &>(val)[key];
 }
 inline MemeValue &meme_index(MemeValue &val, const char *key) {
     return val[key];
 }
-inline const MemeValue &meme_index(const MemeValue &val, const char *key) {
-    return val[key];
+inline MemeValue &meme_index(const MemeValue &val, const char *key) {
+    return const_cast<MemeValue &>(val)[key];
 }
 inline MemeValue &meme_index(MemeValue &val, const MemeValue &key) {
     return val[key];
 }
-inline const MemeValue &meme_index(const MemeValue &val, const MemeValue &key) {
-    return val[key];
+inline MemeValue &meme_index(const MemeValue &val, const MemeValue &key) {
+    return const_cast<MemeValue &>(val)[key];
 }
 inline MemeValue &meme_index(MemeValue &val, MemeValue &key) {
     return val[key];
 }
-inline const MemeValue &meme_index(const MemeValue &val, MemeValue &key) {
-    return val[key];
+inline MemeValue &meme_index(const MemeValue &val, MemeValue &key) {
+    return const_cast<MemeValue &>(val)[key];
 }
 
 // MemeStringList
@@ -2022,6 +2044,164 @@ inline FileModule &fs = file;
 inline SystummModule sys;
 inline SystummModule os;
 inline SystummModule systumm;
+
+// ==========================================
+// 12. Multithreading (dhaga / thread)
+// ==========================================
+
+struct MemeThreadHandle {
+    std::shared_ptr<std::jthread> th;
+    std::shared_ptr<MemeValue> result = std::make_shared<MemeValue>();
+    std::shared_ptr<std::atomic<bool>> done = std::make_shared<std::atomic<bool>>(false);
+    std::string threadId;
+
+    MemeThreadHandle *operator->() { return this; }
+    const MemeThreadHandle *operator->() const { return this; }
+
+    MemeValue join() {
+        if (th && th->joinable()) {
+            th->join();
+        }
+        return *result;
+    }
+    MemeValue rok() { return join(); }
+    MemeValue jod() { return join(); }
+    MemeValue wait() { return join(); }
+
+    bool is_done() const {
+        return done->load();
+    }
+    bool khatam() const { return is_done(); }
+    bool chal_raha() const { return !is_done(); }
+    bool is_alive() const { return !is_done(); }
+};
+
+struct MemeMutex {
+    std::shared_ptr<std::recursive_mutex> m = std::make_shared<std::recursive_mutex>();
+
+    MemeMutex *operator->() { return this; }
+    const MemeMutex *operator->() const { return this; }
+
+    void lock() { m->lock(); }
+    void pakad() { lock(); }
+    void band() { lock(); }
+
+    void unlock() { m->unlock(); }
+    void chhod() { unlock(); }
+    void khol() { unlock(); }
+
+    bool try_lock() { return m->try_lock(); }
+    bool koshish() { return try_lock(); }
+
+    template<typename F>
+    auto surakshit(F &&f) {
+        std::lock_guard<std::recursive_mutex> g(*m);
+        return f();
+    }
+    template<typename F>
+    auto with_lock(F &&f) {
+        return surakshit(std::forward<F>(f));
+    }
+};
+
+struct DhagaModule {
+    DhagaModule *operator->() { return this; }
+    const DhagaModule *operator->() const { return this; }
+
+    int64_t cores() const {
+        return static_cast<int64_t>(std::max(1u, std::thread::hardware_concurrency()));
+    }
+    int64_t aukaat() const { return cores(); }
+
+    void sleep(int64_t ms) const {
+        if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    }
+    void sleep(const MemeValue &ms) const { sleep(ms.as_int()); }
+    void so_ja(int64_t ms) const { sleep(ms); }
+    void so_ja(const MemeValue &ms) const { sleep(ms); }
+
+    template<typename Callable, typename... Args>
+    MemeThreadHandle chala(Callable &&fn, Args&&... args) {
+        static std::atomic<uint64_t> threadCounter{1};
+        MemeThreadHandle h;
+        h.threadId = "dhaga-" + std::to_string(threadCounter++);
+        auto resPtr = h.result;
+        auto donePtr = h.done;
+
+        h.th = std::make_shared<std::jthread>([fn, resPtr, donePtr, ...fArgs = std::forward<Args>(args)]() mutable {
+            try {
+                if constexpr (std::is_invocable_v<Callable, Args...>) {
+                    if constexpr (std::is_same_v<std::invoke_result_t<Callable, Args...>, void>) {
+                        fn(fArgs...);
+                        *resPtr = MemeValue();
+                    } else {
+                        *resPtr = MemeValue(fn(fArgs...));
+                    }
+                } else if constexpr (std::is_invocable_v<Callable>) {
+                    if constexpr (std::is_same_v<std::invoke_result_t<Callable>, void>) {
+                        fn();
+                        *resPtr = MemeValue();
+                    } else {
+                        *resPtr = MemeValue(fn());
+                    }
+                }
+            } catch (...) {}
+            donePtr->store(true);
+        });
+
+        return h;
+    }
+
+    template<typename Callable, typename... Args>
+    MemeThreadHandle spawn(Callable &&fn, Args&&... args) {
+        return chala(std::forward<Callable>(fn), std::forward<Args>(args)...);
+    }
+
+    template<typename ListType>
+    MemeValue sab(const ListType &fnList) {
+        std::vector<MemeThreadHandle> handles;
+        for (const auto &fn : fnList) {
+            handles.push_back(chala(fn));
+        }
+        std::vector<MemeValue> results;
+        for (auto &h : handles) {
+            results.push_back(h.join());
+        }
+        return MemeValue(results);
+    }
+
+    template<typename ListType>
+    MemeValue all(const ListType &fnList) {
+        return sab(fnList);
+    }
+
+    MemeMutex tala() {
+        return MemeMutex();
+    }
+    MemeMutex mutex() { return tala(); }
+};
+
+inline DhagaModule dhaga;
+inline DhagaModule thread;
+
+inline MemeValue::MemeValue(const MemeMutex &mtx) : type(TYPE_OBJECT), mtx_val(std::make_shared<MemeMutex>(mtx)) {}
+inline void MemeValue::lock() const { if (mtx_val) mtx_val->lock(); }
+inline void MemeValue::unlock() const { if (mtx_val) mtx_val->unlock(); }
+inline bool MemeValue::try_lock() const { return mtx_val ? mtx_val->try_lock() : false; }
+
+inline MemeValue::MemeValue(const MemeThreadHandle &th) : type(TYPE_OBJECT), th_val(std::make_shared<MemeThreadHandle>(th)) {}
+inline MemeValue MemeValue::join() const { return th_val ? th_val->join() : MemeValue(); }
+inline bool MemeValue::is_done() const { return th_val ? th_val->is_done() : true; }
+
+template<typename F>
+auto MemeValue::surakshit(F &&f) const {
+    if (mtx_val) return mtx_val->surakshit(std::forward<F>(f));
+    return f();
+}
+template<typename F>
+auto MemeValue::with_lock(F &&f) const {
+    return surakshit(std::forward<F>(f));
+}
 
 inline std::vector<std::pair<std::string, std::string>> parseDotEnvLines(const std::string &content)
 {

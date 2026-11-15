@@ -99,7 +99,7 @@ private:
     std::unordered_set<std::string> knownClassFields;
     std::unordered_set<std::string> knownModuleAliases = {
         "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
-        "env", "paryavaran", "dotenv", "json", "csv"
+        "env", "paryavaran", "dotenv", "json", "csv", "dhaga", "thread"
     };
 
     struct FinallyContext {
@@ -456,6 +456,14 @@ public:
                     method == "remove" || method == "get" ||
                     method == "chaabi" || method == "maal" || method == "hata" || method == "la" ||
                     method == "has" || method == "contains" || method == "hai_kya" || method == "hai") {
+                    return objStr + "." + method + "(" + args + ")";
+                }
+                // Mutex and thread methods
+                if (method == "lock" || method == "unlock" || method == "pakad" || method == "chhod" ||
+                    method == "band" || method == "khol" || method == "try_lock" || method == "koshish" ||
+                    method == "surakshit" || method == "with_lock" || method == "join" || method == "rok" ||
+                    method == "jod" || method == "wait" || method == "is_done" || method == "khatam" ||
+                    method == "chal_raha" || method == "is_alive") {
                     return objStr + "." + method + "(" + args + ")";
                 }
                 // String and container membership methods: wrap with MemeValue(...)
@@ -1443,6 +1451,29 @@ public:
         globalDecls << "};\n\n";
     }
 
+    std::string getParamTypeString(const FuncParam &param, const std::vector<std::string> &typeParams) {
+        std::string pType = "const MemeValue &";
+        if (param.typeAnnotation) {
+            std::string t = param.typeAnnotation->toString();
+            if (knownClasses.find(t) != knownClasses.end()) {
+                pType = "const std::shared_ptr<" + t + "> &";
+            } else if (t == "int" || t == "int64" || t == "ank") {
+                pType = "int64_t ";
+            } else if (t == "float" || t == "float64" || t == "point_wala") {
+                pType = "double ";
+            } else if (t == "bool" || t == "sahi_galat") {
+                pType = "bool ";
+            } else if (t == "str" || t == "string" || t == "bol") {
+                pType = "const std::string &";
+            } else {
+                for (const auto &tp : typeParams) {
+                    if (tp == t) { pType = "const " + t + " &"; break; }
+                }
+            }
+        }
+        return pType;
+    }
+
     void generateFunction(const FuncDeclStmt *f) {
         std::string fnName = sanitizeIdentifier(f->name);
         std::string returnType = "MemeValue";
@@ -1465,14 +1496,7 @@ public:
         std::string paramDecl;
         for (size_t i = 0; i < f->paramList.size(); ++i) {
             if (i > 0) paramDecl += ", ";
-            std::string pType = "const MemeValue &";
-            if (f->paramList[i].typeAnnotation) {
-                std::string t = f->paramList[i].typeAnnotation->toString();
-                for (const auto &tp : f->typeParams) {
-                    if (tp == t) { pType = "const " + t + " &"; break; }
-                }
-            }
-            paramDecl += pType + sanitizeIdentifier(f->paramList[i].name);
+            paramDecl += getParamTypeString(f->paramList[i], f->typeParams) + sanitizeIdentifier(f->paramList[i].name);
         }
 
         if (!f->typeParams.empty()) {
@@ -1722,14 +1746,7 @@ public:
                 std::string paramTypes;
                 for (size_t i = 0; i < f->paramList.size(); ++i) {
                     if (i > 0) paramTypes += ", ";
-                    std::string pType = "const MemeValue &";
-                    if (f->paramList[i].typeAnnotation) {
-                        std::string t = f->paramList[i].typeAnnotation->toString();
-                        for (const auto &tp : f->typeParams) {
-                            if (tp == t) { pType = "const " + t + " &"; break; }
-                        }
-                    }
-                    paramTypes += pType + sanitizeIdentifier(f->paramList[i].name);
+                    paramTypes += getParamTypeString(f->paramList[i], f->typeParams) + sanitizeIdentifier(f->paramList[i].name);
                 }
                 if (!f->typeParams.empty()) {
                     globalDecls << "template<";
