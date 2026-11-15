@@ -1400,6 +1400,100 @@ public:
         return out.str();
     }
 
+    std::unordered_set<std::string> importedModulesProcessed;
+
+    std::filesystem::path resolveModuleFile(const std::string &modPath) {
+        std::vector<std::filesystem::path> candidates = {
+            std::filesystem::path(".tapri_modules") / (modPath + ".meme"),
+            std::filesystem::path(".tapri_modules") / modPath / "index.meme",
+            std::filesystem::path(".tapri_modules") / modPath / (modPath + ".meme"),
+            std::filesystem::path(".tapri_modules") / modPath,
+            std::filesystem::path(".meme_env") / "pkgs" / (modPath + ".meme"),
+            std::filesystem::path(".meme_env") / "pkgs" / modPath / "index.meme",
+            std::filesystem::path(modPath + ".meme"),
+            std::filesystem::path(modPath)
+        };
+        for (const auto &c : candidates) {
+            std::error_code ec;
+            if (std::filesystem::exists(c, ec) && std::filesystem::is_regular_file(c, ec)) {
+                return std::filesystem::canonical(c, ec);
+            }
+        }
+        return "";
+    }
+
+    void processModuleImport(const std::string &path, const std::string &alias = "") {
+        std::filesystem::path resolved = resolveModuleFile(path);
+        if (resolved.empty()) return;
+        std::string canStr = resolved.string();
+        if (importedModulesProcessed.find(canStr) != importedModulesProcessed.end()) return;
+        importedModulesProcessed.insert(canStr);
+
+        std::ifstream file(resolved);
+        if (!file.is_open()) return;
+        std::stringstream ss;
+        ss << file.rdbuf();
+        try {
+            Lexer modLexer(ss.str());
+            auto modTokens = modLexer.tokenize();
+            Parser modParser(modTokens);
+            auto modStmts = modParser.parseProgram();
+
+            scanDeclarations(modStmts);
+
+            // Forward declare classes from module
+            for (const auto &stmt : modStmts) {
+                if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
+                    globalDecls << "struct " << sanitizeIdentifier(c->name) << ";\n";
+                }
+            }
+
+            // Forward declare functions from module
+            for (const auto &stmt : modStmts) {
+                if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
+                    std::string fnName = sanitizeIdentifier(f->name);
+                    std::string paramTypes;
+                    for (size_t i = 0; i < f->paramList.size(); ++i) {
+                        if (i > 0) paramTypes += ", ";
+                        paramTypes += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
+                    }
+                    globalDecls << "inline MemeValue " << fnName << "(" << paramTypes << ");\n";
+                }
+            }
+
+            // Emit classes and functions from module
+            for (const auto &stmt : modStmts) {
+                if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
+                    generateClass(c);
+                } else if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
+                    generateFunction(f);
+                } else if (!dynamic_cast<const ImportStmt *>(stmt.get())) {
+                    generateStmt(stmt.get(), mainBody);
+                }
+            }
+
+            std::string modAlias = alias;
+            if (modAlias.empty()) {
+                modAlias = std::filesystem::path(path).stem().string();
+            }
+            modAlias = sanitizeIdentifier(modAlias);
+            if (!modAlias.empty()) {
+                globalDecls << "struct _MemeMod_" << modAlias << " {\n";
+                for (const auto &stmt : modStmts) {
+                    if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
+                        std::string fnName = sanitizeIdentifier(f->name);
+                        globalDecls << "    template<typename... Args>\n";
+                        globalDecls << "    decltype(auto) " << fnName << "(Args&&... args) const {\n";
+                        globalDecls << "        return ::" << fnName << "(std::forward<Args>(args)...);\n";
+                        globalDecls << "    }\n";
+                    }
+                }
+                globalDecls << "};\n";
+                globalDecls << "inline _MemeMod_" << modAlias << " " << modAlias << ";\n\n";
+            }
+        } catch (...) {}
+    }
+
     void generateProgram(const std::vector<std::unique_ptr<Stmt>> &program) {
         scanDeclarations(program);
 
@@ -1440,6 +1534,8 @@ public:
                     if (alias != "csv") {
                         globalDecls << "inline CsvModule &" << alias << " = csv;\n";
                     }
+                } else {
+                    processModuleImport(imp->path, alias);
                 }
             }
         }

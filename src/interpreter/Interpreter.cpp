@@ -11465,90 +11465,85 @@ Value Interpreter::importModule(const std::string &path, int line)
         canonicalPath = modulePath.lexically_normal();
     }
 
-    if (!std::filesystem::exists(canonicalPath))
+    auto isRegularMemeFile = [](const std::filesystem::path &p) {
+        std::error_code ec;
+        return std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec);
+    };
+
+    auto resolvePackageFolder = [&](const std::filesystem::path &dir, const std::string &pkgName) -> std::filesystem::path {
+        std::error_code ec;
+        if (!std::filesystem::exists(dir, ec) || !std::filesystem::is_directory(dir, ec)) return "";
+        std::filesystem::path manifest = dir / "tapri.json";
+        if (isRegularMemeFile(manifest)) {
+            try {
+                std::ifstream mf(manifest);
+                if (mf.is_open()) {
+                    std::string content((std::istreambuf_iterator<char>(mf)), std::istreambuf_iterator<char>());
+                    MemeJson::Parser parser(content);
+                    Value parsed = parser.parseValue();
+                    if (parsed.isMap()) {
+                        auto m = parsed.getMap();
+                        if (m->has("main")) {
+                            std::string mainFile = m->entries["main"].toString();
+                            if (isRegularMemeFile(dir / mainFile)) return dir / mainFile;
+                            if (isRegularMemeFile(dir / (mainFile + ".meme"))) return dir / (mainFile + ".meme");
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
+        if (isRegularMemeFile(dir / (pkgName + ".meme"))) return dir / (pkgName + ".meme");
+        if (isRegularMemeFile(dir / "index.meme")) return dir / "index.meme";
+        if (isRegularMemeFile(dir / "main.meme")) return dir / "main.meme";
+        return "";
+    };
+
+    if (!isRegularMemeFile(canonicalPath))
     {
-        if (!canonicalPath.has_extension())
+        if (!canonicalPath.has_extension() && isRegularMemeFile(canonicalPath.string() + ".meme"))
         {
-            auto withExt = canonicalPath;
-            withExt += ".meme";
-            if (std::filesystem::exists(withExt))
+            canonicalPath = canonicalPath.string() + ".meme";
+        }
+        else
+        {
+            std::vector<std::filesystem::path> searchBases = {
+                std::filesystem::path(".tapri_modules"),
+                std::filesystem::path(".meme_env") / "pkgs",
+                std::filesystem::path("lib")
+            };
+            bool found = false;
+            for (const auto &base : searchBases)
             {
-                canonicalPath = withExt;
+                std::filesystem::path pkgDir = base / path;
+                std::filesystem::path resolvedPkg = resolvePackageFolder(pkgDir, path);
+                if (!resolvedPkg.empty())
+                {
+                    canonicalPath = resolvedPkg;
+                    found = true;
+                    break;
+                }
+                if (isRegularMemeFile(base / (path + ".meme")))
+                {
+                    canonicalPath = base / (path + ".meme");
+                    found = true;
+                    break;
+                }
             }
-        }
-    }
-
-    // Check .tapri_modules/<path>.meme or .tapri_modules/<path>/index.meme
-    if (!std::filesystem::exists(canonicalPath))
-    {
-        std::filesystem::path tapriPath = std::filesystem::path(".tapri_modules") / path;
-        if (std::filesystem::exists(tapriPath))
-        {
-            canonicalPath = tapriPath;
-        }
-        else if (std::filesystem::exists(tapriPath.string() + ".meme"))
-        {
-            canonicalPath = tapriPath.string() + ".meme";
-        }
-        else if (std::filesystem::exists(tapriPath / "index.meme"))
-        {
-            canonicalPath = tapriPath / "index.meme";
-        }
-    }
-
-    // Check .meme_env/pkgs/<path>.meme or .meme_env/pkgs/<path>/index.meme
-    if (!std::filesystem::exists(canonicalPath))
-    {
-        std::filesystem::path envPkgPath = std::filesystem::path(".meme_env") / "pkgs" / path;
-        if (std::filesystem::exists(envPkgPath))
-        {
-            canonicalPath = envPkgPath;
-        }
-        else if (std::filesystem::exists(envPkgPath.string() + ".meme"))
-        {
-            canonicalPath = envPkgPath.string() + ".meme";
-        }
-        else if (std::filesystem::exists(envPkgPath / "index.meme"))
-        {
-            canonicalPath = envPkgPath / "index.meme";
-        }
-    }
-
-    // Check lib/<path> or lib/<path>.meme or lib/<path>/index.meme
-    if (!std::filesystem::exists(canonicalPath))
-    {
-        std::filesystem::path libPath = (path.rfind("lib/", 0) == 0)
-            ? std::filesystem::path(path)
-            : (std::filesystem::path("lib") / path);
-        if (std::filesystem::exists(libPath))
-        {
-            canonicalPath = libPath;
-        }
-        else if (std::filesystem::exists(libPath.string() + ".meme"))
-        {
-            canonicalPath = libPath.string() + ".meme";
-        }
-        else if (std::filesystem::exists(libPath / "index.meme"))
-        {
-            canonicalPath = libPath / "index.meme";
-        }
-    }
-
-    // Check directly from working directory
-    if (!std::filesystem::exists(canonicalPath))
-    {
-        std::filesystem::path cwdPath(path);
-        if (std::filesystem::exists(cwdPath))
-        {
-            canonicalPath = cwdPath;
-        }
-        else if (std::filesystem::exists(cwdPath.string() + ".meme"))
-        {
-            canonicalPath = cwdPath.string() + ".meme";
-        }
-        else if (std::filesystem::exists(cwdPath / "index.meme"))
-        {
-            canonicalPath = cwdPath / "index.meme";
+            if (!found)
+            {
+                if (isRegularMemeFile(std::filesystem::path(path)))
+                {
+                    canonicalPath = std::filesystem::path(path);
+                }
+                else if (isRegularMemeFile(std::filesystem::path(path + ".meme")))
+                {
+                    canonicalPath = std::filesystem::path(path + ".meme");
+                }
+                else if (isRegularMemeFile(std::filesystem::path(path) / "index.meme"))
+                {
+                    canonicalPath = std::filesystem::path(path) / "index.meme";
+                }
+            }
         }
     }
 

@@ -231,6 +231,61 @@ static void handleEnv(int argc, char *argv[])
     std::cout << formatRichText("[peela]Usage:[/] ./meme env <init|info|clean>\n");
 }
 
+struct DependencySpec {
+    std::string name;
+    std::string gitUrl;
+    std::string ref = "main";
+    std::string version;
+    bool isGit = false;
+};
+
+static DependencySpec parseDependency(const std::string &name, const std::string &spec) {
+    DependencySpec dep;
+    dep.name = name;
+    if (spec.rfind("git+", 0) == 0 || spec.rfind("git://", 0) == 0 || spec.rfind("file://", 0) == 0 || spec.find("https://") != std::string::npos || spec.find("http://") != std::string::npos || spec.find(".git") != std::string::npos) {
+        dep.isGit = true;
+        std::string raw = (spec.rfind("git+", 0) == 0) ? spec.substr(4) : spec;
+        size_t hashPos = raw.find('#');
+        if (hashPos != std::string::npos) {
+            dep.gitUrl = raw.substr(0, hashPos);
+            dep.ref = raw.substr(hashPos + 1);
+        } else {
+            dep.gitUrl = raw;
+        }
+    } else {
+        dep.version = spec;
+    }
+    return dep;
+}
+
+static bool installGitPackage(const DependencySpec &dep, std::string &outCommit) {
+    std::filesystem::path dest = std::filesystem::path(".tapri_modules") / dep.name;
+    std::filesystem::create_directories(".tapri_modules");
+    std::error_code ec;
+    if (std::filesystem::exists(dest, ec)) {
+        std::filesystem::remove_all(dest, ec);
+    }
+    std::string cmd = "git clone --depth 1 --branch \"" + dep.ref + "\" \"" + dep.gitUrl + "\" \"" + dest.string() + "\" 2>&1";
+    int code = std::system(cmd.c_str());
+    if (code != 0) {
+        std::string fallback = "git clone --depth 1 \"" + dep.gitUrl + "\" \"" + dest.string() + "\" 2>&1";
+        code = std::system(fallback.c_str());
+        if (code != 0) return false;
+    }
+    FILE *fp = popen(("git -C \"" + dest.string() + "\" rev-parse HEAD 2>/dev/null").c_str(), "r");
+    if (fp) {
+        char buf[128];
+        if (fgets(buf, sizeof(buf), fp)) {
+            outCommit = buf;
+            while (!outCommit.empty() && (outCommit.back() == '\n' || outCommit.back() == '\r')) {
+                outCommit.pop_back();
+            }
+        }
+        pclose(fp);
+    }
+    return true;
+}
+
 static void handleTapri(int argc, char *argv[])
 {
     if (argc < 3)
@@ -264,12 +319,28 @@ static void handleTapri(int argc, char *argv[])
         std::filesystem::create_directories(".meme_env/pkgs");
         std::filesystem::create_directories(".tapri_modules");
 
-        std::vector<std::string> pkgsToInstall;
+        std::vector<std::pair<std::string, std::string>> pkgsToInstall;
         if (argc > 3)
         {
-            for (int i = 3; i < argc; ++i)
+            if (argc == 5)
             {
-                pkgsToInstall.push_back(argv[i]);
+                pkgsToInstall.push_back({argv[3], argv[4]});
+            }
+            else
+            {
+                for (int i = 3; i < argc; ++i)
+                {
+                    std::string arg = argv[i];
+                    std::string pkgName = arg;
+                    if (arg.rfind("git+", 0) == 0 || arg.find("https://") != std::string::npos || arg.find("http://") != std::string::npos)
+                    {
+                        std::string urlPart = arg.substr(0, arg.find('#'));
+                        if (urlPart.ends_with(".git")) urlPart = urlPart.substr(0, urlPart.size() - 4);
+                        size_t slash = urlPart.rfind('/');
+                        if (slash != std::string::npos) pkgName = urlPart.substr(slash + 1);
+                    }
+                    pkgsToInstall.push_back({pkgName, arg});
+                }
             }
         }
         else
@@ -277,22 +348,14 @@ static void handleTapri(int argc, char *argv[])
             std::ifstream tf("tapri.json");
             if (tf.is_open())
             {
-                std::string line;
-                while (std::getline(tf, line))
+                std::stringstream ss;
+                ss << tf.rdbuf();
+                memelang::lsp::JsonValue doc = memelang::lsp::JsonValue::parse(ss.str());
+                if (doc.contains("dependencies") && doc["dependencies"].isObject())
                 {
-                    size_t colon = line.find(':');
-                    if (colon != std::string::npos)
+                    for (const auto &kv : doc["dependencies"].objVal)
                     {
-                        size_t firstQuote = line.find('"', colon);
-                        if (firstQuote != std::string::npos)
-                        {
-                            size_t secondQuote = line.find('"', firstQuote + 1);
-                            if (secondQuote != std::string::npos)
-                            {
-                                std::string val = line.substr(firstQuote + 1, secondQuote - firstQuote - 1);
-                                if (!val.empty()) pkgsToInstall.push_back(val);
-                            }
-                        }
+                        pkgsToInstall.push_back({kv.first, kv.second.asString()});
                     }
                 }
             }
@@ -306,94 +369,117 @@ static void handleTapri(int argc, char *argv[])
 
         std::string projName = "tapri-project";
         std::string scriptsSection = "    \"dev\": \"meme dev src/App.meme\",\n    \"start\": \"meme src/App.meme\",\n    \"test\": \"meme test tests\"";
+        std::unordered_map<std::string, std::string> allDeps;
+
         std::ifstream oldTf("tapri.json");
         if (oldTf.is_open())
         {
             std::stringstream ss;
             ss << oldTf.rdbuf();
-            std::string oldContent = ss.str();
-            size_t npos = oldContent.find("\"name\": \"");
-            if (npos != std::string::npos)
+            memelang::lsp::JsonValue doc = memelang::lsp::JsonValue::parse(ss.str());
+            if (doc.contains("name")) projName = doc["name"].asString("tapri-project");
+            if (doc.contains("dependencies") && doc["dependencies"].isObject())
             {
-                size_t nend = oldContent.find('"', npos + 9);
-                if (nend != std::string::npos) projName = oldContent.substr(npos + 9, nend - npos - 9);
-            }
-            size_t spos = oldContent.find("\"scripts\": {");
-            if (spos != std::string::npos)
-            {
-                size_t send = oldContent.find('}', spos);
-                if (send != std::string::npos)
+                for (const auto &kv : doc["dependencies"].objVal)
                 {
-                    std::string inner = oldContent.substr(spos + 12, send - spos - 12);
-                    size_t s1 = inner.find_first_not_of(" \t\r\n");
-                    size_t s2 = inner.find_last_not_of(" \t\r\n");
-                    if (s1 != std::string::npos && s2 != std::string::npos)
-                    {
-                        scriptsSection = "    " + inner.substr(s1, s2 - s1 + 1);
-                    }
+                    allDeps[kv.first] = kv.second.asString();
                 }
             }
         }
 
-        std::string tapriContent = "{\n  \"name\": \"" + projName + "\",\n  \"version\": \"1.0.0\",\n  \"scripts\": {\n" + scriptsSection + "\n  },\n  \"dependencies\": {\n";
-        std::string lockContent = "{\n  \"lockfileVersion\": 1,\n  \"packages\": {\n";
+        struct LockEntry {
+            std::string name;
+            std::string commit;
+            std::string path;
+        };
+        std::vector<LockEntry> lockEntries;
 
         for (size_t i = 0; i < pkgsToInstall.size(); ++i)
         {
-            std::string pkg = pkgsToInstall[i];
-            std::string name = pkg;
-            std::string shimCode = "";
+            DependencySpec dep = parseDependency(pkgsToInstall[i].first, pkgsToInstall[i].second);
+            allDeps[dep.name] = pkgsToInstall[i].second;
 
-            if (pkg.rfind("py:", 0) == 0)
+            if (dep.isGit)
             {
-                name = pkg.substr(3);
-                shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
-            }
-            else if (pkg.rfind("npm:", 0) == 0)
-            {
-                name = pkg.substr(4);
-                shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
-            }
-            else if (pkg.rfind("rust:", 0) == 0)
-            {
-                name = pkg.substr(5);
-                shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
+                std::string commitSha;
+                bool ok = installGitPackage(dep, commitSha);
+                if (ok)
+                {
+                    lockEntries.push_back({dep.name, commitSha, ".tapri_modules/" + dep.name});
+                    std::cout << formatRichText("[hara bold]✔ Git package installed:[/] " + dep.name + " (" + dep.gitUrl + " @ " + (commitSha.empty() ? "HEAD" : commitSha.substr(0, 7)) + ")\n");
+                }
+                else
+                {
+                    std::cout << formatRichText("[laal bold]❌ Failed to clone git package:[/] " + dep.gitUrl + "\n");
+                }
             }
             else
             {
-                shimCode = "// Native MEMElang package: " + pkg + "\nde {\"name\": \"" + pkg + "\", \"status\": \"active\"};\n";
+                std::string pkg = pkgsToInstall[i].second;
+                std::string name = dep.name;
+                std::string shimCode = "";
+
+                if (pkg.rfind("py:", 0) == 0)
+                {
+                    name = pkg.substr(3);
+                    shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
+                }
+                else if (pkg.rfind("npm:", 0) == 0)
+                {
+                    name = pkg.substr(4);
+                    shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
+                }
+                else if (pkg.rfind("rust:", 0) == 0)
+                {
+                    name = pkg.substr(5);
+                    shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
+                }
+                else
+                {
+                    shimCode = "// Native MEMElang package: " + pkg + "\nde {\"name\": \"" + pkg + "\", \"status\": \"active\"};\n";
+                }
+
+                std::ofstream sf1(".tapri_modules/" + name + ".meme");
+                sf1 << shimCode;
+                std::ofstream sf2(".meme_env/pkgs/" + name + ".meme");
+                sf2 << shimCode;
+
+                lockEntries.push_back({name, "local", ".meme_env/pkgs/" + name + ".meme"});
+                std::cout << formatRichText("[hara bold]✔ Mangwa liya:[/] " + pkg + " -> .meme_env/pkgs/" + name + ".meme\n");
             }
-
-            std::ofstream sf1(".tapri_modules/" + name + ".meme");
-            sf1 << shimCode;
-            std::ofstream sf2(".meme_env/pkgs/" + name + ".meme");
-            sf2 << shimCode;
-
-            tapriContent += "    \"" + name + "\": \"" + pkg + "\"";
-            lockContent += "    \"" + name + "\": { \"source\": \"" + pkg + "\", \"resolved\": \".meme_env/pkgs/" + name + ".meme\" }";
-
-            if (i + 1 < pkgsToInstall.size())
-            {
-                tapriContent += ",\n";
-                lockContent += ",\n";
-            }
-            else
-            {
-                tapriContent += "\n";
-                lockContent += "\n";
-            }
-
-            std::cout << formatRichText("[hara bold]✔ Mangwa liya:[/] " + pkg + " -> .meme_env/pkgs/" + name + ".meme\n");
         }
 
-        tapriContent += "  }\n}\n";
-        lockContent += "  }\n}\n";
-
+        // Write tapri.json
         std::ofstream tf("tapri.json");
-        tf << tapriContent;
+        tf << "{\n  \"name\": \"" << projName << "\",\n  \"version\": \"1.0.0\",\n  \"scripts\": {\n" << scriptsSection << "\n  },\n  \"dependencies\": {\n";
+        size_t depCount = 0;
+        for (const auto &kv : allDeps)
+        {
+            tf << "    \"" << kv.first << "\": \"" << kv.second << "\"" << (depCount + 1 < allDeps.size() ? "," : "") << "\n";
+            depCount++;
+        }
+        tf << "  }\n}\n";
 
-        std::ofstream lk(".meme_env/tapri.lock");
-        lk << lockContent;
+        // Write tapri.lock
+        std::ofstream lk("tapri.lock");
+        lk << "{\n  \"version\": 1,\n  \"packages\": {\n";
+        for (size_t i = 0; i < lockEntries.size(); ++i)
+        {
+            lk << "    \"" << lockEntries[i].name << "\": {\n";
+            lk << "      \"commit\": \"" << lockEntries[i].commit << "\",\n";
+            lk << "      \"path\": \"" << lockEntries[i].path << "\"\n";
+            lk << "    }" << (i + 1 < lockEntries.size() ? "," : "") << "\n";
+        }
+        lk << "  }\n}\n";
+
+        // Write .meme_env/tapri.lock
+        std::ofstream eloader(".meme_env/tapri.lock");
+        eloader << "{\n  \"lockfileVersion\": 1,\n  \"packages\": {\n";
+        for (size_t i = 0; i < lockEntries.size(); ++i)
+        {
+            eloader << "    \"" << lockEntries[i].name << "\": { \"source\": \"" << lockEntries[i].commit << "\", \"resolved\": \"" << lockEntries[i].path << "\" }" << (i + 1 < lockEntries.size() ? "," : "") << "\n";
+        }
+        eloader << "  }\n}\n";
         return;
     }
 }
