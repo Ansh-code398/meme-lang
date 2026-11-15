@@ -1250,18 +1250,27 @@ sancha CodeGenerator {
             pakad obj_str = khud.gen_expr(e["object"]);
             pakad prop = sanitize_identifier(e["name"]);
             agar (obj_str == "this") { ye_le "this->" + prop; }
-            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "samay" || obj_str == "math") {
+            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "fs" || obj_str == "samay" || obj_str == "math" || obj_str == "env" || obj_str == "paryavaran" || obj_str == "dotenv" || obj_str == "json" || obj_str == "csv") {
                 ye_le obj_str + "." + prop;
             }
-            ye_le obj_str + "->" + prop;
+            agar (prop == "size" || prop == "length" || prop == "lambai") {
+                ye_le "static_cast<int64_t>(" + obj_str + ".size())";
+            }
+            agar (khud.curr_field_map.has(prop)) {
+                ye_le obj_str + "->" + prop;
+            }
+            ye_le "meme_index(" + obj_str + ", std::string(\"" + e["name"] + "\"))";
         }
         warna agar (kind == "Set") {
             pakad obj_str = khud.gen_expr(e["object"]);
             pakad prop = sanitize_identifier(e["name"]);
             pakad val = khud.gen_expr(e["value"]);
             agar (obj_str == "this") { ye_le "(this->" + prop + " = " + val + ")"; }
-            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file") { ye_le "(" + obj_str + "." + prop + " = " + val + ")"; }
-            ye_le "(" + obj_str + "->" + prop + " = " + val + ")";
+            agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "fs" || obj_str == "env" || obj_str == "paryavaran" || obj_str == "dotenv" || obj_str == "json" || obj_str == "csv") { ye_le "(" + obj_str + "." + prop + " = " + val + ")"; }
+            agar (khud.curr_field_map.has(prop)) {
+                ye_le "(" + obj_str + "->" + prop + " = " + val + ")";
+            }
+            ye_le "(meme_index(" + obj_str + ", std::string(\"" + e["name"] + "\")) = " + val + ")";
         }
         warna agar (kind == "Call") {
             // 1. Constructor call on user class
@@ -1294,7 +1303,7 @@ sancha CodeGenerator {
                 agar (obj_str == "this") {
                     ye_le "this->" + method + "(" + args + ")";
                 }
-                agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "samay" || obj_str == "math") {
+                agar (obj_str == "sys" || obj_str == "os" || obj_str == "file" || obj_str == "fs" || obj_str == "samay" || obj_str == "math" || obj_str == "env" || obj_str == "paryavaran" || obj_str == "dotenv" || obj_str == "json" || obj_str == "csv") {
                     ye_le obj_str + "." + method + "(" + args + ")";
                 }
                 agar (method == "is_some" || method == "is_none" || method == "is_ok" || method == "is_err" ||
@@ -1490,6 +1499,14 @@ sancha CodeGenerator {
             } warna agar (path == "file" || path == "fs" || path == "dastavez") {
                 agar (alias != "file" && alias != "fs" && alias != "dastavez") {
                     ye_le ind + "auto &" + alias + " = file;\n";
+                }
+            } warna agar (path == "json") {
+                agar (alias != "json") {
+                    ye_le ind + "auto &" + alias + " = json;\n";
+                }
+            } warna agar (path == "csv") {
+                agar (alias != "csv") {
+                    ye_le ind + "auto &" + alias + " = csv;\n";
                 }
             }
             ye_le "";

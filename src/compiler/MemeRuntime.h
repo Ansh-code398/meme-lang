@@ -1423,6 +1423,337 @@ inline auto meme_index_read(const T &target, K &&key) {
 // 2. Standard Modules & Builtins
 // ==========================================
 
+namespace MemeRuntimeJson {
+
+inline std::string stringify(const MemeValue &val) {
+    switch (val.type) {
+    case MemeValue::TYPE_NALLA: return "null";
+    case MemeValue::TYPE_BOOL: return val.b_val ? "true" : "false";
+    case MemeValue::TYPE_INT: return std::to_string(val.i_val);
+    case MemeValue::TYPE_FLOAT: {
+        std::ostringstream oss;
+        oss << val.f_val;
+        return oss.str();
+    }
+    case MemeValue::TYPE_STRING: {
+        std::string out = "\"";
+        for (char c : val.s_val) {
+            if (c == '"') out += "\\\"";
+            else if (c == '\\') out += "\\\\";
+            else if (c == '\b') out += "\\b";
+            else if (c == '\f') out += "\\f";
+            else if (c == '\n') out += "\\n";
+            else if (c == '\r') out += "\\r";
+            else if (c == '\t') out += "\\t";
+            else out += c;
+        }
+        out += "\"";
+        return out;
+    }
+    case MemeValue::TYPE_LIST: {
+        std::string out = "[";
+        for (size_t i = 0; i < val.list_val.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += stringify(val.list_val[i]);
+        }
+        out += "]";
+        return out;
+    }
+    case MemeValue::TYPE_MAP: {
+        std::string out = "{";
+        for (size_t i = 0; i < val.map_keys.size(); ++i) {
+            if (i > 0) out += ", ";
+            const auto &k = val.map_keys[i];
+            out += "\"" + k + "\": ";
+            auto it = val.map_val.find(k);
+            out += (it != val.map_val.end()) ? stringify(it->second) : "null";
+        }
+        out += "}";
+        return out;
+    }
+    default: return "null";
+    }
+}
+
+class Parser {
+    const std::string &src;
+    size_t pos = 0;
+
+    void skipWhitespace() {
+        while (pos < src.size() && (src[pos] == ' ' || src[pos] == '\t' || src[pos] == '\r' || src[pos] == '\n'))
+            pos++;
+    }
+    char peek() { skipWhitespace(); return pos < src.size() ? src[pos] : '\0'; }
+    char get() { skipWhitespace(); return pos < src.size() ? src[pos++] : '\0'; }
+
+public:
+    explicit Parser(const std::string &src) : src(src) {}
+
+    MemeValue parseValue() {
+        char c = peek();
+        if (c == 'n') {
+            if (pos + 4 <= src.size() && src.substr(pos, 4) == "null") { pos += 4; return MemeValue(); }
+        }
+        if (c == 't') {
+            if (pos + 4 <= src.size() && src.substr(pos, 4) == "true") { pos += 4; return MemeValue(true); }
+        }
+        if (c == 'f') {
+            if (pos + 5 <= src.size() && src.substr(pos, 5) == "false") { pos += 5; return MemeValue(false); }
+        }
+        if (c == '"') return parseString();
+        if (c == '[') return parseArray();
+        if (c == '{') return parseObject();
+        if (c == '-' || (c >= '0' && c <= '9')) return parseNumber();
+        throw std::runtime_error("JSON kharab hai! Unexpected character at position " + std::to_string(pos));
+    }
+
+    MemeValue parseString() {
+        get(); // consume opening quote
+        std::string s;
+        while (pos < src.size()) {
+            char c = src[pos++];
+            if (c == '"') return MemeValue(s);
+            if (c == '\\' && pos < src.size()) {
+                char esc = src[pos++];
+                if (esc == '"') s += '"';
+                else if (esc == '\\') s += '\\';
+                else if (esc == '/') s += '/';
+                else if (esc == 'b') s += '\b';
+                else if (esc == 'f') s += '\f';
+                else if (esc == 'n') s += '\n';
+                else if (esc == 'r') s += '\r';
+                else if (esc == 't') s += '\t';
+                else s += esc;
+            } else {
+                s += c;
+            }
+        }
+        throw std::runtime_error("JSON string adhura reh gaya!");
+    }
+
+    MemeValue parseArray() {
+        get(); // consume '['
+        std::vector<MemeValue> list;
+        if (peek() == ']') { get(); return MemeValue(list); }
+        while (true) {
+            list.push_back(parseValue());
+            char c = peek();
+            if (c == ',') { get(); continue; }
+            if (c == ']') { get(); break; }
+            throw std::runtime_error("JSON array format galat hai! Expected ',' ya ']' mila: '" + std::string(1, c) + "'");
+        }
+        return MemeValue(list);
+    }
+
+    MemeValue parseObject() {
+        get(); // consume '{'
+        MemeValue mapVal = make_map({});
+        if (peek() == '}') { get(); return mapVal; }
+        while (true) {
+            if (peek() != '"') throw std::runtime_error("JSON object mein key string honi chahiye!");
+            MemeValue keyVal = parseString();
+            std::string k = keyVal.s_val;
+            if (get() != ':') throw std::runtime_error("JSON key ke baad ':' lagao!");
+            MemeValue v = parseValue();
+            mapVal[k] = std::move(v);
+            char c = peek();
+            if (c == ',') { get(); continue; }
+            if (c == '}') { get(); break; }
+            throw std::runtime_error("JSON object format galat hai! Expected ',' ya '}' mila: '" + std::string(1, c) + "'");
+        }
+        return mapVal;
+    }
+
+    MemeValue parseNumber() {
+        skipWhitespace();
+        size_t start = pos;
+        if (pos < src.size() && src[pos] == '-') pos++;
+        bool isFloat = false;
+        while (pos < src.size() && ((src[pos] >= '0' && src[pos] <= '9') || src[pos] == '.' || src[pos] == 'e' || src[pos] == 'E' || src[pos] == '+' || src[pos] == '-')) {
+            if (src[pos] == '.' || src[pos] == 'e' || src[pos] == 'E') isFloat = true;
+            pos++;
+        }
+        std::string numStr = src.substr(start, pos - start);
+        try {
+            if (isFloat) return MemeValue(std::stod(numStr));
+            return MemeValue(static_cast<int64_t>(std::stoll(numStr)));
+        } catch (...) {
+            throw std::runtime_error("JSON number samajh nahi aaya: '" + numStr + "'");
+        }
+    }
+};
+
+} // namespace MemeRuntimeJson
+
+namespace MemeRuntimeCsv {
+
+inline std::vector<std::string> parseCsvLine(const std::string &line) {
+    std::vector<std::string> fields;
+    std::string field;
+    bool inQuotes = false;
+    for (size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < line.size() && line[i + 1] == '"') {
+                    field += '"';
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += c;
+            }
+        } else {
+            if (c == '"') {
+                inQuotes = true;
+            } else if (c == ',') {
+                fields.push_back(field);
+                field.clear();
+            } else {
+                field += c;
+            }
+        }
+    }
+    fields.push_back(field);
+    return fields;
+}
+
+inline std::string escapeCsvField(const std::string &f) {
+    if (f.find(',') != std::string::npos || f.find('"') != std::string::npos || f.find('\n') != std::string::npos || f.find('\r') != std::string::npos) {
+        std::string res = "\"";
+        for (char c : f) {
+            if (c == '"') res += "\"\"";
+            else res += c;
+        }
+        res += "\"";
+        return res;
+    }
+    return f;
+}
+
+inline MemeValue parse(const std::string &text, bool hasHeader = true) {
+    std::stringstream ss(text);
+    std::string line;
+    std::vector<MemeValue> list;
+    std::vector<std::string> headers;
+    bool isFirst = true;
+
+    while (std::getline(ss, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        auto row = parseCsvLine(line);
+        if (hasHeader && isFirst) {
+            headers = row;
+            isFirst = false;
+            continue;
+        }
+        if (hasHeader) {
+            MemeValue rowMap = make_map({});
+            for (size_t i = 0; i < headers.size() && i < row.size(); ++i) {
+                rowMap[headers[i]] = MemeValue(row[i]);
+            }
+            list.push_back(rowMap);
+        } else {
+            std::vector<MemeValue> rowList;
+            rowList.reserve(row.size());
+            for (const auto &cell : row) rowList.push_back(MemeValue(cell));
+            list.push_back(MemeValue(rowList));
+        }
+    }
+    return MemeValue(list);
+}
+
+inline std::string stringify(const MemeValue &rowsVal, const MemeValue &headersVal = MemeValue()) {
+    if (rowsVal.type != MemeValue::TYPE_LIST) throw std::runtime_error("csv.stringify ko list chahiye!");
+    if (rowsVal.list_val.empty()) return "";
+
+    std::ostringstream ss;
+    std::vector<std::string> headers;
+    if (headersVal.type == MemeValue::TYPE_LIST) {
+        for (const auto &h : headersVal.list_val) headers.push_back(h.to_string());
+    }
+
+    const MemeValue &first = rowsVal.list_val[0];
+    if (first.type == MemeValue::TYPE_MAP) {
+        if (headers.empty()) headers = first.map_keys;
+        for (size_t i = 0; i < headers.size(); ++i) {
+            if (i > 0) ss << ",";
+            ss << escapeCsvField(headers[i]);
+        }
+        ss << "\n";
+        for (const auto &rowElem : rowsVal.list_val) {
+            if (rowElem.type == MemeValue::TYPE_MAP) {
+                for (size_t i = 0; i < headers.size(); ++i) {
+                    if (i > 0) ss << ",";
+                    auto it = rowElem.map_val.find(headers[i]);
+                    std::string cell = (it != rowElem.map_val.end()) ? it->second.to_string() : "";
+                    ss << escapeCsvField(cell);
+                }
+                ss << "\n";
+            }
+        }
+    } else if (first.type == MemeValue::TYPE_LIST) {
+        if (!headers.empty()) {
+            for (size_t i = 0; i < headers.size(); ++i) {
+                if (i > 0) ss << ",";
+                ss << escapeCsvField(headers[i]);
+            }
+            ss << "\n";
+        }
+        for (const auto &rowElem : rowsVal.list_val) {
+            if (rowElem.type == MemeValue::TYPE_LIST) {
+                for (size_t i = 0; i < rowElem.list_val.size(); ++i) {
+                    if (i > 0) ss << ",";
+                    ss << escapeCsvField(rowElem.list_val[i].to_string());
+                }
+                ss << "\n";
+            }
+        }
+    }
+    return ss.str();
+}
+
+} // namespace MemeRuntimeCsv
+
+struct JsonModule {
+    JsonModule *operator->() { return this; }
+    const JsonModule *operator->() const { return this; }
+
+    MemeValue parse(const std::string &s) { MemeRuntimeJson::Parser p(s); return p.parseValue(); }
+    MemeValue parse(const MemeValue &v) { return parse(v.to_string()); }
+    MemeValue samajh(const std::string &s) { return parse(s); }
+    MemeValue samajh(const MemeValue &v) { return parse(v); }
+    MemeValue padh(const std::string &s) { return parse(s); }
+    MemeValue padh(const MemeValue &v) { return parse(v); }
+
+    std::string stringify(const MemeValue &v) { return MemeRuntimeJson::stringify(v); }
+    std::string likh(const MemeValue &v) { return stringify(v); }
+    std::string bana(const MemeValue &v) { return stringify(v); }
+};
+
+struct CsvModule {
+    CsvModule *operator->() { return this; }
+    const CsvModule *operator->() const { return this; }
+
+    MemeValue parse(const std::string &t, bool hasHeader = true) { return MemeRuntimeCsv::parse(t, hasHeader); }
+    MemeValue parse(const MemeValue &v, bool hasHeader = true) { return parse(v.to_string(), hasHeader); }
+    MemeValue parse(const MemeValue &v, const MemeValue &h) { return parse(v.to_string(), h.is_truthy()); }
+    MemeValue padh(const std::string &t, bool hasHeader = true) { return parse(t, hasHeader); }
+    MemeValue padh(const MemeValue &v, bool hasHeader = true) { return parse(v, hasHeader); }
+    MemeValue padh(const MemeValue &v, const MemeValue &h) { return parse(v, h); }
+
+    std::string stringify(const MemeValue &rows, const MemeValue &headersVal = MemeValue()) {
+        return MemeRuntimeCsv::stringify(rows, headersVal);
+    }
+    std::string likh(const MemeValue &rows, const MemeValue &headersVal = MemeValue()) {
+        return stringify(rows, headersVal);
+    }
+};
+
+inline JsonModule json;
+inline CsvModule csv;
+
 struct FileModule {
     FileModule *operator->() { return this; }
     const FileModule *operator->() const { return this; }
@@ -1537,6 +1868,35 @@ struct FileModule {
     }
     bool badlo(const std::string &src, const std::string &dst) { return rename(src, dst); }
     bool badlo(const MemeValue &src, const MemeValue &dst) { return rename(src, dst); }
+
+    MemeValue padh_json(const std::string &path) { return json.parse(read(path)); }
+    MemeValue padh_json(const MemeValue &path) { return padh_json(path.to_string()); }
+    MemeValue read_json(const std::string &path) { return padh_json(path); }
+    MemeValue read_json(const MemeValue &path) { return padh_json(path); }
+
+    bool likh_json(const std::string &path, const MemeValue &val) { return write(path, json.stringify(val)); }
+    bool likh_json(const MemeValue &path, const MemeValue &val) { return likh_json(path.to_string(), val); }
+    bool write_json(const std::string &path, const MemeValue &val) { return likh_json(path, val); }
+    bool write_json(const MemeValue &path, const MemeValue &val) { return likh_json(path, val); }
+
+    MemeValue padh_csv(const std::string &path, bool hasHeader = true) { return csv.parse(read(path), hasHeader); }
+    MemeValue padh_csv(const MemeValue &path, bool hasHeader = true) { return padh_csv(path.to_string(), hasHeader); }
+    MemeValue padh_csv(const MemeValue &path, const MemeValue &hasHeader) { return padh_csv(path.to_string(), hasHeader.is_truthy()); }
+    MemeValue read_csv(const std::string &path, bool hasHeader = true) { return padh_csv(path, hasHeader); }
+    MemeValue read_csv(const MemeValue &path, bool hasHeader = true) { return padh_csv(path, hasHeader); }
+
+    bool likh_csv(const std::string &path, const MemeValue &val, const MemeValue &headersVal = MemeValue()) {
+        return write(path, csv.stringify(val, headersVal));
+    }
+    bool likh_csv(const MemeValue &path, const MemeValue &val, const MemeValue &headersVal = MemeValue()) {
+        return likh_csv(path.to_string(), val, headersVal);
+    }
+    bool write_csv(const std::string &path, const MemeValue &val, const MemeValue &headersVal = MemeValue()) {
+        return likh_csv(path, val, headersVal);
+    }
+    bool write_csv(const MemeValue &path, const MemeValue &val, const MemeValue &headersVal = MemeValue()) {
+        return likh_csv(path, val, headersVal);
+    }
 };
 
 struct SystummModule {
@@ -1635,6 +1995,7 @@ struct SystummModule {
 
 inline FileModule file;
 inline FileModule dastavez;
+inline FileModule &fs = file;
 inline SystummModule sys;
 inline SystummModule os;
 inline SystummModule systumm;
@@ -1999,17 +2360,20 @@ inline SamayModule samay;
 inline ItertoolsModule itertools;
 inline MathModule math;
 
-inline std::string point_wala(double v, int precision = 4) {
+inline double point_wala(double v) { return v; }
+inline double point_wala(int64_t v) { return static_cast<double>(v); }
+inline double point_wala(const std::string &s) {
+    try { return std::stod(s); } catch (...) { return 0.0; }
+}
+inline double point_wala(const MemeValue &v) { return v.as_double(); }
+
+inline std::string point_wala(double v, int precision) {
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(precision) << v;
     return ss.str();
 }
 
-inline std::string point_wala(int64_t v) {
-    return std::to_string(v);
-}
-
-inline std::string point_wala(const MemeValue &v, int precision = 4) {
+inline std::string point_wala(const MemeValue &v, int precision) {
     return point_wala(v.as_double(), precision);
 }
 

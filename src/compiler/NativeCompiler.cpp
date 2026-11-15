@@ -17,6 +17,11 @@ private:
     int indentLevel = 1;
     std::unordered_set<std::string> knownClasses;
     std::unordered_set<std::string> knownFunctions;
+    std::unordered_set<std::string> knownClassFields;
+    std::unordered_set<std::string> knownModuleAliases = {
+        "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
+        "env", "paryavaran", "dotenv", "json", "csv"
+    };
 
     struct FinallyContext {
         std::string tryRetVar;
@@ -102,8 +107,24 @@ public:
         for (const auto &stmt : program) {
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
                 knownClasses.insert(c->name);
+                for (const auto &m : c->methods) {
+                    if (m->name == "shuru" || m->name == "init" || m->name == "constructor") {
+                        if (auto *b = dynamic_cast<const BlockStmt *>(m->body.get())) {
+                            for (const auto &s : b->statements) {
+                                if (auto *es = dynamic_cast<const ExprStmt *>(s.get())) {
+                                    if (auto *set = dynamic_cast<const SetExpr *>(es->expression.get())) {
+                                        knownClassFields.insert(set->name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
                 knownFunctions.insert(f->name);
+            } else if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
+                std::string alias = imp->alias.empty() ? imp->path : imp->alias;
+                knownModuleAliases.insert(sanitizeIdentifier(alias));
             }
         }
     }
@@ -287,9 +308,7 @@ public:
                 if (objStr == "this") {
                     return "this->" + method + "(" + args + ")";
                 }
-                if (objStr == "samay" || objStr == "itertools" || objStr == "math" ||
-                    objStr == "sys" || objStr == "systumm" || objStr == "os" || objStr == "file" ||
-                    objStr == "env" || objStr == "paryavaran" || objStr == "dotenv" ||
+                if (knownModuleAliases.count(objStr) ||
                     method == "push_back" || method == "pop_back" || method == "size" || method == "length" || method == "lambai" ||
                     method == "is_ok" || method == "is_err" || method == "is_some" || method == "is_none" ||
                     method == "unwrap" || method == "unwrap_err" || method == "unwrap_or") {
@@ -298,7 +317,8 @@ public:
                 // Map methods
                 if (method == "keys" || method == "values" ||
                     method == "remove" || method == "get" ||
-                    method == "chaabi" || method == "maal" || method == "hata" || method == "la") {
+                    method == "chaabi" || method == "maal" || method == "hata" || method == "la" ||
+                    method == "has" || method == "contains" || method == "hai_kya" || method == "hai") {
                     return objStr + "." + method + "(" + args + ")";
                 }
                 // String and container membership methods: wrap with MemeValue(...)
@@ -306,8 +326,7 @@ public:
                     "charAt", "chars", "slice", "starts_with", "startsWith", "ends_with", "endsWith",
                     "find", "split", "replace", "trim", "to_upper", "to_lower",
                     "akshar", "akshar_list", "kaat", "shuru_hota", "khatam_hota", "dhund", "tod",
-                    "badal", "saaf", "upper", "lower", "chilla", "dheere_bol", "substring", "indexOf",
-                    "has", "contains", "hai_kya"
+                    "badal", "saaf", "upper", "lower", "chilla", "dheere_bol", "substring", "indexOf"
                 };
                 if (strMethods.count(method)) {
                     return "MemeValue(" + objStr + ")." + method + "(" + args + ")";
@@ -330,12 +349,16 @@ public:
             if (objStr == "this") {
                 return "this->" + prop;
             }
-            if (objStr == "samay" || objStr == "itertools" || objStr == "math" ||
-                objStr == "sys" || objStr == "systumm" || objStr == "os" || objStr == "file" ||
-                objStr == "env" || objStr == "paryavaran" || objStr == "dotenv") {
+            if (knownModuleAliases.count(objStr)) {
                 return objStr + "." + prop;
             }
-            return objStr + "->" + prop;
+            if (prop == "size" || prop == "length" || prop == "lambai") {
+                return "static_cast<int64_t>(" + objStr + ".size())";
+            }
+            if (knownClassFields.count(prop)) {
+                return objStr + "->" + prop;
+            }
+            return "meme_index(" + objStr + ", std::string(\"" + e->name + "\"))";
         }
         if (auto *e = dynamic_cast<const SetExpr *>(expr)) {
             std::string objStr = generateExpr(e->object.get());
@@ -344,7 +367,10 @@ public:
             if (objStr == "this") {
                 return "(this->" + prop + " = " + valStr + ")";
             }
-            return "(" + objStr + "->" + prop + " = " + valStr + ")";
+            if (knownClassFields.count(prop)) {
+                return "(" + objStr + "->" + prop + " = " + valStr + ")";
+            }
+            return "(meme_index(" + objStr + ", std::string(\"" + e->name + "\")) = " + valStr + ")";
         }
         if (auto *e = dynamic_cast<const IndexExpr *>(expr)) {
             return "meme_index(" + generateExpr(e->target.get()) + ", " + generateExpr(e->index.get()) + ")";
@@ -1324,9 +1350,17 @@ public:
                     if (alias != "env" && alias != "paryavaran" && alias != "dotenv") {
                         globalDecls << "inline EnvModule &" << alias << " = env;\n";
                     }
-                } else if (imp->path == "file") {
-                    if (alias != "file") {
+                } else if (imp->path == "file" || imp->path == "fs" || imp->path == "dastavez") {
+                    if (alias != "file" && alias != "fs" && alias != "dastavez") {
                         globalDecls << "inline FileModule &" << alias << " = file;\n";
+                    }
+                } else if (imp->path == "json") {
+                    if (alias != "json") {
+                        globalDecls << "inline JsonModule &" << alias << " = json;\n";
+                    }
+                } else if (imp->path == "csv") {
+                    if (alias != "csv") {
+                        globalDecls << "inline CsvModule &" << alias << " = csv;\n";
                     }
                 }
             }
