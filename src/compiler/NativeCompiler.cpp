@@ -351,16 +351,71 @@ public:
             return "(" + generateExpr(e->left.get()) + " " + opStr + " " + generateExpr(e->right.get()) + ")";
         }
         if (auto *e = dynamic_cast<const CallExpr *>(expr)) {
-            // Check if call is a constructor: ClassName(...)
+            // Check if call is a constructor: ClassName(...) or GenericClass[T](...)
+            std::string ctorClass;
+            std::string typeArg;
             if (auto *ident = dynamic_cast<const IdentifierExpr *>(e->callee.get())) {
                 if (knownClasses.find(ident->name) != knownClasses.end()) {
-                    std::string args;
-                    for (size_t i = 0; i < e->args.size(); ++i) {
-                        if (i > 0) args += ", ";
-                        args += generateExpr(e->args[i].get());
-                    }
-                    return "std::make_shared<" + ident->name + ">(" + args + ")";
+                    ctorClass = ident->name;
                 }
+            } else if (auto *ix = dynamic_cast<const IndexExpr *>(e->callee.get())) {
+                if (auto *targetIdent = dynamic_cast<const IdentifierExpr *>(ix->target.get())) {
+                    auto mapTypeName = [](const std::string &t) -> std::string {
+                        if (t == "ank" || t == "int") return "int64_t";
+                        if (t == "point" || t == "float") return "double";
+                        if (t == "bol" || t == "str") return "std::string";
+                        if (t == "sach" || t == "bool") return "bool";
+                        return t;
+                    };
+                    if (knownClasses.find(targetIdent->name) != knownClasses.end()) {
+                        ctorClass = targetIdent->name;
+                        if (!ix->indices.empty()) {
+                            for (size_t i = 0; i < ix->indices.size(); ++i) {
+                                if (i > 0) typeArg += ", ";
+                                if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(ix->indices[i].get())) {
+                                    typeArg += mapTypeName(idExpr->name);
+                                } else {
+                                    typeArg += "MemeValue";
+                                }
+                            }
+                        } else if (auto *idxIdent = dynamic_cast<const IdentifierExpr *>(ix->index.get())) {
+                            typeArg = mapTypeName(idxIdent->name);
+                        }
+                    } else if (knownFunctions.find(targetIdent->name) != knownFunctions.end()) {
+                        std::string args;
+                        for (size_t i = 0; i < e->args.size(); ++i) {
+                            if (i > 0) args += ", ";
+                            args += generateExpr(e->args[i].get());
+                        }
+                        std::string tArg;
+                        if (!ix->indices.empty()) {
+                            for (size_t i = 0; i < ix->indices.size(); ++i) {
+                                if (i > 0) tArg += ", ";
+                                if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(ix->indices[i].get())) {
+                                    tArg += mapTypeName(idExpr->name);
+                                } else {
+                                    tArg += "MemeValue";
+                                }
+                            }
+                        } else if (auto *idxIdent = dynamic_cast<const IdentifierExpr *>(ix->index.get())) {
+                            tArg = mapTypeName(idxIdent->name);
+                        } else {
+                            tArg = "MemeValue";
+                        }
+                        return targetIdent->name + "<" + tArg + ">(" + args + ")";
+                    }
+                }
+            }
+            if (!ctorClass.empty()) {
+                std::string args;
+                for (size_t i = 0; i < e->args.size(); ++i) {
+                    if (i > 0) args += ", ";
+                    args += generateExpr(e->args[i].get());
+                }
+                if (!typeArg.empty()) {
+                    return "std::make_shared<" + ctorClass + "<" + typeArg + ">>(" + args + ")";
+                }
+                return "std::make_shared<" + ctorClass + ">(" + args + ")";
             }
 
             // Check if method call: obj.method(args)
@@ -1187,12 +1242,30 @@ public:
 
     void generateClass(const ClassDeclStmt *c) {
         std::string className = c->name;
-        globalDecls << "struct " << className << " : public std::enable_shared_from_this<" << className << "> {\n";
+        if (!c->typeParams.empty()) {
+            globalDecls << "template<";
+            for (size_t i = 0; i < c->typeParams.size(); ++i) {
+                if (i > 0) globalDecls << ", ";
+                globalDecls << "typename " << c->typeParams[i];
+            }
+            globalDecls << ">\n";
+            std::string tArgs;
+            for (size_t i = 0; i < c->typeParams.size(); ++i) {
+                if (i > 0) tArgs += ", ";
+                tArgs += c->typeParams[i];
+            }
+            globalDecls << "struct " << className << " : public std::enable_shared_from_this<" << className << "<" << tArgs << ">> {\n";
+        } else {
+            globalDecls << "struct " << className << " : public std::enable_shared_from_this<" << className << "> {\n";
+        }
 
-        // Collect fields from constructor assignments khud.x = ...
+        // Collect fields from constructor assignments khud.x = ... and c->fields
         std::unordered_set<std::string> fields;
+        for (const auto &f : c->fields) {
+            fields.insert(f.name);
+        }
         for (const auto &m : c->methods) {
-            if (m->name == "shuru" || m->name == "init" || m->name == "constructor") {
+            if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
                 // Scan method body for assignments to khud.x
                 if (auto *b = dynamic_cast<const BlockStmt *>(m->body.get())) {
                     for (const auto &s : b->statements) {
@@ -1207,7 +1280,27 @@ public:
         }
 
         // Emit fields
+        std::unordered_set<std::string> emittedFields;
+        for (const auto &cf : c->fields) {
+            std::string fType = "MemeValue";
+            if (cf.typeAnnotation) {
+                std::string tName = cf.typeAnnotation->name;
+                bool isTP = false;
+                for (const auto &tp : c->typeParams) {
+                    if (tp == tName) { isTP = true; break; }
+                }
+                if (isTP) {
+                    fType = tName;
+                } else if (tName == "ank" || tName == "int") fType = "int64_t";
+                else if (tName == "point" || tName == "float") fType = "double";
+                else if (tName == "bol" || tName == "str") fType = "std::string";
+                else if (tName == "sach" || tName == "bool") fType = "bool";
+            }
+            globalDecls << "    " << fType << " " << sanitizeIdentifier(cf.name) << ";\n";
+            emittedFields.insert(cf.name);
+        }
         for (const auto &f : fields) {
+            if (emittedFields.count(f)) continue;
             if (f == "left" || f == "right") {
                 globalDecls << "    std::shared_ptr<" << className << "> " << f << " = nullptr;\n";
             } else {
@@ -1217,7 +1310,7 @@ public:
 
         bool hasZeroArgCtor = false;
         for (const auto &m : c->methods) {
-            if ((m->name == "shuru" || m->name == "init" || m->name == "constructor") && m->paramList.empty()) {
+            if ((m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") && m->paramList.empty()) {
                 hasZeroArgCtor = true;
                 break;
             }
@@ -1228,7 +1321,7 @@ public:
 
         // Constructor & Methods
         for (const auto &m : c->methods) {
-            if (m->name == "shuru" || m->name == "init" || m->name == "constructor") {
+            if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
                 globalDecls << "    " << className << "(";
                 for (size_t i = 0; i < m->paramList.size(); ++i) {
                     if (i > 0) globalDecls << ", ";
@@ -1272,7 +1365,12 @@ public:
                     methodRetType = "std::shared_ptr<" + classRet + ">";
                 } else if (m->returnTypeAnnotation) {
                     std::string t = m->returnTypeAnnotation->toString();
-                    if (t == "int" || t == "int64" || t == "ank") methodRetType = "int64_t";
+                    bool isTP = false;
+                    for (const auto &tp : c->typeParams) {
+                        if (tp == t) { isTP = true; break; }
+                    }
+                    if (isTP) methodRetType = t;
+                    else if (t == "int" || t == "int64" || t == "ank") methodRetType = "int64_t";
                     else if (t == "float" || t == "float64" || t == "point_wala") methodRetType = "double";
                     else if (t == "bool" || t == "sahi_galat") methodRetType = "bool";
                     else if (t == "str" || t == "string" || t == "bol") methodRetType = "std::string";
@@ -1284,7 +1382,14 @@ public:
                 globalDecls << "    " << methodRetType << " " << sanitizeIdentifier(m->name) << "(";
                 for (size_t i = 0; i < m->paramList.size(); ++i) {
                     if (i > 0) globalDecls << ", ";
-                    globalDecls << "MemeValue " << sanitizeIdentifier(m->paramList[i].name);
+                    std::string pType = "MemeValue";
+                    if (m->paramList[i].typeAnnotation) {
+                        std::string t = m->paramList[i].typeAnnotation->toString();
+                        for (const auto &tp : c->typeParams) {
+                            if (tp == t) { pType = t; break; }
+                        }
+                    }
+                    globalDecls << pType << " " << sanitizeIdentifier(m->paramList[i].name);
                 }
                 globalDecls << ") {\n";
                 indentLevel = 2;
@@ -1341,9 +1446,24 @@ public:
         std::string paramDecl;
         for (size_t i = 0; i < f->paramList.size(); ++i) {
             if (i > 0) paramDecl += ", ";
-            paramDecl += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
+            std::string pType = "const MemeValue &";
+            if (f->paramList[i].typeAnnotation) {
+                std::string t = f->paramList[i].typeAnnotation->toString();
+                for (const auto &tp : f->typeParams) {
+                    if (tp == t) { pType = "const " + t + " &"; break; }
+                }
+            }
+            paramDecl += pType + sanitizeIdentifier(f->paramList[i].name);
         }
 
+        if (!f->typeParams.empty()) {
+            globalDecls << "template<";
+            for (size_t i = 0; i < f->typeParams.size(); ++i) {
+                if (i > 0) globalDecls << ", ";
+                globalDecls << "typename " << f->typeParams[i];
+            }
+            globalDecls << ">\n";
+        }
         globalDecls << "inline " << returnType << " " << fnName << "(" << paramDecl << ") {\n";
         indentLevel = 1;
         {
@@ -1543,7 +1663,16 @@ public:
         // Pass 0A: Forward declarations for all classes
         for (const auto &stmt : program) {
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
-                globalDecls << "struct " << sanitizeIdentifier(c->name) << ";\n";
+                if (!c->typeParams.empty()) {
+                    globalDecls << "template<";
+                    for (size_t i = 0; i < c->typeParams.size(); ++i) {
+                        if (i > 0) globalDecls << ", ";
+                        globalDecls << "typename " << c->typeParams[i] << " = MemeValue";
+                    }
+                    globalDecls << ">\nstruct " << sanitizeIdentifier(c->name) << ";\n";
+                } else {
+                    globalDecls << "struct " << sanitizeIdentifier(c->name) << ";\n";
+                }
             }
         }
         globalDecls << "\n";
@@ -1567,7 +1696,22 @@ public:
                 std::string paramTypes;
                 for (size_t i = 0; i < f->paramList.size(); ++i) {
                     if (i > 0) paramTypes += ", ";
-                    paramTypes += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
+                    std::string pType = "const MemeValue &";
+                    if (f->paramList[i].typeAnnotation) {
+                        std::string t = f->paramList[i].typeAnnotation->toString();
+                        for (const auto &tp : f->typeParams) {
+                            if (tp == t) { pType = "const " + t + " &"; break; }
+                        }
+                    }
+                    paramTypes += pType + sanitizeIdentifier(f->paramList[i].name);
+                }
+                if (!f->typeParams.empty()) {
+                    globalDecls << "template<";
+                    for (size_t i = 0; i < f->typeParams.size(); ++i) {
+                        if (i > 0) globalDecls << ", ";
+                        globalDecls << "typename " << f->typeParams[i] << " = MemeValue";
+                    }
+                    globalDecls << ">\n";
                 }
                 globalDecls << "inline " << retType << " " << fnName << "(" << paramTypes << ");\n";
             }

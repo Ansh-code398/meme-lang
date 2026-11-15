@@ -31,7 +31,9 @@ enum class TypeKind
     POINTER,    // Pointer type: patta[T] / *T
     OVERLOAD,   // Overload set holding candidate FunctionTypes
     OPTION,     // Option[T]
-    RESULT      // Result[T, E]
+    RESULT,     // Result[T, E]
+    TYPE_PARAM, // Generic type parameter T
+    GENERIC_INSTANCE // Generic class/type instance Dabba[ank]
 };
 
 class PointerType;
@@ -53,6 +55,7 @@ public:
     bool isVariadic = false;                           // For FUNCTION
     bool isOverload = false;                           // For FUNCTION
     bool isConst = false;
+    std::vector<std::shared_ptr<Type>> typeArgs;       // For GENERIC_INSTANCE or generic types
 
     Type(TypeKind kind, const std::string &name = "")
         : kind(kind), name(name) {}
@@ -181,6 +184,23 @@ public:
         t->keyType = errType ? errType : Any();
         return t;
     }
+    static std::shared_ptr<Type> TypeParam(const std::string &paramName) {
+        return std::make_shared<Type>(TypeKind::TYPE_PARAM, paramName);
+    }
+    static std::shared_ptr<Type> GenericInstance(const std::string &className, std::vector<std::shared_ptr<Type>> args) {
+        auto t = std::make_shared<Type>(TypeKind::GENERIC_INSTANCE, className);
+        t->typeArgs = std::move(args);
+        return t;
+    }
+    static std::shared_ptr<Type> fromTypeName(const std::string &name) {
+        if (name == "ank" || name == "int" || name == "i64" || name == "long") return Type::Ank();
+        if (name == "point" || name == "float" || name == "double" || name == "f64") return Type::Point();
+        if (name == "bol" || name == "str" || name == "string") return Type::Bol();
+        if (name == "sach" || name == "bool") return Type::Sach();
+        if (name == "nalla" || name == "void" || name == "null") return Type::Nalla();
+        if (name == "any") return Type::Any();
+        return Type::Class(name);
+    }
     static std::shared_ptr<Type> pointer(std::shared_ptr<Type> pointee, bool isMut = false);
     static std::shared_ptr<Type> Pointer(std::shared_ptr<Type> pointee, bool isMut = false);
     static std::shared_ptr<Type> Patta(std::shared_ptr<Type> pointee, bool isMut = false);
@@ -281,6 +301,19 @@ public:
                 if (!this->overloads[i]->equals(*other.overloads[i])) return false;
             }
             return true;
+
+        case TypeKind::TYPE_PARAM:
+            return this->name == other.name;
+
+        case TypeKind::GENERIC_INSTANCE:
+            if (this->name != other.name || this->typeArgs.size() != other.typeArgs.size()) return false;
+            for (size_t i = 0; i < this->typeArgs.size(); ++i)
+            {
+                if (!this->typeArgs[i] && !other.typeArgs[i]) continue;
+                if (!this->typeArgs[i] || !other.typeArgs[i]) return false;
+                if (!this->typeArgs[i]->equals(*other.typeArgs[i])) return false;
+            }
+            return true;
         }
         return false;
     }
@@ -291,8 +324,8 @@ public:
     // Assignability check: can `this` (source) be assigned to `target`?
     virtual bool isAssignableTo(const Type &target) const
     {
-        // Dynamic escape hatch: `any` can receive or be assigned to anything
-        if (this->isAny() || target.isAny())
+        // Dynamic escape hatch: `any` or type parameter `T` can receive or be assigned to anything
+        if (this->isAny() || target.isAny() || target.kind == TypeKind::TYPE_PARAM || this->kind == TypeKind::TYPE_PARAM)
         {
             return true;
         }
@@ -371,6 +404,19 @@ public:
                 bool kOk = (!this->keyType || !target.keyType) ? true : this->keyType->isAssignableTo(*target.keyType);
                 bool vOk = (!this->valueType || !target.valueType) ? true : this->valueType->isAssignableTo(*target.valueType);
                 return kOk && vOk;
+            }
+            if (this->kind == TypeKind::TYPE_PARAM)
+            {
+                return this->name == target.name;
+            }
+            if (this->kind == TypeKind::GENERIC_INSTANCE)
+            {
+                if (target.kind == TypeKind::ANY) return true;
+                if (target.kind != TypeKind::GENERIC_INSTANCE || this->name != target.name || this->typeArgs.size() != target.typeArgs.size()) return false;
+                for (size_t i = 0; i < this->typeArgs.size(); ++i) {
+                    if (!this->typeArgs[i]->isAssignableTo(*target.typeArgs[i])) return false;
+                }
+                return true;
             }
             if (this->kind == TypeKind::FUNCTION)
             {
@@ -474,6 +520,19 @@ public:
                 res += overloads[i] ? overloads[i]->toString() : "any";
             }
             res += ">";
+            return res;
+        }
+        case TypeKind::TYPE_PARAM:
+            return name;
+        case TypeKind::GENERIC_INSTANCE:
+        {
+            std::string res = name + "[";
+            for (size_t i = 0; i < typeArgs.size(); ++i)
+            {
+                if (i > 0) res += ", ";
+                res += typeArgs[i] ? typeArgs[i]->toString() : "any";
+            }
+            res += "]";
             return res;
         }
         }

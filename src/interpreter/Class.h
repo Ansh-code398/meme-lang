@@ -121,6 +121,14 @@ public:
         {
             initializer = findMethod("init");
         }
+        if (initializer == nullptr)
+        {
+            initializer = findMethod("naya");
+        }
+        if (initializer == nullptr)
+        {
+            initializer = findMethod("constructor");
+        }
         return initializer;
     }
 
@@ -331,6 +339,14 @@ inline Value ClassCallable::call(Interpreter &interpreter, const std::vector<Val
     if (initializer == nullptr)
     {
         initializer = findMethod("init");
+    }
+    if (initializer == nullptr)
+    {
+        initializer = findMethod("naya");
+    }
+    if (initializer == nullptr)
+    {
+        initializer = findMethod("constructor");
     }
 
     if (initializer != nullptr)

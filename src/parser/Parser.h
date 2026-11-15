@@ -450,9 +450,10 @@ class IndexExpr : public Expr
 public:
     std::unique_ptr<Expr> target;
     std::unique_ptr<Expr> index;
+    std::vector<std::unique_ptr<Expr>> indices;
 
-    IndexExpr(std::unique_ptr<Expr> target, std::unique_ptr<Expr> index, int line = 0)
-        : Expr(line), target(std::move(target)), index(std::move(index)) {}
+    IndexExpr(std::unique_ptr<Expr> target, std::unique_ptr<Expr> index, int line = 0, std::vector<std::unique_ptr<Expr>> indices = {})
+        : Expr(line), target(std::move(target)), index(std::move(index)), indices(std::move(indices)) {}
 
     std::string toString() const override
     {
@@ -951,6 +952,7 @@ public:
     std::shared_ptr<Type> returnTypeAnnotation;
     bool isAsync = false;
     bool isOverload = false;
+    std::vector<std::string> typeParams;
 
     FuncDeclStmt(const std::string &name,
                  std::vector<FuncParam> paramList,
@@ -958,9 +960,11 @@ public:
                  std::shared_ptr<Type> returnTypeAnnotation,
                  bool isAsync,
                  int line = 0,
-                 bool isOverload = false)
+                 bool isOverload = false,
+                 std::vector<std::string> typeParams = {})
         : Stmt(line), name(name), paramList(std::move(paramList)), body(std::move(body)),
-          returnTypeAnnotation(std::move(returnTypeAnnotation)), isAsync(isAsync), isOverload(isOverload)
+          returnTypeAnnotation(std::move(returnTypeAnnotation)), isAsync(isAsync), isOverload(isOverload),
+          typeParams(std::move(typeParams))
     {
         for (const auto &p : this->paramList)
         {
@@ -1161,6 +1165,14 @@ public:
     }
 };
 
+struct ClassField
+{
+    std::string name;
+    std::shared_ptr<Type> typeAnnotation;
+    std::unique_ptr<Expr> initializer;
+    int line = 0;
+};
+
 // 11. Class Declaration: `sancha Name [se SuperName] { ... }`
 class ClassDeclStmt : public Stmt
 {
@@ -1168,12 +1180,17 @@ public:
     std::string name;
     std::string superclass;
     std::vector<std::unique_ptr<FuncDeclStmt>> methods;
+    std::vector<ClassField> fields;
+    std::vector<std::string> typeParams;
 
     ClassDeclStmt(const std::string &name,
                   const std::string &superclass,
                   std::vector<std::unique_ptr<FuncDeclStmt>> methods,
-                  int line = 0)
-        : Stmt(line), name(name), superclass(superclass), methods(std::move(methods)) {}
+                  int line = 0,
+                  std::vector<ClassField> fields = {},
+                  std::vector<std::string> typeParams = {})
+        : Stmt(line), name(name), superclass(superclass), methods(std::move(methods)),
+          fields(std::move(fields)), typeParams(std::move(typeParams)) {}
 
     std::string toString() const override
     {
@@ -2060,6 +2077,31 @@ public:
             return Type::Function(std::move(paramTypes), retType);
         }
 
+        if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+        {
+            current++; // consume '['
+            std::vector<std::shared_ptr<Type>> typeArgs;
+            while (peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::END_OF_FILE)
+            {
+                typeArgs.push_back(parseTypeExpression());
+                checkNotError();
+                if (peek().type == TokenType::COMMA)
+                {
+                    current++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                errorAt(peek(), "Generic type mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+            }
+            current++; // consume ']'
+            return Type::GenericInstance(name, std::move(typeArgs));
+        }
+
         return Type::Class(name);
     }
 
@@ -2673,6 +2715,34 @@ public:
         std::string funcName = peek().value;
         current++; // consume function name
 
+        std::vector<std::string> typeParams;
+        if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+        {
+            current++; // consume '['
+            while (peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::END_OF_FILE)
+            {
+                if (peek().type != TokenType::IDENTIFIER)
+                {
+                    errorAt(peek(), "Type parameter identifier hona chahiye! Mila: '" + peek().value + "'");
+                }
+                typeParams.push_back(peek().value);
+                current++;
+                if (peek().type == TokenType::COMMA)
+                {
+                    current++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                errorAt(peek(), "Type parameter list mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+            }
+            current++; // consume ']'
+        }
+
         checkNotError();
         if (peek().type != TokenType::OPEN_PAREN)
         {
@@ -2698,8 +2768,25 @@ public:
             returnType = parseTypeExpression();
         }
 
+        if (!typeParams.empty())
+        {
+            auto markTypeParams = [&](std::shared_ptr<Type> &t) {
+                if (!t) return;
+                for (const auto &tp : typeParams)
+                {
+                    if (t->name == tp) t->kind = TypeKind::TYPE_PARAM;
+                    if (t->elementType && t->elementType->name == tp) t->elementType->kind = TypeKind::TYPE_PARAM;
+                }
+            };
+            for (auto &p : params)
+            {
+                markTypeParams(p.typeAnnotation);
+            }
+            markTypeParams(returnType);
+        }
+
         std::unique_ptr<Stmt> body = parseBlockStmt();
-        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, isAsync, line, isOverload);
+        return std::make_unique<FuncDeclStmt>(funcName, std::move(params), std::move(body), returnType, isAsync, line, isOverload, std::move(typeParams));
     }
 
     // 10. `ghoom i se 1 se 10 { ... }` (optional step: `ghoom i se 1 se 10 se 2 { ... }`)
@@ -2779,6 +2866,34 @@ public:
         std::string className = peek().value;
         current++; // consume class name
 
+        std::vector<std::string> typeParams;
+        if (peek().type == TokenType::OPEN_SQUARE_BRACKET)
+        {
+            current++; // consume '['
+            while (peek().type != TokenType::CLOSE_SQUARE_BRACKET && peek().type != TokenType::END_OF_FILE)
+            {
+                if (peek().type != TokenType::IDENTIFIER)
+                {
+                    errorAt(peek(), "Type parameter identifier hona chahiye! Mila: '" + peek().value + "'");
+                }
+                typeParams.push_back(peek().value);
+                current++;
+                if (peek().type == TokenType::COMMA)
+                {
+                    current++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+            {
+                errorAt(peek(), "Class type parameter list mein ']' band karna bhool gaye! Mila: '" + peek().value + "'");
+            }
+            current++; // consume ']'
+        }
+
         std::string superclass = "";
         checkNotError();
         if (peek().type == TokenType::SE || peek().type == TokenType::NEPO)
@@ -2803,6 +2918,7 @@ public:
         current++; // consume '{'
 
         std::vector<std::unique_ptr<FuncDeclStmt>> methods;
+        std::vector<ClassField> fields;
         while (peek().type != TokenType::CLOSE_BRACE && peek().type != TokenType::END_OF_FILE)
         {
             checkNotError();
@@ -2826,15 +2942,44 @@ public:
                 auto method = parseFuncDeclStmt();
                 methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
             }
-            else if (isFunctionName(peek()) && peekNext().type == TokenType::OPEN_PAREN)
+            else if (isFunctionName(peek()) && (peekNext().type == TokenType::OPEN_PAREN || peekNext().type == TokenType::OPEN_SQUARE_BRACKET))
             {
                 auto method = parseFuncDeclStmt();
                 methods.push_back(std::unique_ptr<FuncDeclStmt>(static_cast<FuncDeclStmt *>(method.release())));
             }
+            else if (peek().type == TokenType::LE ||
+                     (peek().type == TokenType::IDENTIFIER && (peek().value == "le" || peek().value == "pakad")))
+            {
+                int fLine = peek().line;
+                current++; // consume 'le' or 'pakad'
+                checkNotError();
+                if (peek().type != TokenType::IDENTIFIER)
+                {
+                    errorAt(peek(), "Field declaration mein variable ka naam chahiye! Mila: '" + peek().value + "'");
+                }
+                std::string fieldName = peek().value;
+                current++; // consume fieldName
+                std::shared_ptr<Type> fieldType = nullptr;
+                checkNotError();
+                if (peek().type == TokenType::COLON)
+                {
+                    current++; // consume ':'
+                    fieldType = parseTypeExpression();
+                }
+                std::unique_ptr<Expr> initExpr = nullptr;
+                checkNotError();
+                if (peek().type == TokenType::ASSIGN)
+                {
+                    current++; // consume '='
+                    initExpr = parseAssignment();
+                }
+                consumeSemicolon();
+                fields.push_back(ClassField{fieldName, fieldType, std::move(initExpr), fLine});
+            }
             else
             {
                 errorAt(peek(),
-                    "Biradari ke andar sirf methods ('jugaad naam() { ... }') ya operators ('tantrik + (...) { ... }') chalte hain! Ye '" + peek().value + "' kahan se aaya?");
+                    "Biradari ke andar sirf methods ('jugaad naam() { ... }'), fields ('le naam: Type;'), ya operators ('tantrik + (...) { ... }') chalte hain! Ye '" + peek().value + "' kahan se aaya?");
             }
         }
 
@@ -2845,7 +2990,31 @@ public:
         }
         current++; // consume '}'
 
-        return std::make_unique<ClassDeclStmt>(className, superclass, std::move(methods), line);
+        if (!typeParams.empty())
+        {
+            auto markTypeParams = [&](std::shared_ptr<Type> &t) {
+                if (!t) return;
+                for (const auto &tp : typeParams)
+                {
+                    if (t->name == tp) t->kind = TypeKind::TYPE_PARAM;
+                    if (t->elementType && t->elementType->name == tp) t->elementType->kind = TypeKind::TYPE_PARAM;
+                }
+            };
+            for (auto &f : fields)
+            {
+                markTypeParams(f.typeAnnotation);
+            }
+            for (auto &m : methods)
+            {
+                for (auto &p : m->paramList)
+                {
+                    markTypeParams(p.typeAnnotation);
+                }
+                markTypeParams(m->returnTypeAnnotation);
+            }
+        }
+
+        return std::make_unique<ClassDeclStmt>(className, superclass, std::move(methods), line, std::move(fields), std::move(typeParams));
     }
 
     std::unique_ptr<FuncDeclStmt> parseOperatorDeclStmt()
@@ -3922,14 +4091,33 @@ public:
                 }
                 int bracketLine = peek().line;
                 current++; // consume '['
-                auto index = parseAssignment();
+                auto firstIdx = parseAssignment();
                 checkNotError();
-                if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                if (peek().type == TokenType::COMMA)
                 {
-                    errorAt(peek(), "Index access mein ']' lagana bhool gaye! Mila: '" + peek().value + "'");
+                    std::vector<std::unique_ptr<Expr>> idxList;
+                    idxList.push_back(std::move(firstIdx));
+                    while (peek().type == TokenType::COMMA)
+                    {
+                        current++; // consume ','
+                        idxList.push_back(parseAssignment());
+                    }
+                    if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                    {
+                        errorAt(peek(), "Index access mein ']' lagana bhool gaye! Mila: '" + peek().value + "'");
+                    }
+                    current++; // consume ']'
+                    expr = std::make_unique<IndexExpr>(std::move(expr), nullptr, bracketLine, std::move(idxList));
                 }
-                current++; // consume ']'
-                expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index), bracketLine);
+                else
+                {
+                    if (peek().type != TokenType::CLOSE_SQUARE_BRACKET)
+                    {
+                        errorAt(peek(), "Index access mein ']' lagana bhool gaye! Mila: '" + peek().value + "'");
+                    }
+                    current++; // consume ']'
+                    expr = std::make_unique<IndexExpr>(std::move(expr), std::move(firstIdx), bracketLine);
+                }
             }
             else if (peek().type == TokenType::QUESTION && !isTernaryQuestionAhead())
             {

@@ -229,6 +229,7 @@ def main():
         "m4_pch": TESTS_E2E_DIR / "test_m4_pch_e2e.py",
         "m5_lsp": TESTS_E2E_DIR / "test_m5_lsp_e2e.py",
         "m6_tapri_git": TESTS_E2E_DIR / "test_m6_tapri_git_e2e.py",
+        "m7_generics": TESTS_E2E_DIR / "test_m7_generics_e2e.py",
         "env": TESTS_E2E_DIR / "test_env_e2e.py",
         "benchmarks": TESTS_E2E_DIR / "test_benchmarks_e2e.py",
         "build_tooling": TESTS_E2E_DIR / "test_build_tooling_e2e.py",
@@ -299,10 +300,10 @@ def main():
             sys.exit(1)
 
     tier_map = {
-        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "env", "benchmarks", "build_tooling", "invariants"],
-        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "env", "benchmarks", "build_tooling", "invariants"],
-        "3": ["combinations", "cross_combinations", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git"],
-        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git"],
+        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants"],
+        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants"],
+        "3": ["combinations", "cross_combinations", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics"],
+        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics"],
         "5": ["tier5_adversarial_overloading", "tier5_adversarial_pointers"],
     }
 

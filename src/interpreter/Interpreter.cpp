@@ -14418,6 +14418,10 @@ Value Interpreter::evaluate(const Expr *expr)
     if (auto *ix = dynamic_cast<const IndexExpr *>(expr))
     {
         Value target = evaluate(ix->target.get()).deref();
+        if (target.isCallable())
+        {
+            return target;
+        }
         Value idxVal = evaluate(ix->index.get()).deref();
 
         if (target.isInstance())

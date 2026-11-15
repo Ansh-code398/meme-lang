@@ -1164,7 +1164,7 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
             return calleeType->returnType ? calleeType->returnType : Type::Any();
         }
 
-        if (calleeType->kind == TypeKind::CLASS)
+        if (calleeType->kind == TypeKind::CLASS || calleeType->kind == TypeKind::GENERIC_INSTANCE)
         {
             return calleeType;
         }
@@ -1184,7 +1184,20 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
 
     if (auto *set = dynamic_cast<const SetExpr *>(expr))
     {
-        return checkExpr(set->value.get(), env);
+        auto objType = checkExpr(set->object.get(), env);
+        auto valType = checkExpr(set->value.get(), env);
+        if (objType && objType->kind == TypeKind::GENERIC_INSTANCE && !objType->typeArgs.empty())
+        {
+            auto expectedType = objType->typeArgs[0];
+            if (!valType->isAssignableTo(*expectedType))
+            {
+                std::string msg = "Line " + std::to_string(set->line) +
+                                  ": Doglapan! Field '" + set->name + "' par '" + expectedType->toString() +
+                                  "' expect kiya tha par mila '" + valType->toString() + "'!";
+                throw std::runtime_error(msg);
+            }
+        }
+        return valType;
     }
 
     if (auto *arr = dynamic_cast<const ArrayLiteralExpr *>(expr))
@@ -1293,6 +1306,25 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
     if (auto *idx = dynamic_cast<const IndexExpr *>(expr))
     {
         auto objType = checkExpr(idx->target.get(), env);
+        if (objType->kind == TypeKind::CLASS)
+        {
+            std::vector<std::shared_ptr<Type>> typeArgs;
+            if (!idx->indices.empty())
+            {
+                for (const auto &item : idx->indices)
+                {
+                    if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(item.get()))
+                    {
+                        typeArgs.push_back(Type::fromTypeName(idExpr->name));
+                    }
+                }
+            }
+            else if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(idx->index.get()))
+            {
+                typeArgs.push_back(Type::fromTypeName(idExpr->name));
+            }
+            return Type::GenericInstance(objType->name, std::move(typeArgs));
+        }
         checkExpr(idx->index.get(), env);
         if (objType->kind == TypeKind::LIST && objType->elementType)
         {
