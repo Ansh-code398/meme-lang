@@ -1308,24 +1308,37 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
         auto objType = checkExpr(idx->target.get(), env);
         if (objType->kind == TypeKind::CLASS)
         {
-            std::vector<std::shared_ptr<Type>> typeArgs;
-            if (!idx->indices.empty())
+            auto *targetId = dynamic_cast<const IdentifierExpr *>(idx->target.get());
+            if (targetId && targetId->name == objType->name)
             {
-                for (const auto &item : idx->indices)
+                std::vector<std::shared_ptr<Type>> typeArgs;
+                if (!idx->indices.empty())
                 {
-                    if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(item.get()))
+                    for (const auto &item : idx->indices)
+                    {
+                        if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(item.get()))
+                        {
+                            typeArgs.push_back(Type::fromTypeName(idExpr->name));
+                        }
+                    }
+                }
+                else if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(idx->index.get()))
+                {
+                    if (idExpr->name == "ank" || idExpr->name == "int" || idExpr->name == "point" ||
+                        idExpr->name == "float" || idExpr->name == "bol" || idExpr->name == "str" ||
+                        idExpr->name == "sach" || idExpr->name == "bool" || idExpr->name == "any" ||
+                        env->lookup(idExpr->name) != nullptr)
                     {
                         typeArgs.push_back(Type::fromTypeName(idExpr->name));
                     }
                 }
+                if (!typeArgs.empty())
+                {
+                    return Type::GenericInstance(objType->name, std::move(typeArgs));
+                }
             }
-            else if (auto *idExpr = dynamic_cast<const IdentifierExpr *>(idx->index.get()))
-            {
-                typeArgs.push_back(Type::fromTypeName(idExpr->name));
-            }
-            return Type::GenericInstance(objType->name, std::move(typeArgs));
         }
-        checkExpr(idx->index.get(), env);
+        if (idx->index) checkExpr(idx->index.get(), env);
         if (objType->kind == TypeKind::LIST && objType->elementType)
         {
             return objType->elementType;

@@ -66,6 +66,29 @@ struct MemeReturnSignal {
 };
 
 // ==========================================
+// 0.1 Call Depth Tracking & Stack Safety
+// ==========================================
+
+inline thread_local size_t meme_current_call_depth = 0;
+inline size_t meme_max_call_depth = 10000;
+
+struct MemeCallDepthGuard {
+    explicit MemeCallDepthGuard(const char *funcName = "function") {
+        if (++meme_current_call_depth > meme_max_call_depth) {
+            --meme_current_call_depth;
+            throw std::runtime_error(std::string("Stack overflow ho gaya! Maximum recursion depth (") +
+                                     std::to_string(meme_max_call_depth) + ") exceed ho gayi in '" +
+                                     funcName + "'!");
+        }
+    }
+    ~MemeCallDepthGuard() {
+        if (meme_current_call_depth > 0) --meme_current_call_depth;
+    }
+    MemeCallDepthGuard(const MemeCallDepthGuard &) = delete;
+    MemeCallDepthGuard &operator=(const MemeCallDepthGuard &) = delete;
+};
+
+// ==========================================
 // 0.1 String List Helper (sys.args, file.lines)
 // ==========================================
 

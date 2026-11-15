@@ -230,6 +230,7 @@ def main():
         "m5_lsp": TESTS_E2E_DIR / "test_m5_lsp_e2e.py",
         "m6_tapri_git": TESTS_E2E_DIR / "test_m6_tapri_git_e2e.py",
         "m7_generics": TESTS_E2E_DIR / "test_m7_generics_e2e.py",
+        "m8_stack_safety": TESTS_E2E_DIR / "test_m8_stack_safety_e2e.py",
         "env": TESTS_E2E_DIR / "test_env_e2e.py",
         "benchmarks": TESTS_E2E_DIR / "test_benchmarks_e2e.py",
         "build_tooling": TESTS_E2E_DIR / "test_build_tooling_e2e.py",

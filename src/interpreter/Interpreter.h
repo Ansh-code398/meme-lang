@@ -31,6 +31,8 @@ private:
 
     int currentScopeDepth = 0;
     uint64_t nextBorrowId = 1;
+    size_t currentCallDepth = 0;
+    size_t maxCallDepth = 1000;
 
     struct ActiveBorrowInfo
     {
@@ -81,6 +83,12 @@ public:
     bool getHeadless() const { return isHeadless; }
     void setInteractiveCLI(bool i) { isInteractiveCLI = i; }
     bool getInteractiveCLI() const { return isInteractiveCLI; }
+
+    size_t getCallDepth() const { return currentCallDepth; }
+    size_t getMaxCallDepth() const { return maxCallDepth; }
+    void setMaxCallDepth(size_t limit) { maxCallDepth = limit; }
+    void incrementCallDepth() { currentCallDepth++; }
+    void decrementCallDepth() { if (currentCallDepth > 0) currentCallDepth--; }
 
     void setInputPromptCallback(std::function<std::string(const std::string &)> cb)
     {

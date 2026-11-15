@@ -1331,6 +1331,7 @@ public:
                 indentLevel = 2;
                 {
                     FunctionScopeGuard guard(*this);
+                    globalDecls << indent() << "MemeCallDepthGuard _depth_guard(\"" << sanitizeIdentifier(m->name) << "\");\n";
                     if (auto *b = dynamic_cast<const BlockStmt *>(m->body.get())) {
                         for (const auto &s : b->statements) {
                             generateStmt(s.get(), globalDecls);
@@ -1395,6 +1396,7 @@ public:
                 indentLevel = 2;
                 {
                     FunctionScopeGuard guard(*this);
+                    globalDecls << indent() << "MemeCallDepthGuard _depth_guard(\"" << sanitizeIdentifier(m->name) << "\");\n";
                     if (usesPropagate) {
                         globalDecls << indent() << "try {\n";
                         indentLevel++;
@@ -1468,6 +1470,7 @@ public:
         indentLevel = 1;
         {
             FunctionScopeGuard guard(*this);
+            globalDecls << indent() << "MemeCallDepthGuard _depth_guard(\"" << fnName << "\");\n";
             if (usesPropagate) {
                 globalDecls << indent() << "try {\n";
                 indentLevel++;
@@ -1513,6 +1516,9 @@ public:
         out << mainBody.str();
         out << "\n    } catch (const MemeReturnSignal &_sig) {\n";
         out << "        return 0;\n";
+        out << "    } catch (const std::exception &_e) {\n";
+        out << "        std::cerr << \"\\n❌ Gadbad ho gayi:\\n\" << _e.what() << \"\\n\\n\";\n";
+        out << "        return 1;\n";
         out << "    }\n";
         out << "\n    return 0;\n";
         out << "}\n";

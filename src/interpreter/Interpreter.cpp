@@ -9862,6 +9862,17 @@ static thread_local std::vector<CallArgSource> currentArgSources;
 
 Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> &args)
 {
+    if (interpreter.getCallDepth() >= interpreter.getMaxCallDepth()) {
+        throw std::runtime_error("Stack overflow ho gaya! Maximum recursion depth (" +
+            std::to_string(interpreter.getMaxCallDepth()) + ") exceed ho gayi in '" +
+            declaration->name + "'!");
+    }
+    struct DepthGuard {
+        Interpreter &i;
+        explicit DepthGuard(Interpreter &interp) : i(interp) { i.incrementCallDepth(); }
+        ~DepthGuard() { i.decrementCallDepth(); }
+    } guard(interpreter);
+
     auto argSources = currentArgSources;
     currentArgSources.clear();
 
