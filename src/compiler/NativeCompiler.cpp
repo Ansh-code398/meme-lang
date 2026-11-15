@@ -92,6 +92,7 @@ class CodeGenerator {
 private:
     std::ostringstream globalDecls;
     std::ostringstream mainBody;
+    std::string currentSourceFile;
     int indentLevel = 1;
     std::unordered_set<std::string> knownClasses;
     std::unordered_set<std::string> knownFunctions;
@@ -181,6 +182,9 @@ private:
     }
 
 public:
+    explicit CodeGenerator(const std::string &sourceFile = "")
+        : currentSourceFile(sourceFile) {}
+
     void scanDeclarations(const std::vector<std::unique_ptr<Stmt>> &program) {
         for (const auto &stmt : program) {
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
@@ -689,6 +693,10 @@ public:
 
     void generateStmt(const Stmt *stmt, std::ostream &out) {
         if (!stmt) return;
+
+        if (stmt->line > 0 && !currentSourceFile.empty() && !dynamic_cast<const BlockStmt *>(stmt)) {
+            out << "#line " << stmt->line << " \"" << escapeString(currentSourceFile) << "\"\n";
+        }
 
         if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt)) {
             std::string varName = sanitizeIdentifier(v->name);
@@ -1254,8 +1262,14 @@ public:
                 if (i > 0) tArgs += ", ";
                 tArgs += c->typeParams[i];
             }
+            if (c->line > 0 && !currentSourceFile.empty()) {
+                globalDecls << "#line " << c->line << " \"" << escapeString(currentSourceFile) << "\"\n";
+            }
             globalDecls << "struct " << className << " : public std::enable_shared_from_this<" << className << "<" << tArgs << ">> {\n";
         } else {
+            if (c->line > 0 && !currentSourceFile.empty()) {
+                globalDecls << "#line " << c->line << " \"" << escapeString(currentSourceFile) << "\"\n";
+            }
             globalDecls << "struct " << className << " : public std::enable_shared_from_this<" << className << "> {\n";
         }
 
@@ -1321,6 +1335,9 @@ public:
 
         // Constructor & Methods
         for (const auto &m : c->methods) {
+            if (m->line > 0 && !currentSourceFile.empty()) {
+                globalDecls << "#line " << m->line << " \"" << escapeString(currentSourceFile) << "\"\n";
+            }
             if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
                 globalDecls << "    " << className << "(";
                 for (size_t i = 0; i < m->paramList.size(); ++i) {
@@ -1465,6 +1482,9 @@ public:
                 globalDecls << "typename " << f->typeParams[i];
             }
             globalDecls << ">\n";
+        }
+        if (f->line > 0 && !currentSourceFile.empty()) {
+            globalDecls << "#line " << f->line << " \"" << escapeString(currentSourceFile) << "\"\n";
         }
         globalDecls << "inline " << returnType << " " << fnName << "(" << paramDecl << ") {\n";
         indentLevel = 1;
@@ -1752,8 +1772,8 @@ public:
 } // namespace
 
 std::string NativeCompiler::generateCpp(const std::vector<std::unique_ptr<Stmt>> &program,
-                                       const std::string &) {
-    CodeGenerator generator;
+                                       const std::string &sourceName) {
+    CodeGenerator generator(sourceName);
     generator.generateProgram(program);
     return generator.buildSource();
 }
@@ -1765,7 +1785,8 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
     CompileResult result;
 
     try {
-        std::string cppCode = generateCpp(program, sourceName);
+        std::string srcFile = !options.sourcePath.empty() ? options.sourcePath : (sourceName.find('.') != std::string::npos ? sourceName : sourceName + ".meme");
+        std::string cppCode = generateCpp(program, srcFile);
         result.generatedCppCode = cppCode;
 
         std::filesystem::path cppPath;
@@ -1798,16 +1819,19 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
 
         auto buildClangCmd = [&](bool withPch) {
             std::string c = "clang++ -std=c++20 ";
-            if (options.optimize) {
-                c += "-O3 ";
+            if (options.tsan) {
+                c += "-fsanitize=thread -g -O1 ";
             } else {
-                c += "-O0 ";
-            }
-            if (options.debug) {
-                c += "-g ";
+                if (options.debug) {
+                    c += "-g -O0 ";
+                } else if (options.optimize) {
+                    c += "-O3 ";
+                } else {
+                    c += "-O0 ";
+                }
             }
             c += "-I. ";
-            if (withPch) {
+            if (withPch && !options.tsan) {
                 c += "-include-pch \"" + pchPath.string() + "\" ";
             }
             c += "\"" + cppPath.string() + "\" ";
@@ -1909,7 +1933,12 @@ CompileResult NativeCompiler::compileFile(const std::string &sourcePath,
         std::filesystem::path p(sourcePath);
         std::string stem = p.stem().string();
 
-        return compile(program, options, stem);
+        CompileOptions opts = options;
+        if (opts.sourcePath.empty()) {
+            opts.sourcePath = sourcePath;
+        }
+
+        return compile(program, opts, stem);
     } catch (const std::exception &e) {
         result.success = false;
         result.errorMessage = e.what();

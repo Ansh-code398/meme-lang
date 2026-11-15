@@ -9873,6 +9873,13 @@ Value UserFunction::callSync(Interpreter &interpreter, const std::vector<Value> 
         ~DepthGuard() { i.decrementCallDepth(); }
     } guard(interpreter);
 
+    struct FrameGuard {
+        Interpreter &i;
+        FrameGuard(Interpreter &interp, const std::string &fn, const std::string &file, int line)
+            : i(interp) { i.pushFrame(fn, file, line); }
+        ~FrameGuard() { i.popFrame(); }
+    } frameGuard(interpreter, declaration->name, interpreter.getCurrentFilePath(), declaration->line);
+
     auto argSources = currentArgSources;
     currentArgSources.clear();
 
@@ -11695,6 +11702,8 @@ void Interpreter::execute(const Stmt *stmt)
     {
         currentLine = stmt->line;
     }
+
+    notifyStep(currentLine, stmt);
 
     try
     {

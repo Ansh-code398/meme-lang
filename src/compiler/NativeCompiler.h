@@ -9,10 +9,12 @@
 
 struct CompileOptions {
     std::string outputPath = "";
+    std::string sourcePath = "";
     bool runAfterCompile = false;
     std::vector<std::string> runArgs = {};
     bool optimize = true;          // -O3
     bool debug = false;            // -g
+    bool tsan = false;             // -fsanitize=thread
     bool keepCppSource = false;
     bool verbose = false;
     bool usePch = true;

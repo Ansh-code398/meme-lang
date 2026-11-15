@@ -98,6 +98,28 @@ public:
     void setCurrentFilePath(const std::string &path) { currentFilePath = path; }
     const std::string &getCurrentFilePath() const { return currentFilePath; }
 
+    struct StackFrame {
+        std::string functionName;
+        std::string filePath;
+        int line = 1;
+    };
+    std::vector<StackFrame> callStack;
+    using StepHook = std::function<void(Interpreter &interp, int line, const Stmt *stmt)>;
+    StepHook stepHook = nullptr;
+
+    void setStepHook(StepHook hook) { stepHook = hook; }
+    void notifyStep(int line, const Stmt *stmt) {
+        if (stepHook) stepHook(*this, line, stmt);
+    }
+    int getCurrentLine() const { return currentLine; }
+    const std::vector<StackFrame> &getCallStack() const { return callStack; }
+    void pushFrame(const std::string &fn, const std::string &file, int line) {
+        callStack.push_back({fn, file, line});
+    }
+    void popFrame() {
+        if (!callStack.empty()) callStack.pop_back();
+    }
+
     const std::string &getLastGpuCommandsJson() const { return lastGpuCommandsJson; }
     void setLastGpuCommandsJson(const std::string &json) { lastGpuCommandsJson = json; }
 

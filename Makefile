@@ -9,9 +9,9 @@ ifeq ($(UNAME_S),Darwin)
     MM_OBJS = $(MM_SRCS:.mm=.o)
 endif
 
-SRCS = src/main.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp src/lsp/LspServer.cpp
+SRCS = src/main.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp src/lsp/LspServer.cpp src/dap/DapServer.cpp
 OBJS = $(SRCS:.cpp=.o) $(MM_OBJS)
-HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h) $(wildcard src/compiler/*.h) $(wildcard src/lsp/*.h)
+HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h) $(wildcard src/compiler/*.h) $(wildcard src/lsp/*.h) $(wildcard src/dap/*.h)
 TARGET = meme
 
 all: $(TARGET)
