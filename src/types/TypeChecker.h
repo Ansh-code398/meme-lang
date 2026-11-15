@@ -54,6 +54,19 @@ private:
 public:
     TypeChecker();
 
+    bool collectingDiagnostics = false;
+    std::vector<Diagnostic> diagnostics;
+
+    void enableDiagnosticMode()
+    {
+        collectingDiagnostics = true;
+    }
+
+    const std::vector<Diagnostic> &getDiagnostics() const
+    {
+        return diagnostics;
+    }
+
     void check(const std::vector<std::unique_ptr<Stmt>> &statements);
 };
 

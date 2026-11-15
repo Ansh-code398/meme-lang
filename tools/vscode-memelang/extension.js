@@ -668,9 +668,38 @@ function activate(context) {
   }, '(', ',');
 
   context.subscriptions.push(completionProvider, hoverProvider, signatureProvider);
+
+  // Try launching native MEMElang LSP language server client
+  try {
+    const { LanguageClient } = require('vscode-languageclient/node');
+    const serverOptions = {
+      command: 'meme',
+      args: ['--lsp']
+    };
+    const clientOptions = {
+      documentSelector: [{ scheme: 'file', language: 'memelang' }]
+    };
+    client = new LanguageClient('memeLsp', 'MEMElang Language Server', serverOptions, clientOptions);
+    client.start();
+    context.subscriptions.push({
+      dispose: () => {
+        if (client) {
+          return client.stop();
+        }
+      }
+    });
+  } catch (err) {
+    // vscode-languageclient module not present; extension runs with standalone providers
+  }
 }
 
-function deactivate() {}
+let client = null;
+
+function deactivate() {
+  if (client) {
+    return client.stop();
+  }
+}
 
 module.exports = {
   activate,

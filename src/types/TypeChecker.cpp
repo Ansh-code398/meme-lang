@@ -232,7 +232,41 @@ void TypeChecker::check(const std::vector<std::unique_ptr<Stmt>> &statements)
 {
     for (const auto &stmt : statements)
     {
-        checkStmt(stmt.get(), globals);
+        if (collectingDiagnostics)
+        {
+            try
+            {
+                checkStmt(stmt.get(), globals);
+            }
+            catch (const std::exception &e)
+            {
+                Diagnostic diag;
+                diag.range = stmt ? stmt->range : SourceRange();
+                diag.message = e.what();
+                diag.severity = Diagnostic::Error;
+
+                std::string msg = e.what();
+                if (msg.rfind("Line ", 0) == 0)
+                {
+                    size_t colon = msg.find(':');
+                    if (colon != std::string::npos)
+                    {
+                        try
+                        {
+                            int l = std::stoi(msg.substr(5, colon - 5));
+                            diag.range.startLine = l;
+                            diag.range.endLine = l;
+                        }
+                        catch (...) {}
+                    }
+                }
+                diagnostics.push_back(diag);
+            }
+        }
+        else
+        {
+            checkStmt(stmt.get(), globals);
+        }
     }
 }
 

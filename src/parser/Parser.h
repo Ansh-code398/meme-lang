@@ -9,6 +9,29 @@
 #include "../lexer/Lexer.h"
 #include "../types/Type.h"
 
+struct SourceRange
+{
+    int startLine = 1;
+    int startCol = 1;
+    int endLine = 1;
+    int endCol = 1;
+
+    bool contains(int line, int col) const
+    {
+        if (line < startLine || line > endLine) return false;
+        if (line == startLine && col < startCol) return false;
+        if (line == endLine && col > endCol) return false;
+        return true;
+    }
+};
+
+struct Diagnostic
+{
+    SourceRange range;
+    std::string message;
+    enum Severity { Error = 1, Warning = 2, Information = 3, Hint = 4 } severity = Error;
+};
+
 // ==========================================
 // 1. Expression AST Hierarchy (Expr)
 // ==========================================
@@ -17,7 +40,12 @@ class Expr
 {
 public:
     int line = 0;
-    Expr(int line = 0) : line(line) {}
+    SourceRange range;
+    Expr(int line = 0) : line(line)
+    {
+        range.startLine = line;
+        range.endLine = line;
+    }
     virtual ~Expr() = default;
     virtual std::string toString() const = 0;
 };
@@ -549,7 +577,12 @@ class Stmt
 {
 public:
     int line = 0;
-    Stmt(int line = 0) : line(line) {}
+    SourceRange range;
+    Stmt(int line = 0) : line(line)
+    {
+        range.startLine = line;
+        range.endLine = line;
+    }
     virtual ~Stmt() = default;
     virtual std::string toString() const = 0;
 };
@@ -1462,6 +1495,44 @@ public:
 
     Parser(const std::vector<Token> &tokens) : tokens(tokens), current(0) {}
 
+    bool collectingDiagnostics = false;
+    std::vector<Diagnostic> diagnostics;
+
+    void enableDiagnosticMode()
+    {
+        collectingDiagnostics = true;
+    }
+
+    const std::vector<Diagnostic> &getDiagnostics() const
+    {
+        return diagnostics;
+    }
+
+    void synchronize()
+    {
+        if (peek().type == TokenType::END_OF_FILE) return;
+        current++;
+        while (peek().type != TokenType::END_OF_FILE)
+        {
+            if (current > 0 && tokens[current - 1].type == TokenType::SEMICOLON) return;
+            switch (peek().type)
+            {
+            case TokenType::SANCHA:
+            case TokenType::KAR:
+            case TokenType::LE:
+            case TokenType::JABTAK:
+            case TokenType::GHOOM:
+            case TokenType::DEKH:
+            case TokenType::WAPAS:
+            case TokenType::DIKHA:
+                return;
+            default:
+                break;
+            }
+            current++;
+        }
+    }
+
     bool isPotentialTagName(const Token &tok) const
     {
         if (tok.type == TokenType::END_OF_FILE || tok.type == TokenType::ERROR) return false;
@@ -1507,7 +1578,50 @@ public:
                 current++;
                 continue;
             }
-            statements.push_back(parseStatement());
+            if (collectingDiagnostics)
+            {
+                try
+                {
+                    auto stmt = parseStatement();
+                    if (stmt)
+                    {
+                        statements.push_back(std::move(stmt));
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    Diagnostic diag;
+                    const Token &tok = peek();
+                    diag.range.startLine = tok.line > 0 ? tok.line : 1;
+                    diag.range.startCol = tok.column > 0 ? tok.column : 1;
+                    diag.range.endLine = diag.range.startLine;
+                    diag.range.endCol = diag.range.startCol + static_cast<int>(tok.value.length());
+                    diag.message = e.what();
+                    diag.severity = Diagnostic::Error;
+
+                    std::string msg = e.what();
+                    if (msg.rfind("Line ", 0) == 0)
+                    {
+                        size_t colon = msg.find(':');
+                        if (colon != std::string::npos)
+                        {
+                            try
+                            {
+                                int l = std::stoi(msg.substr(5, colon - 5));
+                                diag.range.startLine = l;
+                                diag.range.endLine = l;
+                            }
+                            catch (...) {}
+                        }
+                    }
+                    diagnostics.push_back(diag);
+                    synchronize();
+                }
+            }
+            else
+            {
+                statements.push_back(parseStatement());
+            }
         }
 
         return statements;

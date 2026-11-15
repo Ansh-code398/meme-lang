@@ -28,6 +28,7 @@
 #include "ui/DevServerState.h"
 #include "ui/NativeDesktopWindow.h"
 #include "compiler/NativeCompiler.h"
+#include "lsp/LspServer.h"
 
 static void printBanner()
 {
@@ -52,6 +53,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " compile <file> [-o bin]   Ahead-Of-Time (AOT) compile to native machine binary\n";
     std::cout << "  " << prog << " --native <file> [args]    Compile and run immediately at 100% native CPU speed\n";
     std::cout << "  " << prog << " pakao <file> ...          Alias for compile (Cook/bake to native binary)\n";
+    std::cout << "  " << prog << " lsp | --lsp              Launch Language Server Protocol (LSP) daemon\n";
     std::cout << "  " << prog << " --parse-only <file>       Parse and typecheck file without executing\n";
     std::cout << "  " << prog << " [--env-file=<path>] ...   Load custom environment variables file before execution\n";
     std::cout << "  " << prog << " -h, --help                Show this help message\n";
@@ -2116,6 +2118,12 @@ int main(int argc, char *argv[])
         else if (arg1 == "pakao" || arg1 == "compile")
         {
             handleCompile(argc, argv);
+            return 0;
+        }
+        else if (arg1 == "lsp" || arg1 == "--lsp")
+        {
+            memelang::lsp::LspServer server;
+            server.run();
             return 0;
         }
         else if (arg1 == "--native")
