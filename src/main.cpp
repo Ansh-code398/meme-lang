@@ -1627,6 +1627,7 @@ static void handleCompile(int argc, char *argv[])
     std::string outputPath = "";
     bool keepCpp = false;
     bool verbose = false;
+    bool usePch = true;
 
     for (int i = 3; i < argc; ++i)
     {
@@ -1646,6 +1647,10 @@ static void handleCompile(int argc, char *argv[])
         else if (a == "-v" || a == "--verbose")
         {
             verbose = true;
+        }
+        else if (a == "--no-pch")
+        {
+            usePch = false;
         }
     }
 
@@ -1689,6 +1694,7 @@ static void handleCompile(int argc, char *argv[])
     options.optimize = true;
     options.keepCppSource = keepCpp;
     options.verbose = verbose;
+    options.usePch = usePch;
 
     std::cout << formatRichText("[asmani bold]⚡ Compiling " + file + " to native binary (" + outputPath + ")...[/]\n");
     CompileResult res = NativeCompiler::compileFile(file, options);

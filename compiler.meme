@@ -1682,6 +1682,7 @@ kaam print_usage() {
     dikha "  --keep-cpp    Preserve intermediate generated .cpp file";
     dikha "  -c            Compile to C++ only, do not invoke clang++";
     dikha "  -v, --verbose Enable verbose build output";
+    dikha "  --no-pch      Disable precompiled headers (PCH) acceleration";
     dikha "  -h, --help    Show this help message";
 }
 
@@ -1696,6 +1697,7 @@ kaam run_compiler() {
     pakad keep_cpp = false;
     pakad emit_cpp_only = false;
     pakad verbose = false;
+    pakad no_pch = false;
 
     pakad i = 1;
     jabtak (i < sys.args.length()) {
@@ -1710,6 +1712,8 @@ kaam run_compiler() {
             keep_cpp = true;
         } warna agar (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } warna agar (arg == "--no-pch") {
+            no_pch = true;
         } warna agar (arg == "-h" || arg == "--help") {
             print_usage();
             sys.exit(0);
@@ -1773,11 +1777,43 @@ kaam run_compiler() {
         file.remove(output_binary);
     }
 
-    // Shellout to host clang++
-    pakad clang_cmd = "clang++ -std=c++20 -O3 -I. -I src/compiler \"" + cpp_path + "\" -o \"" + output_binary + "\" 2>&1";
+    // Shellout to host clang++ with PCH acceleration
+    pakad home_dir = env.get("HOME", "");
+    pakad pch_dir = "";
+    agar (home_dir != "") {
+        pch_dir = home_dir + "/.meme/pch";
+    }
+    agar (pch_dir == "") {
+        pch_dir = "/tmp/meme_pch";
+    }
+
+    pakad pch_path = pch_dir + "/MemeRuntime_O3.h.pch";
+
+    agar (!no_pch) {
+        agar (!file.exists(pch_path) && file.exists("src/compiler/MemeRuntime.h")) {
+            sys.exec("mkdir -p \"" + pch_dir + "\"");
+            pakad build_pch_cmd = "clang++ -std=c++20 -O3 -I. -x c++-header src/compiler/MemeRuntime.h -o \"" + pch_path + "\" 2>&1";
+            sys.exec(build_pch_cmd);
+        }
+    }
+
+    pakad use_pch = (!no_pch) && file.exists(pch_path);
+    pakad pch_flag = "";
+    agar (use_pch) {
+        pch_flag = "-include-pch \"" + pch_path + "\" ";
+    }
+
+    pakad clang_cmd = "clang++ -std=c++20 -O3 -I. -I src/compiler " + pch_flag + "\"" + cpp_path + "\" -o \"" + output_binary + "\" 2>&1";
     agar (verbose) { dikha "Executing: " + clang_cmd; }
 
     pakad build_output = sys.exec(clang_cmd);
+
+    agar (!file.exists(output_binary) && use_pch) {
+        agar (verbose) { dikha "PCH compilation failed, retrying directly..."; }
+        sys.exec("rm -f \"" + pch_path + "\"");
+        pakad fallback_cmd = "clang++ -std=c++20 -O3 -I. -I src/compiler \"" + cpp_path + "\" -o \"" + output_binary + "\" 2>&1";
+        build_output = sys.exec(fallback_cmd);
+    }
 
     agar (!file.exists(output_binary)) {
         dikha "❌ Clang++ Native Compilation Failed:\n" + build_output;

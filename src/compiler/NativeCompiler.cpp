@@ -10,6 +10,84 @@
 
 namespace {
 
+std::filesystem::path getPchDirectory() {
+    std::filesystem::path home = "";
+    if (const char *h = std::getenv("HOME")) {
+        home = h;
+    } else {
+        home = std::filesystem::temp_directory_path();
+    }
+    std::filesystem::path dir = home / ".meme" / "pch";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        dir = std::filesystem::temp_directory_path() / "meme_pch";
+        std::filesystem::create_directories(dir, ec);
+    }
+    return dir;
+}
+
+std::filesystem::path getRuntimeHeaderPath() {
+    std::vector<std::filesystem::path> candidates;
+    candidates.push_back(std::filesystem::current_path() / "src" / "compiler" / "MemeRuntime.h");
+    candidates.push_back(std::filesystem::current_path() / "MemeRuntime.h");
+
+    if (const char *rt = std::getenv("MEME_RUNTIME_DIR")) {
+        candidates.push_back(std::filesystem::path(rt) / "MemeRuntime.h");
+        candidates.push_back(std::filesystem::path(rt) / "src" / "compiler" / "MemeRuntime.h");
+    }
+    if (const char *mh = std::getenv("MEME_HOME")) {
+        candidates.push_back(std::filesystem::path(mh) / "src" / "compiler" / "MemeRuntime.h");
+    }
+
+    candidates.push_back("/usr/local/include/meme/MemeRuntime.h");
+    candidates.push_back("/usr/include/meme/MemeRuntime.h");
+
+    for (const auto &p : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(p, ec)) {
+            return std::filesystem::canonical(p, ec);
+        }
+    }
+    return "";
+}
+
+bool ensurePchReady(const CompileOptions &options, std::filesystem::path &outPchPath) {
+    if (!options.usePch) return false;
+
+    auto headerPath = getRuntimeHeaderPath();
+    if (headerPath.empty()) return false;
+
+    std::string optSuffix = options.optimize ? "_O3" : "_O0";
+    outPchPath = getPchDirectory() / ("MemeRuntime" + optSuffix + ".h.pch");
+
+    std::error_code ec;
+    bool needsBuild = !std::filesystem::exists(outPchPath, ec);
+    if (!needsBuild) {
+        auto headerMtime = std::filesystem::last_write_time(headerPath, ec);
+        auto pchMtime = std::filesystem::last_write_time(outPchPath, ec);
+        if (headerMtime > pchMtime) {
+            needsBuild = true;
+        }
+    }
+
+    if (needsBuild) {
+        std::string optFlag = options.optimize ? "-O3" : "-O0";
+        std::string pchCmd = "clang++ -std=c++20 " + optFlag + " -I. -x c++-header \"" +
+                             headerPath.string() + "\" -o \"" + outPchPath.string() + "\" 2>&1";
+        FILE *pipe = popen(pchCmd.c_str(), "r");
+        if (!pipe) return false;
+        char buf[256];
+        while (fgets(buf, sizeof(buf), pipe) != nullptr) {}
+        int status = pclose(pipe);
+        if (status != 0) {
+            std::filesystem::remove(outPchPath, ec);
+            return false;
+        }
+    }
+    return std::filesystem::exists(outPchPath, ec);
+}
+
 class CodeGenerator {
 private:
     std::ostringstream globalDecls;
@@ -1468,17 +1546,30 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
         }
         result.binaryPath = binPath.string();
 
-        // Build clang++ command
-        std::string cmd = "clang++ -std=c++20 ";
-        if (options.optimize) {
-            cmd += "-O3 ";
-        }
-        if (options.debug) {
-            cmd += "-g ";
-        }
-        cmd += "-I. ";
-        cmd += "\"" + cppPath.string() + "\" ";
-        cmd += "-o \"" + binPath.string() + "\" 2>&1";
+        // Build clang++ command with PCH acceleration
+        std::filesystem::path pchPath;
+        bool usePch = ensurePchReady(options, pchPath);
+
+        auto buildClangCmd = [&](bool withPch) {
+            std::string c = "clang++ -std=c++20 ";
+            if (options.optimize) {
+                c += "-O3 ";
+            } else {
+                c += "-O0 ";
+            }
+            if (options.debug) {
+                c += "-g ";
+            }
+            c += "-I. ";
+            if (withPch) {
+                c += "-include-pch \"" + pchPath.string() + "\" ";
+            }
+            c += "\"" + cppPath.string() + "\" ";
+            c += "-o \"" + binPath.string() + "\" 2>&1";
+            return c;
+        };
+
+        std::string cmd = buildClangCmd(usePch);
 
         if (options.verbose) {
             std::cout << "Executing: " << cmd << std::endl;
@@ -1496,6 +1587,28 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
             compilerOutput += buffer;
         }
         int status = pclose(pipe);
+
+        // Fallback retry if compilation with PCH failed
+        if (status != 0 && usePch) {
+            if (options.verbose) {
+                std::cout << "PCH compilation failed, invalidating PCH and retrying directly..." << std::endl;
+            }
+            std::error_code ec;
+            std::filesystem::remove(pchPath, ec);
+
+            std::string fallbackCmd = buildClangCmd(false);
+            if (options.verbose) {
+                std::cout << "Executing fallback: " << fallbackCmd << std::endl;
+            }
+            FILE *fallbackPipe = popen(fallbackCmd.c_str(), "r");
+            if (fallbackPipe) {
+                compilerOutput.clear();
+                while (fgets(buffer, sizeof(buffer), fallbackPipe) != nullptr) {
+                    compilerOutput += buffer;
+                }
+                status = pclose(fallbackPipe);
+            }
+        }
 
         if (status != 0) {
             result.success = false;

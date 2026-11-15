@@ -15,6 +15,7 @@ struct CompileOptions {
     bool debug = false;            // -g
     bool keepCppSource = false;
     bool verbose = false;
+    bool usePch = true;
 };
 
 struct CompileResult {
