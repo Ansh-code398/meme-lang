@@ -1,0 +1,161 @@
+// =============================================================================
+// MEMElang AI Benchmark: Transformer Scaled Dot-Product Attention
+// Formula: Attention(Q, K, V) = softmax((Q * K^T) / sqrt(d_k)) * V
+// Matrix Dimensions: Sequence N = 64, Head Dimension D = 64
+// =============================================================================
+
+bula "samay";
+bula "math";
+
+jugaad run_attention_benchmark() {
+    dikha "==========================================================";
+    dikha "🤖 MEMElang Transformer Attention Benchmark (N=64, D=64)";
+    dikha "==========================================================";
+
+    pakad N = 64;
+    pakad D = 64;
+    pakad scale = 1.0 / math.sqrt(D * 1.0);
+    pakad num_passes = 100;
+
+    // Initialize deterministic Q, K, V matrices
+    pakad Q = [];
+    pakad K = [];
+    pakad V = [];
+
+    pakad seed = 987654321;
+    pakad r = 0;
+    jabtak (r < N) {
+        pakad q_row = [];
+        pakad k_row = [];
+        pakad v_row = [];
+        pakad c = 0;
+        jabtak (c < D) {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            q_row.push(((seed % 2000) - 1000) / 1000.0);
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            k_row.push(((seed % 2000) - 1000) / 1000.0);
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            v_row.push(((seed % 2000) - 1000) / 1000.0);
+            c = c + 1;
+        }
+        Q.push(q_row);
+        K.push(k_row);
+        V.push(v_row);
+        r = r + 1;
+    }
+
+    pakad start_time = samay.ab();
+
+    // Allocate score matrix S (N x N) and Output matrix Out (N x D)
+    pakad S = [];
+    pakad Out = [];
+    r = 0;
+    jabtak (r < N) {
+        pakad s_row = [];
+        pakad out_row = [];
+        pakad c = 0;
+        jabtak (c < N) {
+            s_row.push(0.0);
+            c = c + 1;
+        }
+        c = 0;
+        jabtak (c < D) {
+            out_row.push(0.0);
+            c = c + 1;
+        }
+        S.push(s_row);
+        Out.push(out_row);
+        r = r + 1;
+    }
+
+    pakad pass = 0;
+    jabtak (pass < num_passes) {
+        // Step 1: Scaled Dot-Product: S = (Q * K^T) * scale
+        pakad i = 0;
+        jabtak (i < N) {
+            pakad j = 0;
+            jabtak (j < N) {
+                pakad dot = 0.0;
+                pakad k = 0;
+                jabtak (k < D) {
+                    dot = dot + (Q[i][k] * K[j][k]);
+                    k = k + 1;
+                }
+                S[i][j] = dot * scale;
+                j = j + 1;
+            }
+
+            // Step 2: Row-wise Softmax on S[i]
+            // Numerical stability: subtract max
+            pakad max_val = S[i][0];
+            pakad j_max = 1;
+            jabtak (j_max < N) {
+                agar (S[i][j_max] > max_val) {
+                    max_val = S[i][j_max];
+                }
+                j_max = j_max + 1;
+            }
+
+            pakad sum_exp = 0.0;
+            pakad j_exp = 0;
+            jabtak (j_exp < N) {
+                pakad exp_v = math.exp(S[i][j_exp] - max_val);
+                S[i][j_exp] = exp_v;
+                sum_exp = sum_exp + exp_v;
+                j_exp = j_exp + 1;
+            }
+
+            pakad j_norm = 0;
+            jabtak (j_norm < N) {
+                S[i][j_norm] = S[i][j_norm] / sum_exp;
+                j_norm = j_norm + 1;
+            }
+
+            // Step 3: Context output Out[i] = S[i] * V
+            pakad d = 0;
+            jabtak (d < D) {
+                pakad out_val = 0.0;
+                pakad v_idx = 0;
+                jabtak (v_idx < N) {
+                    out_val = out_val + (S[i][v_idx] * V[v_idx][d]);
+                    v_idx = v_idx + 1;
+                }
+                Out[i][d] = out_val;
+                d = d + 1;
+            }
+
+            i = i + 1;
+        }
+
+        pass = pass + 1;
+    }
+
+    pakad end_time = samay.ab();
+    pakad elapsed = end_time - start_time;
+
+    // Compute checksum to verify calculation
+    pakad checksum = 0.0;
+    r = 0;
+    jabtak (r < N) {
+        pakad c = 0;
+        jabtak (c < D) {
+            checksum = checksum + Out[r][c];
+            c = c + 1;
+        }
+        r = r + 1;
+    }
+
+    pakad total_flops = num_passes * (2.0 * N * N * D + N * N * 3.0 + 2.0 * N * N * D);
+    pakad gflops = (total_flops / elapsed) / 1000000000.0;
+    pakad passes_per_sec = (num_passes * 1.0) / elapsed;
+
+    dikha "Attention Passes:", num_passes;
+    dikha "Sequence Length N:", N;
+    dikha "Head Dimension D:", D;
+    dikha "Output Checksum:", checksum;
+    dikha "Elapsed Time (seconds):", elapsed;
+    dikha "Throughput (passes/sec):", passes_per_sec;
+    dikha "Performance (GFLOPs):", gflops;
+}
+
+run_attention_benchmark();

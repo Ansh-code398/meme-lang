@@ -700,7 +700,23 @@ inline Value createGenericPythonModule(const std::string &pkg)
 
     auto evalFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
         std::string code = args.empty() ? "" : args[0].deref().toString();
-        return Value("[eval: " + code + "]");
+        if (code.empty()) return Value("");
+        std::string safeCode;
+        for (char c : code) {
+            if (c == '\'') safeCode += "'\\''";
+            else safeCode += c;
+        }
+        std::string cmd = "python3 -c '" + safeCode + "' 2>&1";
+        FILE *p = popen(cmd.c_str(), "r");
+        if (!p) return Value("[py: execution failed]");
+        char buf[1024];
+        std::string out;
+        while (fgets(buf, sizeof(buf), p)) {
+            out += buf;
+        }
+        pclose(p);
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return Value(out);
     };
     m->set("eval", Value(std::make_shared<NativeMethodCallable>("eval", 1, evalFn)));
 
@@ -951,18 +967,78 @@ inline Value createRustRayonModule()
     return Value(m);
 }
 
+struct FfiLib {
+    void *handle = nullptr;
+    ~FfiLib() {
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        if (handle) dlclose(handle);
+#endif
+    }
+};
+
 inline Value createFfiBridge(const std::string &pathOrLib)
 {
     auto m = std::make_shared<MemeMap>();
     m->isModule = true;
+    auto lib = std::make_shared<FfiLib>();
 
-    auto loadFn = [pathOrLib](Interpreter &, const std::vector<Value> &) -> Value {
-        return Value(true);
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+    if (!pathOrLib.empty()) {
+        lib->handle = dlopen(pathOrLib.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    }
+#endif
+
+    auto loadFn = [lib](Interpreter &, const std::vector<Value> &args) -> Value {
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        if (!args.empty()) {
+            std::string p = args[0].deref().toString();
+            if (lib->handle) dlclose(lib->handle);
+            lib->handle = dlopen(p.c_str(), RTLD_NOW | RTLD_GLOBAL);
+            return Value(lib->handle != nullptr);
+        }
+        return Value(lib->handle != nullptr);
+#else
+        return Value(false);
+#endif
     };
     m->set("load", Value(std::make_shared<NativeMethodCallable>("load", 0, 1, loadFn)));
 
-    auto callFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+    auto callFn = [lib](Interpreter &, const std::vector<Value> &args) -> Value {
         std::string sym = args.empty() ? "" : args[0].deref().toString();
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        if (lib->handle) {
+            void *symPtr = dlsym(lib->handle, sym.c_str());
+            if (symPtr) {
+                // If 1 numeric arg: double (*)(double)
+                if (args.size() == 2 && args[1].deref().isNumeric()) {
+                    double (*fn)(double) = (double (*)(double))symPtr;
+                    return Value(fn(args[1].deref().asDouble()));
+                }
+                // If 2 numeric args: double (*)(double, double)
+                if (args.size() == 3 && args[1].deref().isNumeric() && args[2].deref().isNumeric()) {
+                    double (*fn)(double, double) = (double (*)(double, double))symPtr;
+                    return Value(fn(args[1].deref().asDouble(), args[2].deref().asDouble()));
+                }
+                // If 2 List args: double (*)(const double*, const double*, size_t)
+                if (args.size() == 3 && args[1].deref().isList() && args[2].deref().isList()) {
+                    auto l1 = args[1].deref().getList();
+                    auto l2 = args[2].deref().getList();
+                    std::vector<double> v1(l1->elements.size());
+                    std::vector<double> v2(l2->elements.size());
+                    for (size_t i = 0; i < l1->elements.size(); ++i) v1[i] = l1->elements[i].deref().asDouble();
+                    for (size_t i = 0; i < l2->elements.size(); ++i) v2[i] = l2->elements[i].deref().asDouble();
+                    size_t sz = std::min(v1.size(), v2.size());
+                    double (*fn)(const double*, const double*, size_t) = (double (*)(const double*, const double*, size_t))symPtr;
+                    return Value(fn(v1.data(), v2.data(), sz));
+                }
+                // If 0 args: double (*)()
+                if (args.size() == 1) {
+                    double (*fn)() = (double (*)())symPtr;
+                    return Value(fn());
+                }
+            }
+        }
+#endif
         return Value("[ffi: " + sym + " called]");
     };
     m->set("call", Value(std::make_shared<NativeMethodCallable>("call", 1, 10, callFn)));

@@ -1,0 +1,168 @@
+// =============================================================================
+// MEMElang AI Benchmark: Multi-Layer Perceptron (MLP) Neural Network
+// Architecture: 2 Inputs -> 4 Hidden Neurons (Tanh) -> 1 Output (Sigmoid)
+// Dataset: Non-linear XOR Problem (200 training samples)
+// =============================================================================
+
+bula "samay";
+bula "math";
+
+jugaad sigmoid(x) {
+    ye_le 1.0 / (1.0 + math.exp(0.0 - x));
+}
+
+jugaad pseudo_rand(seed) {
+    // Linear congruential generator (LCG)
+    ye_le ((seed * 1103515245 + 12345) % 2147483648) / 2147483648.0;
+}
+
+jugaad train_mlp() {
+    dikha "==========================================================";
+    dikha "🧠 MEMElang Neural Network (2 -> 4 -> 1) Training Benchmark";
+    dikha "==========================================================";
+
+    // Generate 200 XOR training samples with deterministic pseudo-random jitter
+    pakad X = [];
+    pakad Y = [];
+    pakad seed = 1234567;
+    pakad s_idx = 0;
+
+    jabtak (s_idx < 200) {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        pakad r1 = (seed % 1000) / 1000.0;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        pakad r2 = (seed % 1000) / 1000.0;
+
+        pakad x1 = (s_idx % 2 == 0) ? 0.0 : 1.0;
+        pakad x2 = ((s_idx / 2) % 2 == 0) ? 0.0 : 1.0;
+        pakad y = (x1 != x2) ? 1.0 : 0.0;
+
+        // Add small jitter
+        x1 = x1 + (r1 * 0.1 - 0.05);
+        x2 = x2 + (r2 * 0.1 - 0.05);
+
+        X.push([x1, x2]);
+        Y.push(y);
+        s_idx = s_idx + 1;
+    }
+
+    // Initialize weights and biases
+    // W1: 2 x 4
+    pakad W1 = [
+        [0.15, 0.25, 0.35, 0.45],
+        [0.55, 0.65, 0.75, 0.85]
+    ];
+    pakad b1 = [0.1, 0.1, 0.1, 0.1];
+
+    // W2: 4 x 1
+    pakad W2 = [0.2, 0.4, 0.6, 0.8];
+    pakad b2 = 0.5;
+
+    pakad learning_rate = 0.25;
+    pakad epochs = 1000;
+    pakad num_samples = 200;
+
+    pakad start_time = samay.ab();
+
+    pakad ep = 0;
+    pakad last_loss = 0.0;
+
+    jabtak (ep < epochs) {
+        pakad total_loss = 0.0;
+        pakad i = 0;
+
+        jabtak (i < num_samples) {
+            pakad x = X[i];
+            pakad y_true = Y[i];
+            pakad x1 = x[0];
+            pakad x2 = x[1];
+
+            // 1. Forward Pass
+            // Hidden layer with Tanh
+            pakad h0 = math.tanh(x1 * W1[0][0] + x2 * W1[1][0] + b1[0]);
+            pakad h1 = math.tanh(x1 * W1[0][1] + x2 * W1[1][1] + b1[1]);
+            pakad h2 = math.tanh(x1 * W1[0][2] + x2 * W1[1][2] + b1[2]);
+            pakad h3 = math.tanh(x1 * W1[0][3] + x2 * W1[1][3] + b1[3]);
+
+            // Output neuron with Sigmoid
+            pakad z2 = h0 * W2[0] + h1 * W2[1] + h2 * W2[2] + h3 * W2[3] + b2;
+            pakad y_pred = sigmoid(z2);
+
+            // Loss: MSE
+            pakad err = y_pred - y_true;
+            total_loss = total_loss + (err * err);
+
+            // 2. Backward Pass (Backpropagation)
+            // dLoss/dz2 = (y_pred - y_true) * sigmoid_derivative
+            pakad d_out = err * y_pred * (1.0 - y_pred);
+
+            // Gradients for Hidden Layer
+            pakad d_h0 = d_out * W2[0] * (1.0 - h0 * h0);
+            pakad d_h1 = d_out * W2[1] * (1.0 - h1 * h1);
+            pakad d_h2 = d_out * W2[2] * (1.0 - h2 * h2);
+            pakad d_h3 = d_out * W2[3] * (1.0 - h3 * h3);
+
+            // Update Output Weights & Bias
+            W2[0] = W2[0] - learning_rate * d_out * h0;
+            W2[1] = W2[1] - learning_rate * d_out * h1;
+            W2[2] = W2[2] - learning_rate * d_out * h2;
+            W2[3] = W2[3] - learning_rate * d_out * h3;
+            b2 = b2 - learning_rate * d_out;
+
+            // Update Hidden Weights & Biases
+            W1[0][0] = W1[0][0] - learning_rate * d_h0 * x1;
+            W1[1][0] = W1[1][0] - learning_rate * d_h0 * x2;
+            b1[0] = b1[0] - learning_rate * d_h0;
+
+            W1[0][1] = W1[0][1] - learning_rate * d_h1 * x1;
+            W1[1][1] = W1[1][1] - learning_rate * d_h1 * x2;
+            b1[1] = b1[1] - learning_rate * d_h1;
+
+            W1[0][2] = W1[0][2] - learning_rate * d_h2 * x1;
+            W1[1][2] = W1[1][2] - learning_rate * d_h2 * x2;
+            b1[2] = b1[2] - learning_rate * d_h2;
+
+            W1[0][3] = W1[0][3] - learning_rate * d_h3 * x1;
+            W1[1][3] = W1[1][3] - learning_rate * d_h3 * x2;
+            b1[3] = b1[3] - learning_rate * d_h3;
+
+            i = i + 1;
+        }
+
+        last_loss = total_loss / (num_samples * 1.0);
+        ep = ep + 1;
+    }
+
+    pakad end_time = samay.ab();
+    pakad elapsed = end_time - start_time;
+
+    // Evaluate accuracy
+    pakad correct = 0;
+    pakad eval_i = 0;
+    jabtak (eval_i < num_samples) {
+        pakad x = X[eval_i];
+        pakad h0 = math.tanh(x[0] * W1[0][0] + x[1] * W1[1][0] + b1[0]);
+        pakad h1 = math.tanh(x[0] * W1[0][1] + x[1] * W1[1][1] + b1[1]);
+        pakad h2 = math.tanh(x[0] * W1[0][2] + x[1] * W1[1][2] + b1[2]);
+        pakad h3 = math.tanh(x[0] * W1[0][3] + x[1] * W1[1][3] + b1[3]);
+        pakad y_pred = sigmoid(h0 * W2[0] + h1 * W2[1] + h2 * W2[2] + h3 * W2[3] + b2);
+        pakad label = (y_pred >= 0.5) ? 1.0 : 0.0;
+        agar (label == Y[eval_i]) {
+            correct = correct + 1;
+        }
+        eval_i = eval_i + 1;
+    }
+
+    pakad accuracy = (correct * 100.0) / (num_samples * 1.0);
+    pakad throughput = (epochs * num_samples * 1.0) / elapsed;
+
+    dikha "Training Epochs:", epochs;
+    dikha "Total Samples:", num_samples;
+    dikha "Total Backprop Steps:", (epochs * num_samples);
+    dikha "Final Mean Squared Loss:", last_loss;
+    dikha "Classification Accuracy (%):", accuracy;
+    dikha "Elapsed Time (seconds):", elapsed;
+    dikha "Throughput (samples/sec):", throughput;
+}
+
+train_mlp();

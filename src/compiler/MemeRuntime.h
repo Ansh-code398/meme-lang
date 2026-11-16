@@ -2542,9 +2542,18 @@ struct MathModule {
 
     template <typename T> double sqrt(T x) { return std::sqrt(static_cast<double>(x)); }
     template <typename T, typename U> double pow(T b, U exp) { return std::pow(static_cast<double>(b), static_cast<double>(exp)); }
+    template <typename T> double exp(T x) { return std::exp(static_cast<double>(x)); }
+    template <typename T> double log(T x) { return std::log(static_cast<double>(x)); }
+    template <typename T, typename U> double log(T x, U base) { return std::log(static_cast<double>(x)) / std::log(static_cast<double>(base)); }
+    template <typename T> double ln(T x) { return std::log(static_cast<double>(x)); }
+    template <typename T> double log2(T x) { return std::log2(static_cast<double>(x)); }
+    template <typename T> double log10(T x) { return std::log10(static_cast<double>(x)); }
     template <typename T> double sin(T x) { return std::sin(static_cast<double>(x)); }
     template <typename T> double cos(T x) { return std::cos(static_cast<double>(x)); }
     template <typename T> double tan(T x) { return std::tan(static_cast<double>(x)); }
+    template <typename T> double sinh(T x) { return std::sinh(static_cast<double>(x)); }
+    template <typename T> double cosh(T x) { return std::cosh(static_cast<double>(x)); }
+    template <typename T> double tanh(T x) { return std::tanh(static_cast<double>(x)); }
     template <typename T> auto abs(T x) { return std::abs(x); }
     template <typename T> double floor(T x) { return std::floor(static_cast<double>(x)); }
     template <typename T> double ceil(T x) { return std::ceil(static_cast<double>(x)); }

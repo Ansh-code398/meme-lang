@@ -1,0 +1,110 @@
+// =============================================================================
+// MEMElang AI Benchmark: Vector Embeddings & Semantic Search (Cosine Similarity)
+// Dataset: 5,000 Document Vectors (Dim = 64)
+// Workload: 20 Query Vector Nearest-Neighbor Searches (100,000 Vector Dot Products)
+// =============================================================================
+
+bula "samay";
+bula "math";
+
+jugaad cosine_similarity(v1, v2, D) {
+    pakad dot = 0.0;
+    pakad norm1 = 0.0;
+    pakad norm2 = 0.0;
+    pakad i = 0;
+    jabtak (i < D) {
+        dot = dot + (v1[i] * v2[i]);
+        norm1 = norm1 + (v1[i] * v1[i]);
+        norm2 = norm2 + (v2[i] * v2[i]);
+        i = i + 1;
+    }
+    pakad denom = math.sqrt(norm1) * math.sqrt(norm2);
+    agar (denom == 0.0) {
+        ye_le 0.0;
+    }
+    ye_le dot / denom;
+}
+
+jugaad run_vector_search() {
+    dikha "==========================================================";
+    dikha "🔍 MEMElang Vector Search & Embeddings Benchmark";
+    dikha "==========================================================";
+
+    pakad num_docs = 5000;
+    pakad D = 64;
+    pakad num_queries = 20;
+
+    // Generate database of document embeddings
+    pakad docs = [];
+    pakad seed = 543216789;
+    pakad d = 0;
+    jabtak (d < num_docs) {
+        pakad vec = [];
+        pakad i = 0;
+        jabtak (i < D) {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            vec.push(((seed % 2000) - 1000) / 1000.0);
+            i = i + 1;
+        }
+        docs.push(vec);
+        d = d + 1;
+    }
+
+    // Generate query vectors
+    pakad queries = [];
+    pakad q = 0;
+    jabtak (q < num_queries) {
+        pakad q_vec = [];
+        pakad i = 0;
+        jabtak (i < D) {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            q_vec.push(((seed % 2000) - 1000) / 1000.0);
+            i = i + 1;
+        }
+        queries.push(q_vec);
+        q = q + 1;
+    }
+
+    pakad start_time = samay.ab();
+
+    pakad q_idx = 0;
+    pakad best_match_idx = 0;
+    pakad best_score = 0.0 - 1.0;
+
+    jabtak (q_idx < num_queries) {
+        pakad query = queries[q_idx];
+        best_score = 0.0 - 1.0;
+        best_match_idx = 0;
+
+        pakad doc_idx = 0;
+        jabtak (doc_idx < num_docs) {
+            pakad sim = cosine_similarity(query, docs[doc_idx], D);
+            agar (sim > best_score) {
+                best_score = sim;
+                best_match_idx = doc_idx;
+            }
+            doc_idx = doc_idx + 1;
+        }
+
+        q_idx = q_idx + 1;
+    }
+
+    pakad end_time = samay.ab();
+    pakad elapsed = end_time - start_time;
+
+    pakad total_evals = num_queries * num_docs;
+    pakad qps = (num_queries * 1.0) / elapsed;
+    pakad evals_per_sec = (total_evals * 1.0) / elapsed;
+
+    dikha "Database Size (vectors):", num_docs;
+    dikha "Vector Dimension D:", D;
+    dikha "Queries Executed:", num_queries;
+    dikha "Total Cosine Evaluations:", total_evals;
+    dikha "Best Score in Last Query:", best_score;
+    dikha "Best Doc Index:", best_match_idx;
+    dikha "Elapsed Time (seconds):", elapsed;
+    dikha "Query Throughput (QPS):", qps;
+    dikha "Vector Throughput (evals/sec):", evals_per_sec;
+}
+
+run_vector_search();

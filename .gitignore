@@ -11,6 +11,9 @@ docs/node_modules/
 docs/dist/
 .tijori.json
 benchmarks/data/
+benchmarks/ai/*_bin
+benchmarks/ai/*_bin.cpp
+benchmarks/ai/*.dylib
 .agents/
 __pycache__/
 meme_stage*

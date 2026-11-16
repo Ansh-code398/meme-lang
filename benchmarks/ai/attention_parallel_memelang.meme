@@ -1,0 +1,160 @@
+// =============================================================================
+// MEMElang AI Benchmark: Parallel Transformer Attention via dhaga (Multithreading)
+// =============================================================================
+
+bula "samay";
+bula "math";
+bula "dhaga";
+
+jugaad compute_attention_chunk(Q, K, V, S, Out, start_row, end_row, scale, N, D) {
+    pakad i = start_row;
+    jabtak (i < end_row) {
+        // Step 1: Q * K^T
+        pakad j = 0;
+        jabtak (j < N) {
+            pakad dot = 0.0;
+            pakad k = 0;
+            jabtak (k < D) {
+                dot = dot + (Q[i][k] * K[j][k]);
+                k = k + 1;
+            }
+            S[i][j] = dot * scale;
+            j = j + 1;
+        }
+
+        // Step 2: Softmax
+        pakad max_val = S[i][0];
+        pakad j_max = 1;
+        jabtak (j_max < N) {
+            agar (S[i][j_max] > max_val) {
+                max_val = S[i][j_max];
+            }
+            j_max = j_max + 1;
+        }
+
+        pakad sum_exp = 0.0;
+        pakad j_exp = 0;
+        jabtak (j_exp < N) {
+            pakad exp_v = math.exp(S[i][j_exp] - max_val);
+            S[i][j_exp] = exp_v;
+            sum_exp = sum_exp + exp_v;
+            j_exp = j_exp + 1;
+        }
+
+        pakad j_norm = 0;
+        jabtak (j_norm < N) {
+            S[i][j_norm] = S[i][j_norm] / sum_exp;
+            j_norm = j_norm + 1;
+        }
+
+        // Step 3: S * V
+        pakad d = 0;
+        jabtak (d < D) {
+            pakad out_val = 0.0;
+            pakad v_idx = 0;
+            jabtak (v_idx < N) {
+                out_val = out_val + (S[i][v_idx] * V[v_idx][d]);
+                v_idx = v_idx + 1;
+            }
+            Out[i][d] = out_val;
+            d = d + 1;
+        }
+
+        i = i + 1;
+    }
+    ye_le 0;
+}
+
+jugaad run_parallel_attention() {
+    dikha "==========================================================";
+    dikha "⚡ MEMElang Multi-threaded Transformer Attention (dhaga)";
+    dikha "==========================================================";
+
+    pakad N = 64;
+    pakad D = 64;
+    pakad scale = 1.0 / math.sqrt(D * 1.0);
+    pakad num_passes = 100;
+    pakad num_workers = 4;
+    pakad chunk = N / num_workers; // 16 rows per worker
+
+    dikha "Available CPU Cores:", dhaga.cores();
+    dikha "Worker Threads:", num_workers;
+
+    // Initialize deterministic Q, K, V
+    pakad Q = [];
+    pakad K = [];
+    pakad V = [];
+    pakad seed = 987654321;
+    pakad r = 0;
+    jabtak (r < N) {
+        pakad q_row = [];
+        pakad k_row = [];
+        pakad v_row = [];
+        pakad c = 0;
+        jabtak (c < D) {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            q_row.push(((seed % 2000) - 1000) / 1000.0);
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            k_row.push(((seed % 2000) - 1000) / 1000.0);
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            v_row.push(((seed % 2000) - 1000) / 1000.0);
+            c = c + 1;
+        }
+        Q.push(q_row);
+        K.push(k_row);
+        V.push(v_row);
+        r = r + 1;
+    }
+
+    pakad S = [];
+    pakad Out = [];
+    r = 0;
+    jabtak (r < N) {
+        pakad s_row = [];
+        pakad out_row = [];
+        pakad c = 0;
+        jabtak (c < N) {
+            s_row.push(0.0);
+            c = c + 1;
+        }
+        c = 0;
+        jabtak (c < D) {
+            out_row.push(0.0);
+            c = c + 1;
+        }
+        S.push(s_row);
+        Out.push(out_row);
+        r = r + 1;
+    }
+
+    pakad start_time = samay.ab();
+
+    pakad pass = 0;
+    jabtak (pass < num_passes) {
+        // Spawn 4 parallel worker threads for 4 chunks
+        pakad t0 = dhaga.chala(compute_attention_chunk, Q, K, V, S, Out, 0, 16, scale, N, D);
+        pakad t1 = dhaga.chala(compute_attention_chunk, Q, K, V, S, Out, 16, 32, scale, N, D);
+        pakad t2 = dhaga.chala(compute_attention_chunk, Q, K, V, S, Out, 32, 48, scale, N, D);
+        pakad t3 = dhaga.chala(compute_attention_chunk, Q, K, V, S, Out, 48, 64, scale, N, D);
+
+        t0.rok();
+        t1.rok();
+        t2.rok();
+        t3.rok();
+
+        pass = pass + 1;
+    }
+
+    pakad end_time = samay.ab();
+    pakad elapsed = end_time - start_time;
+
+    pakad total_flops = num_passes * (2.0 * N * N * D + N * N * 3.0 + 2.0 * N * N * D);
+    pakad gflops = (total_flops / elapsed) / 1000000000.0;
+    pakad pps = (num_passes * 1.0) / elapsed;
+
+    dikha "Elapsed Time (seconds):", elapsed;
+    dikha "Throughput (passes/sec):", pps;
+    dikha "Performance (GFLOPs):", gflops;
+}
+
+run_parallel_attention();
