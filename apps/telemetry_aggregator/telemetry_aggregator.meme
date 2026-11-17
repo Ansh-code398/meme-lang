@@ -1,0 +1,189 @@
+// ==============================================================================
+// App 3: Rolling Window Telemetry Aggregator (MEMElang Dual-Engine Implementation)
+// ==============================================================================
+
+jugaad compute_adler32(buf, offset, length) {
+    pakad MOD = 65521;
+    pakad a = 1;
+    pakad b = 0;
+    pakad i = 0;
+    jabtak i < length {
+        pakad byte_val = buf[offset + i];
+        a = (a + byte_val) % MOD;
+        b = (b + a) % MOD;
+        i = i + 1;
+    }
+    ye_le bor(bshl(b, 16), a);
+}
+
+sancha TelemetryAggregator {
+    pakad capacity;
+    pakad metric_id;
+    pakad samples;
+    pakad head;
+    pakad count;
+    pakad total_samples;
+    pakad running_sum;
+
+    kaam shuru(cap_val, m_id) {
+        khud.capacity = cap_val;
+        khud.metric_id = m_id;
+        khud.samples = [];
+        pakad i = 0;
+        jabtak i < cap_val {
+            khud.samples.push(0.0);
+            i = i + 1;
+        }
+        khud.head = 0;
+        khud.count = 0;
+        khud.total_samples = 0;
+        khud.running_sum = 0.0;
+    }
+
+    kaam add_sample(val) {
+        dekh khud.count < khud.capacity {
+            khud.samples[khud.head] = val;
+            khud.running_sum = khud.running_sum + val;
+            khud.count = khud.count + 1;
+        } warna {
+            pakad evicted = khud.samples[khud.head];
+            khud.samples[khud.head] = val;
+            khud.running_sum = (khud.running_sum - evicted) + val;
+        }
+        khud.head = (khud.head + 1) % khud.capacity;
+        khud.total_samples = khud.total_samples + 1;
+    }
+
+    kaam get_stats() {
+        dekh khud.count == 0 {
+            ye_le [0, 0.0, 0.0, 0.0, khud.total_samples];
+        }
+        pakad w_min = khud.samples[0];
+        pakad w_max = khud.samples[0];
+        pakad idx = 1;
+        jabtak idx < khud.count {
+            pakad v = khud.samples[idx];
+            dekh v < w_min { w_min = v; }
+            dekh v > w_max { w_max = v; }
+            idx = idx + 1;
+        }
+        pakad w_avg = (khud.running_sum + 0.0) / khud.count;
+        ye_le [khud.count, w_min, w_max, w_avg, khud.total_samples];
+    }
+
+    kaam encode_frame(ts_sec, ts_msec) {
+        pakad stats = khud.get_stats();
+        pakad frame = bytes(56);
+        frame.write_u16_be(0, 21581); // 0x544D
+        frame.write_u8(2, 1);
+        frame.write_u8(3, khud.metric_id);
+        frame.write_u32_be(4, ts_sec);
+        frame.write_u32_be(8, ts_msec);
+        frame.write_u32_be(12, khud.capacity);
+        frame.write_u32_be(16, stats[0]);
+        pakad tot = stats[4];
+        pakad tot_hi = bshr(tot, 32);
+        pakad tot_lo = band(tot, 4294967295);
+        frame.write_u32_be(20, tot_hi);
+        frame.write_u32_be(24, tot_lo);
+        frame.write_f64_be(28, stats[1]);
+        frame.write_f64_be(36, stats[2]);
+        frame.write_f64_be(44, stats[3]);
+        pakad chk = compute_adler32(frame, 0, 52);
+        frame.write_u32_be(52, chk);
+        ye_le frame;
+    }
+}
+
+jugaad run_verify() {
+    pakad vec_frame = bytes(56);
+    vec_frame.write_u16_be(0, 21581);
+    vec_frame.write_u8(2, 1);
+    vec_frame.write_u8(3, 1);
+    vec_frame.write_u32_be(4, 1700000000);
+    vec_frame.write_u32_be(8, 500);
+    vec_frame.write_u32_be(12, 100);
+    vec_frame.write_u32_be(16, 100);
+    vec_frame.write_u32_be(20, 0);
+    vec_frame.write_u32_be(24, 5000);
+    vec_frame.write_f64_be(28, 10.5);
+    vec_frame.write_f64_be(36, 98.2);
+    vec_frame.write_f64_be(44, 54.35);
+    pakad chk = compute_adler32(vec_frame, 0, 52);
+    vec_frame.write_u32_be(52, chk);
+
+    pakad expected_hex = "544d01016553f100000001f400000064000000640000000000001388402500000000000040588ccccccccccd404b2ccccccccccd175e0edf";
+    dekh vec_frame.to_hex() != expected_hex {
+        chillao "Test vector frame hex mismatch";
+    }
+
+    // Sliding window eviction test
+    pakad agg = TelemetryAggregator(3, 1);
+    agg.add_sample(10.0);
+    agg.add_sample(20.0);
+    agg.add_sample(30.0);
+    pakad st = agg.get_stats();
+    dekh st[0] != 3 || st[1] != 10.0 || st[2] != 30.0 || st[3] != 20.0 {
+        chillao "Sliding window test 1 failed";
+    }
+
+    agg.add_sample(40.0);
+    pakad st2 = agg.get_stats();
+    dekh st2[0] != 3 || st2[1] != 20.0 || st2[2] != 40.0 || st2[3] != 30.0 {
+        chillao "Sliding window test 2 failed";
+    }
+
+    dikha "[PASS] Vector 56-Byte Telemetry Frame";
+    dikha "[PASS] Sliding Window Eviction Mechanics";
+    dikha "[TELEMETRY] ALL TESTS PASSED";
+    dikha "OK";
+}
+
+jugaad run_benchmark(samples, window_size) {
+    pakad agg = TelemetryAggregator(window_size, 1);
+    pakad compaction_interval = 5000;
+    pakad frames_gen = 0;
+    pakad t0 = samay.now();
+
+    pakad p = 0;
+    jabtak p < samples {
+        pakad rem100 = p % 100;
+        pakad sign = 1.0;
+        dekh p % 2 != 0 {
+            sign = -1.0;
+        }
+        pakad val = 20.0 + rem100 * 0.5 + sign;
+        agg.add_sample(val);
+        dekh agg.total_samples % compaction_interval == 0 {
+            agg.encode_frame(1700000000 + p / 1000, 0);
+            frames_gen = frames_gen + 1;
+        }
+        p = p + 1;
+    }
+
+    pakad t1 = samay.now();
+    pakad elapsed_sec = t1 - t0;
+    dekh elapsed_sec <= 0.0 {
+        elapsed_sec = 0.000001;
+    }
+    pakad elapsed_ms = elapsed_sec * 1000.0;
+    pakad sps = bina_point((samples + 0.0) / elapsed_sec);
+    pakad stats = agg.get_stats();
+    pakad last_mean = stats[3];
+
+    dikha f"elapsed_ms={elapsed_ms} throughput_samples_s={sps} frames_generated={frames_gen} last_mean={last_mean}";
+}
+
+dekh sys.args.length() > 1 && sys.args[1] == "--benchmark" {
+    pakad s = 50000;
+    pakad w = 1000;
+    dekh sys.args.length() > 2 {
+        s = bina_point(sys.args[2]);
+    }
+    dekh sys.args.length() > 3 {
+        w = bina_point(sys.args[3]);
+    }
+    run_benchmark(s, w);
+} warna {
+    run_verify();
+}

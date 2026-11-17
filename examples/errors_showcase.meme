@@ -1,0 +1,127 @@
+// ==============================================================================
+// MEMElang (OOP Edition) - Diagnostic Meme Error Catalog Showcase
+// Run with: ./meme_oop examples/errors_showcase.meme
+//
+// NOTE: Since an unhandled error halts execution, uncomment any ONE line below
+//       to trigger its legendary Indian meme diagnostic error message!
+// ==============================================================================
+
+print("=== MEMElang Meme Error Showcase ===");
+print("Uncomment any scenario below in this file to see the live error!\n");
+
+// ------------------------------------------------------------------------------
+// 1. ARITHMETIC ERRORS
+// ------------------------------------------------------------------------------
+// 1.1 Baburao Divide By Zero:
+// let a = 10 / 0;
+
+// 1.2 Baburao Modulo By Zero:
+// let b = 15 % 0;
+
+// 1.3 Qayamat Tak Infinite Step Loop:
+// for i in 1 to 5 step 0 { print(i); }
+
+// 1.4 Delulu Is Not The Solulu (Negative string multiplication):
+// let d = "swag" * -3;
+
+// 1.5 Unary minus on non-numeric type:
+// let neg = -"hello";
+
+
+// ------------------------------------------------------------------------------
+// 2. TYPE MISMATCH ERRORS ("SEB KO SANTRE SE MAT TOLO")
+// ------------------------------------------------------------------------------
+// 2.1 Dividing integer by string:
+// let res1 = 10 / "Hello";
+
+// 2.2 Subtracting string from integer:
+// let res2 = 10 - "Hello";
+
+// 2.3 Adding incompatible boolean values:
+// let res3 = true + false;
+
+// 2.4 Incompatible type comparison (<):
+// if (10 < "hello") { print("impossible"); }
+
+// 2.5 Modulo on string:
+// let res4 = 10 % "hello";
+
+
+// ------------------------------------------------------------------------------
+// 3. SYNTAX, LEXER & PARSER ERRORS
+// ------------------------------------------------------------------------------
+// 3.1 Chhoti Bachi Ho Kya (Missing semicolon between statements on same line):
+// let a = 1 let b = 2;
+
+// 3.2 Ashneer Grover Doglapan (Invalid LHS assignment):
+// let x = 10; (x) = 20;
+
+// 3.3 Doglapan (Multiplying incompatible non-numeric types):
+// let res5 = true * false;
+
+// 3.4 Control Uday Control ('=' inside 'if' condition):
+// let x = 5; if (x = 10) { print("Uday"); }
+
+// 3.5 Control Uday Control ('=' inside 'while' condition):
+// let x = 5; while (x = 10) { print("Uday"); }
+
+// 3.6 String Khol Ke Chhod Diya (Unterminated string literal):
+// let s = "khula reh gaya;
+
+// 3.7 Bracket Khol Ke Chhod Diya (Unclosed parenthesis):
+// print(1 + (2 * 3;
+
+// 3.8 Chi Sasura (Alien unmapped symbol '@'):
+// let alien = @123;
+
+// 3.9 Moye Moye (Expression cut off abruptly at EOF):
+// let truncated = 10 +
+
+
+// ------------------------------------------------------------------------------
+// 4. VARIABLE SCOPING & RUNTIME LOOKUPS
+// ------------------------------------------------------------------------------
+// 4.1 Rasode Mein Kaun Tha (Reading undeclared identifier):
+// print(rasode_ki_rashi);
+
+// 4.2 Chuna Laga Diya (Assigning to undeclared identifier without 'let'):
+// chuna = 500;
+
+
+// ------------------------------------------------------------------------------
+// 5. FUNCTIONS & OOP ERRORS
+// ------------------------------------------------------------------------------
+// 5.1 Beta Tumse Na Ho Payega (Calling non-function value):
+// let num = 42; num();
+
+// 5.2 Khopdi Tod Saale Ka (Accessing missing property/method on class instance):
+// class Influencer {}
+// let i = Influencer();
+// print(i.humble);
+
+// 5.3 Khopdi Tod Saale Ka (Accessing property on null):
+// let n = null;
+// print(n.missing_property);
+
+// 5.4 Fake Nepotism (Inheriting from non-class primitive):
+// let starkid = 42;
+// class Child extends starkid {}
+
+// 5.5 Gaddari Korbe (Function arity / parameter count mismatch):
+// function jod(a, b) { return a + b; }
+// jod(10);
+
+
+// ------------------------------------------------------------------------------
+// 6. MISPLACED CONTROL FLOW SIGNALS
+// ------------------------------------------------------------------------------
+// 6.1 Break outside loop:
+// break;
+
+// 6.2 Continue outside loop:
+// continue;
+
+// 6.3 Return outside function:
+// return 42;
+
+print("Default run completed without any error! All systems nominal.");

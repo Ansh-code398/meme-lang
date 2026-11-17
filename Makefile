@@ -42,4 +42,18 @@ docs: wasm
 docs-dev: wasm
 	cd docs && npm run dev
 
-.PHONY: all test clean wasm docs docs-dev
+test-lowlevel: $(TARGET)
+	python3 tests/lowlevel/test_e2e_runner.py
+
+test-lowlevel-tier1: $(TARGET)
+	python3 tests/lowlevel/test_e2e_runner.py --tier 1
+
+test-lowlevel-parity: $(TARGET)
+	python3 tests/lowlevel/test_e2e_runner.py --feature primitives --engine all
+
+test-all: test test-lowlevel
+
+benchmark-lowlevel: $(TARGET)
+	python3 benchmarks/lowlevel/run_lowlevel_benchmarks.py
+
+.PHONY: all test clean wasm docs docs-dev test-lowlevel test-lowlevel-tier1 test-lowlevel-parity test-all benchmark-lowlevel

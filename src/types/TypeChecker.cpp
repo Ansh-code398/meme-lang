@@ -169,6 +169,15 @@ void TypeChecker::initGlobals()
     globals->define("max", Type::Function({Type::Any(), Type::Any()}, Type::Point()), true);
     globals->define("pow", Type::Function({Type::Any(), Type::Any()}, Type::Point()), true);
 
+    // Bitwise built-ins
+    globals->define("band", Type::Function({Type::Any(), Type::Any()}, Type::Ank()), true);
+    globals->define("bor", Type::Function({Type::Any(), Type::Any()}, Type::Ank()), true);
+    globals->define("bxor", Type::Function({Type::Any(), Type::Any()}, Type::Ank()), true);
+    globals->define("bnot", Type::Function({Type::Any()}, Type::Ank()), true);
+    globals->define("bshl", Type::Function({Type::Any(), Type::Any()}, Type::Ank()), true);
+    globals->define("bshr", Type::Function({Type::Any(), Type::Any()}, Type::Ank()), true);
+    globals->define("from_hex", Type::Function({Type::Bol()}, Type::Bytes()), true);
+
     // Itertools & Assert built-ins
     globals->define("range", Type::Function({Type::Any()}, Type::List(Type::Ank())), true);
     globals->define("zip", Type::Function({Type::Any()}, Type::List(Type::Tuple())), true);
@@ -1109,9 +1118,8 @@ std::shared_ptr<Type> TypeChecker::checkExpr(const Expr *expr, std::shared_ptr<T
             {
                 return Type::Sach();
             }
-            throw std::runtime_error("Line " + std::to_string(b->line) + ": Aukaat ke bahar! Operator '" +
-                                     b->op.value + "' type '" + left->toString() + "' aur '" +
-                                     right->toString() + "' ke beech nahi chal sakta!");
+            throw std::runtime_error("Line " + std::to_string(b->line) + ": Seb ko santre se mat tolo! '" +
+                                     left->toString() + "' aur '" + right->toString() + "' ko compare nahi kar sakte!");
         }
 
         return Type::Any();

@@ -310,7 +310,13 @@ public:
             return std::to_string(e->value) + "LL";
         }
         if (auto *e = dynamic_cast<const FloatExpr *>(expr)) {
-            return std::to_string(e->value);
+            std::ostringstream oss;
+            oss << std::setprecision(17) << e->value;
+            std::string s = oss.str();
+            if (s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                s += ".0";
+            }
+            return s;
         }
         if (auto *e = dynamic_cast<const BoolExpr *>(expr)) {
             return e->value ? "true" : "false";
@@ -320,6 +326,17 @@ public:
         }
         if (dynamic_cast<const NullExpr *>(expr)) {
             return "nullptr";
+        }
+        if (auto *e = dynamic_cast<const ByteExpr *>(expr)) {
+            return "MemeValue(static_cast<int64_t>(" + std::to_string(static_cast<int>(e->value)) + "))";
+        }
+        if (auto *e = dynamic_cast<const BytesExpr *>(expr)) {
+            std::string bytesList;
+            for (size_t i = 0; i < e->value.size(); ++i) {
+                if (i > 0) bytesList += ", ";
+                bytesList += std::to_string(static_cast<int>(e->value[i]));
+            }
+            return "MemeValue(std::vector<uint8_t>{" + bytesList + "})";
         }
         if (auto *e = dynamic_cast<const IdentifierExpr *>(expr)) {
             return sanitizeIdentifier(e->name);
@@ -464,6 +481,23 @@ public:
                     method == "surakshit" || method == "with_lock" || method == "join" || method == "rok" ||
                     method == "jod" || method == "wait" || method == "is_done" || method == "khatam" ||
                     method == "chal_raha" || method == "is_alive") {
+                    return objStr + "." + method + "(" + args + ")";
+                }
+                // Byte buffer methods
+                if (method == "read_u8" || method == "write_u8" ||
+                    method == "read_u16_be" || method == "read_u16_le" ||
+                    method == "write_u16_be" || method == "write_u16_le" ||
+                    method == "read_u32_be" || method == "read_u32_le" ||
+                    method == "write_u32_be" || method == "write_u32_le" ||
+                    method == "read_u64_be" || method == "read_u64_le" ||
+                    method == "write_u64_be" || method == "write_u64_le" ||
+                    method == "read_i32_be" || method == "read_i32_le" ||
+                    method == "write_i32_be" || method == "write_i32_le" ||
+                    method == "read_f64_be" || method == "read_f64_le" ||
+                    method == "write_f64_be" || method == "write_f64_le" ||
+                    method == "to_hex" || method == "from_hex" || method == "to_string" ||
+                    method == "read_bytes" || method == "padh_bytes" ||
+                    method == "write_bytes" || method == "likh_bytes") {
                     return objStr + "." + method + "(" + args + ")";
                 }
                 // String and container membership methods: wrap with MemeValue(...)

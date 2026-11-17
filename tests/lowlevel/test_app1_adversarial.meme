@@ -1,0 +1,205 @@
+// ==============================================================================
+// MEMElang Adversarial Test Suite: App 1 — Packet Framer & Ring Buffer
+// Evaluated by: Challenger 1 (teamwork_challenger_m2_1)
+// ==============================================================================
+
+jugaad compute_adler32(buf, offset, length) {
+    pakad MOD = 65521;
+    pakad s1 = 1;
+    pakad s2 = 0;
+    pakad i = 0;
+    jabtak i < length {
+        pakad b = buf[offset + i];
+        s1 = (s1 + b) % MOD;
+        s2 = (s2 + s1) % MOD;
+        i = i + 1;
+    }
+    ye_le bor(bshl(s2, 16), s1);
+}
+
+jugaad pack_frame(seq_id, payload) {
+    pakad p_len: int = payload.length();
+    pakad total_sz: int = 12 + p_len;
+    pakad frame = bytes(total_sz);
+    frame.write_u16_be(0, 43605); // 0xAA55
+    frame.write_u32_be(2, seq_id);
+    frame.write_u16_be(6, p_len);
+    pakad i = 0;
+    jabtak i < p_len {
+        frame[8 + i] = payload[i];
+        i = i + 1;
+    }
+    pakad chk = compute_adler32(payload, 0, p_len);
+    frame.write_u32_be(8 + p_len, chk);
+    ye_le frame;
+}
+
+jugaad unpack_frame(frame) {
+    pakad f_len: int = frame.length();
+    dekh f_len < 12 { ye_le []; }
+    pakad magic = frame.read_u16_be(0);
+    dekh magic != 43605 { ye_le []; }
+    pakad seq_id = frame.read_u32_be(2);
+    pakad p_len = frame.read_u16_be(6);
+    dekh f_len < (12 + p_len) { ye_le []; }
+    pakad payload = frame.slice(8, 8 + p_len);
+    pakad chk = frame.read_u32_be(8 + p_len);
+    pakad expected_chk = compute_adler32(payload, 0, p_len);
+    dekh chk != expected_chk { ye_le []; }
+    ye_le [seq_id, payload];
+}
+
+sancha RingBuffer {
+    pakad buf;
+    pakad capacity;
+    pakad head;
+    pakad tail;
+    pakad size;
+
+    kaam shuru(cap_val) {
+        khud.capacity = cap_val;
+        khud.buf = bytes(cap_val);
+        khud.head = 0;
+        khud.tail = 0;
+        khud.size = 0;
+    }
+
+    kaam free_space() { ye_le khud.capacity - khud.size; }
+    kaam available() { ye_le khud.size; }
+
+    kaam write(chunk) {
+        pakad to_write: int = chunk.length();
+        pakad free_sp = khud.capacity - khud.size;
+        dekh to_write > free_sp { to_write = free_sp; }
+        pakad i = 0;
+        jabtak i < to_write {
+            khud.buf[khud.head] = chunk[i];
+            khud.head = (khud.head + 1) % khud.capacity;
+            i = i + 1;
+        }
+        khud.size = khud.size + to_write;
+        ye_le to_write;
+    }
+
+    kaam read(len_val) {
+        pakad to_read: int = len_val;
+        dekh to_read > khud.size { to_read = khud.size; }
+        pakad res = bytes(to_read);
+        pakad i = 0;
+        jabtak i < to_read {
+            res[i] = khud.buf[khud.tail];
+            khud.tail = (khud.tail + 1) % khud.capacity;
+            i = i + 1;
+        }
+        khud.size = khud.size - to_read;
+        ye_le res;
+    }
+
+    kaam peek(offset, len_val) {
+        pakad off: int = offset;
+        pakad l_val: int = len_val;
+        dekh (off + l_val) > khud.size { ye_le bytes(0); }
+        pakad res = bytes(l_val);
+        pakad idx = (khud.tail + off) % khud.capacity;
+        pakad i = 0;
+        jabtak i < l_val {
+            res[i] = khud.buf[idx];
+            idx = (idx + 1) % khud.capacity;
+            i = i + 1;
+        }
+        ye_le res;
+    }
+
+    kaam skip(len_val) {
+        pakad to_skip: int = len_val;
+        dekh to_skip > khud.size { to_skip = khud.size; }
+        khud.tail = (khud.tail + to_skip) % khud.capacity;
+        khud.size = khud.size - to_skip;
+    }
+
+    kaam pop_frame() {
+        jabtak khud.size >= 12 {
+            pakad hdr = khud.peek(0, 8);
+            dekh hdr.length() < 8 { ye_le []; }
+            pakad magic = hdr.read_u16_be(0);
+            dekh magic == 43605 {
+                pakad p_len = hdr.read_u16_be(6);
+                pakad total = 12 + p_len;
+                dekh khud.size >= total {
+                    pakad f_bytes = khud.read(total);
+                    pakad unpacked = unpack_frame(f_bytes);
+                    dekh unpacked.length() == 2 {
+                        ye_le unpacked;
+                    }
+                } warna {
+                    ye_le [];
+                }
+            } warna {
+                khud.skip(1);
+            }
+        }
+        ye_le [];
+    }
+}
+
+dikha "=== Running App 1 Adversarial Suite (MEMElang) ===";
+
+// 1. Stress Wrap-around: 50 consecutive frames through 64-byte buffer
+pakad rb = RingBuffer(64);
+pakad f_count = 50;
+pakad iter = 0;
+pakad recovered = 0;
+
+jabtak iter < f_count {
+    pakad p = bytes([65 + (iter % 20), 66, 67, 68]);
+    pakad fr = pack_frame(iter, p);
+    rb.write(fr);
+    pakad popped = rb.pop_frame();
+    dekh popped.length() == 2 && popped[0] == iter && popped[1].length() == 4 {
+        recovered = recovered + 1;
+    }
+    iter = iter + 1;
+}
+
+dekh recovered == f_count {
+    dikha f"[PASS] Circular wrap-around {f_count} frames";
+} warna {
+    dikha f"[FAIL] Wrap-around recovered {recovered}/{f_count}";
+    chillao "Wrap-around failure";
+}
+
+// 2. Corrupted stream recovery (prefix debris)
+pakad garbage = bytes([200, 150, 75, 25, 12, 6, 3, 1]);
+pakad test_p = bytes([80, 73, 78, 71]);
+pakad valid_f = pack_frame(101, test_p);
+pakad rb_sync = RingBuffer(64);
+rb_sync.write(garbage);
+rb_sync.write(valid_f);
+
+pakad sync_popped = rb_sync.pop_frame();
+dekh sync_popped.length() == 2 && sync_popped[0] == 101 && sync_popped[1].length() == 4 {
+    dikha "[PASS] Corrupted stream debris resynchronization";
+} warna {
+    dikha "[FAIL] Resync failed";
+    chillao "Resync failure";
+}
+
+// 3. Bad Checksum Rejection
+pakad bad_f = pack_frame(202, test_p);
+pakad last_idx: int = bad_f.length() - 1;
+bad_f[last_idx] = bxor(bad_f[last_idx], 255); // corrupt checksum byte
+pakad next_f = pack_frame(203, test_p);
+
+pakad rb_chk = RingBuffer(64);
+rb_chk.write(bad_f);
+rb_chk.write(next_f);
+
+pakad pop1 = rb_chk.pop_frame();
+dekh pop1.length() == 2 && pop1[0] == 203 {
+    dikha "[PASS] Corrupted checksum skipped and recovered next frame";
+} warna {
+    dikha "[FAIL] Bad checksum handling failed";
+    chillao "Bad checksum failure";
+}
+
+dikha "=== App 1 Adversarial Suite Complete: ALL PASSED ===";

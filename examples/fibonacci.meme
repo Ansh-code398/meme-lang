@@ -1,15 +1,15 @@
-// Recursive Fibonacci in MEMElang
-kar fib(n) {
-    dekh n <= 0 {
-        wapas 0;
+// Recursive Fibonacci in MEMElang (Clean Python/JS-style OOP Edition)
+function fib(n) {
+    if (n <= 0) {
+        return 0;
     }
-    warna dekh n == 1 {
-        wapas 1;
+    else if (n == 1) {
+        return 1;
     }
-    wapas fib(n - 1) + fib(n - 2);
+    return fib(n - 1) + fib(n - 2);
 }
 
-dikha "--- Fibonacci Numbers (0 to 8) ---";
-ghoom i se 0 se 8 {
-    dikha "fib(" + i + ") =", fib(i);
+print("--- Fibonacci Numbers (0 to 8) ---");
+for i in 0 to 8 {
+    print("fib(" + i + ") =", fib(i));
 }

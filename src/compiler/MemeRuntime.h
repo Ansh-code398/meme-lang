@@ -8,6 +8,7 @@
 #include <memory>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <unordered_map>
 #include <functional>
 #include <sstream>
@@ -154,7 +155,8 @@ public:
         TYPE_OBJECT = 7,
         TYPE_MAP = 8,
         TYPE_OPTION = 9,
-        TYPE_RESULT = 10
+        TYPE_RESULT = 10,
+        TYPE_BYTES = 11
     };
 
     Type type = TYPE_NALLA;
@@ -171,6 +173,9 @@ public:
     mutable std::shared_ptr<MemeValue> inner_val = nullptr;
     std::shared_ptr<MemeMutex> mtx_val = nullptr;
     std::shared_ptr<MemeThreadHandle> th_val = nullptr;
+    mutable std::shared_ptr<std::vector<uint8_t>> bytes_val = nullptr;
+    mutable std::shared_ptr<std::vector<uint8_t>> ref_buf = nullptr;
+    size_t ref_idx = 0;
 
     std::function<MemeValue()> fn0_val = nullptr;
 
@@ -210,11 +215,6 @@ public:
     MemeValue(int64_t v) : type(TYPE_INT), i_val(v) {}
     MemeValue(int v) : type(TYPE_INT), i_val(v) {}
     MemeValue(size_t v) : type(TYPE_INT), i_val(static_cast<int64_t>(v)) {}
-    MemeValue &operator=(size_t v) {
-        type = TYPE_INT;
-        i_val = static_cast<int64_t>(v);
-        return *this;
-    }
     MemeValue(double v) : type(TYPE_FLOAT), f_val(v) {}
     MemeValue(float v) : type(TYPE_FLOAT), f_val(static_cast<double>(v)) {}
     MemeValue(bool v) : type(TYPE_BOOL), b_val(v) {}
@@ -223,6 +223,140 @@ public:
     MemeValue(std::vector<MemeValue> l) : type(TYPE_LIST), list_val(std::move(l)) {}
     MemeValue(void *p) : type(TYPE_POINTER), ptr_val(p) {}
     MemeValue(std::shared_ptr<void> obj) : type(TYPE_OBJECT), obj_val(std::move(obj)) {}
+    MemeValue(const std::vector<uint8_t> &b)
+        : type(TYPE_BYTES), bytes_val(std::make_shared<std::vector<uint8_t>>(b)) {}
+    MemeValue(std::vector<uint8_t> &&b)
+        : type(TYPE_BYTES), bytes_val(std::make_shared<std::vector<uint8_t>>(std::move(b))) {}
+    MemeValue(std::shared_ptr<std::vector<uint8_t>> b)
+        : type(TYPE_BYTES), bytes_val(std::move(b)) {}
+
+    void ensure_bytes() const {
+        if (!bytes_val) {
+            bytes_val = std::make_shared<std::vector<uint8_t>>();
+        }
+    }
+
+    MemeValue(const MemeValue &other)
+        : type(other.type),
+          i_val(other.i_val),
+          f_val(other.f_val),
+          b_val(other.b_val),
+          s_val(other.s_val),
+          list_val(other.list_val),
+          map_val(other.map_val),
+          map_keys(other.map_keys),
+          ptr_val(other.ptr_val),
+          obj_val(other.obj_val),
+          opt_res_flag(other.opt_res_flag),
+          inner_val(other.inner_val),
+          mtx_val(other.mtx_val),
+          th_val(other.th_val),
+          bytes_val(other.bytes_val),
+          fn0_val(other.fn0_val),
+          ref_buf(nullptr),
+          ref_idx(0) {}
+
+    MemeValue(MemeValue &&other) noexcept
+        : type(other.type),
+          i_val(other.i_val),
+          f_val(other.f_val),
+          b_val(other.b_val),
+          s_val(std::move(other.s_val)),
+          list_val(std::move(other.list_val)),
+          map_val(std::move(other.map_val)),
+          map_keys(std::move(other.map_keys)),
+          ptr_val(other.ptr_val),
+          obj_val(std::move(other.obj_val)),
+          opt_res_flag(other.opt_res_flag),
+          inner_val(std::move(other.inner_val)),
+          mtx_val(std::move(other.mtx_val)),
+          th_val(std::move(other.th_val)),
+          bytes_val(std::move(other.bytes_val)),
+          fn0_val(std::move(other.fn0_val)),
+          ref_buf(std::move(other.ref_buf)),
+          ref_idx(other.ref_idx) {}
+
+    MemeValue &operator=(int64_t v) {
+        if (ref_buf && ref_idx < ref_buf->size()) {
+            (*ref_buf)[ref_idx] = static_cast<uint8_t>(v & 0xFF);
+            i_val = static_cast<int64_t>((*ref_buf)[ref_idx]);
+            type = TYPE_INT;
+            return *this;
+        }
+        type = TYPE_INT;
+        i_val = v;
+        return *this;
+    }
+
+    MemeValue &operator=(int v) {
+        return (*this) = static_cast<int64_t>(v);
+    }
+
+    MemeValue &operator=(size_t v) {
+        return (*this) = static_cast<int64_t>(v);
+    }
+
+    MemeValue &operator=(double v) {
+        type = TYPE_FLOAT;
+        f_val = v;
+        return *this;
+    }
+
+    MemeValue &operator=(const MemeValue &other) {
+        if (ref_buf && ref_idx < ref_buf->size()) {
+            (*ref_buf)[ref_idx] = static_cast<uint8_t>(other.as_int() & 0xFF);
+            i_val = static_cast<int64_t>((*ref_buf)[ref_idx]);
+            type = TYPE_INT;
+            return *this;
+        }
+        type = other.type;
+        i_val = other.i_val;
+        f_val = other.f_val;
+        b_val = other.b_val;
+        s_val = other.s_val;
+        list_val = other.list_val;
+        map_val = other.map_val;
+        map_keys = other.map_keys;
+        ptr_val = other.ptr_val;
+        obj_val = other.obj_val;
+        opt_res_flag = other.opt_res_flag;
+        inner_val = other.inner_val;
+        mtx_val = other.mtx_val;
+        th_val = other.th_val;
+        bytes_val = other.bytes_val;
+        fn0_val = other.fn0_val;
+        ref_buf = nullptr;
+        ref_idx = 0;
+        return *this;
+    }
+
+    MemeValue &operator=(MemeValue &&other) noexcept {
+        if (ref_buf && ref_idx < ref_buf->size()) {
+            (*ref_buf)[ref_idx] = static_cast<uint8_t>(other.as_int() & 0xFF);
+            i_val = static_cast<int64_t>((*ref_buf)[ref_idx]);
+            type = TYPE_INT;
+            return *this;
+        }
+        type = other.type;
+        i_val = other.i_val;
+        f_val = other.f_val;
+        b_val = other.b_val;
+        s_val = std::move(other.s_val);
+        list_val = std::move(other.list_val);
+        map_val = std::move(other.map_val);
+        map_keys = std::move(other.map_keys);
+        ptr_val = other.ptr_val;
+        obj_val = std::move(other.obj_val);
+        opt_res_flag = other.opt_res_flag;
+        inner_val = std::move(other.inner_val);
+        mtx_val = std::move(other.mtx_val);
+        th_val = std::move(other.th_val);
+        bytes_val = std::move(other.bytes_val);
+        fn0_val = std::move(other.fn0_val);
+        ref_buf = nullptr;
+        ref_idx = 0;
+        return *this;
+    }
     MemeValue(std::unordered_map<std::string, MemeValue> m)
         : type(TYPE_MAP), map_val(std::move(m)) {
         for (const auto &pair : map_val) {
@@ -279,6 +413,7 @@ public:
         case TYPE_RESULT: return opt_res_flag;
         case TYPE_POINTER: return ptr_val != nullptr;
         case TYPE_OBJECT: return obj_val != nullptr || mtx_val != nullptr || th_val != nullptr;
+        case TYPE_BYTES: return bytes_val && !bytes_val->empty();
         }
         return false;
     }
@@ -372,8 +507,35 @@ public:
             if (fn0_val) return "<function>";
             return "<object>";
         }
+        case TYPE_BYTES: {
+            if (!bytes_val || bytes_val->empty()) return "";
+            return std::string(reinterpret_cast<const char*>(bytes_val->data()), bytes_val->size());
+        }
         }
         return "nalla";
+    }
+
+    std::string repr() const {
+        if (type == TYPE_BYTES) {
+            if (!bytes_val) return "b\"\"";
+            std::string result = "b\"";
+            for (uint8_t b : *bytes_val) {
+                if (b == '\\') result += "\\\\";
+                else if (b == '"') result += "\\\"";
+                else if (b == '\n') result += "\\n";
+                else if (b == '\r') result += "\\r";
+                else if (b == '\t') result += "\\t";
+                else if (b >= 32 && b <= 126) result += static_cast<char>(b);
+                else {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\x%02x", b);
+                    result += buf;
+                }
+            }
+            result += "\"";
+            return result;
+        }
+        return to_string();
     }
 
     // Arithmetic operators
@@ -438,33 +600,33 @@ public:
 
     MemeValue operator/(const MemeValue &other) const {
         if (type == TYPE_INT && other.type == TYPE_INT) {
-            if (other.i_val == 0) throw std::runtime_error("Zero division error!");
+            if (other.i_val == 0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
             return MemeValue(i_val / other.i_val);
         }
         double div = other.as_double();
-        if (div == 0.0) throw std::runtime_error("Zero division error!");
+        if (div == 0.0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         return MemeValue(as_double() / div);
     }
 
     MemeValue operator/(int64_t v) const {
-        if (v == 0) throw std::runtime_error("Zero division error!");
+        if (v == 0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         if (type == TYPE_INT) return MemeValue(i_val / v);
         return MemeValue(as_double() / static_cast<double>(v));
     }
 
     MemeValue operator/(double v) const {
-        if (v == 0.0) throw std::runtime_error("Zero division error!");
+        if (v == 0.0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         return MemeValue(as_double() / v);
     }
 
     MemeValue operator%(const MemeValue &other) const {
         int64_t m = other.as_int();
-        if (m == 0) throw std::runtime_error("Zero modulo error!");
+        if (m == 0) throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
         return MemeValue(as_int() % m);
     }
 
     MemeValue operator%(int64_t m) const {
-        if (m == 0) throw std::runtime_error("Zero modulo error!");
+        if (m == 0) throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
         return MemeValue(as_int() % m);
     }
 
@@ -517,6 +679,11 @@ public:
                 if (list_val[i] != other.list_val[i]) return false;
             }
             return true;
+        }
+        if (type == TYPE_BYTES && other.type == TYPE_BYTES) {
+            if (bytes_val == other.bytes_val) return true;
+            if (!bytes_val || !other.bytes_val) return false;
+            return *bytes_val == *other.bytes_val;
         }
         if (type == TYPE_OBJECT && other.type == TYPE_OBJECT) {
             if (mtx_val && other.mtx_val) return mtx_val == other.mtx_val;
@@ -591,6 +758,21 @@ public:
     }
 
     MemeValue &operator[](long long index) {
+        if (type == TYPE_BYTES) {
+            int64_t origIdx = index;
+            int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+            if (index < 0) index += sz;
+            if (index < 0 || static_cast<size_t>(index) >= (bytes_val ? bytes_val->size() : 0)) {
+                throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
+                                         " maang rahe ho par bytes length sirf " + std::to_string(sz) + " hai!");
+            }
+            inner_val = std::make_shared<MemeValue>();
+            inner_val->type = TYPE_INT;
+            inner_val->i_val = static_cast<int64_t>((*bytes_val)[static_cast<size_t>(index)]);
+            inner_val->ref_buf = bytes_val;
+            inner_val->ref_idx = static_cast<size_t>(index);
+            return *inner_val;
+        }
         if (type == TYPE_STRING) {
             int64_t origIdx = index;
             int64_t sz = static_cast<int64_t>(s_val.size());
@@ -661,21 +843,56 @@ public:
     }
 
     // Methods
-    void push(const MemeValue &val) {
-        if (type != TYPE_LIST) {
-            type = TYPE_LIST;
+    void push(const MemeValue &val) const {
+        if (type == TYPE_BYTES) {
+            ensure_bytes();
+            if (val.type == TYPE_BYTES && val.bytes_val) {
+                bytes_val->insert(bytes_val->end(), val.bytes_val->begin(), val.bytes_val->end());
+            } else if (val.type == TYPE_INT || val.type == TYPE_FLOAT || val.type == TYPE_BOOL) {
+                bytes_val->push_back(static_cast<uint8_t>(val.as_int() & 0xFF));
+            } else if (val.type == TYPE_STRING) {
+                bytes_val->insert(bytes_val->end(), val.s_val.begin(), val.s_val.end());
+            }
+            return;
         }
-        list_val.push_back(val);
+        if (type != TYPE_LIST) {
+            const_cast<MemeValue *>(this)->type = TYPE_LIST;
+        }
+        const_cast<MemeValue *>(this)->list_val.push_back(val);
+    }
+    void push(int64_t val) const {
+        if (type == TYPE_BYTES) {
+            ensure_bytes();
+            bytes_val->push_back(static_cast<uint8_t>(val & 0xFF));
+            return;
+        }
+        push(MemeValue(val));
     }
 
-    void push_back(const MemeValue &val) {
-        push(val);
+    void push_back(const MemeValue &val) const { push(val); }
+    void push_back(int64_t val) const { push(val); }
+    void jod(const MemeValue &val) const { push(val); }
+    void jod(int64_t val) const { push(val); }
+    void append(const MemeValue &val) const { push(val); }
+    void append(int64_t val) const { push(val); }
+
+    void clear() const {
+        if (type == TYPE_BYTES) {
+            if (bytes_val) bytes_val->clear();
+            return;
+        }
+        if (type == TYPE_LIST) const_cast<MemeValue *>(this)->list_val.clear();
+        else if (type == TYPE_MAP) {
+            const_cast<MemeValue *>(this)->map_val.clear();
+            const_cast<MemeValue *>(this)->map_keys.clear();
+        }
     }
 
     size_t size() const {
         if (type == TYPE_LIST) return list_val.size();
         if (type == TYPE_STRING) return s_val.size();
         if (type == TYPE_MAP) return map_val.size();
+        if (type == TYPE_BYTES) return bytes_val ? bytes_val->size() : 0;
         return 0;
     }
 
@@ -687,7 +904,476 @@ public:
         return size();
     }
 
+    // Endian Read / Write Methods
+    int64_t read_u8(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u8 sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset >= sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u8 offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        return static_cast<int64_t>((*bytes_val)[static_cast<size_t>(offset)]);
+    }
+    int64_t read_u8(const MemeValue &offset) const { return read_u8(offset.as_int()); }
+
+    void write_u8(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u8 sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset >= sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u8 offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        (*bytes_val)[static_cast<size_t>(offset)] = static_cast<uint8_t>(val & 0xFF);
+    }
+    void write_u8(const MemeValue &offset, const MemeValue &val) const { write_u8(offset.as_int(), val.as_int()); }
+    void write_u8(int64_t offset, const MemeValue &val) const { write_u8(offset, val.as_int()); }
+    void write_u8(const MemeValue &offset, int64_t val) const { write_u8(offset.as_int(), val); }
+
+    int64_t read_u16_be(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u16_be sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 2 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u16_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint16_t val = (static_cast<uint16_t>((*bytes_val)[idx]) << 8) |
+                        static_cast<uint16_t>((*bytes_val)[idx + 1]);
+        return static_cast<int64_t>(val);
+    }
+    int64_t read_u16_be(const MemeValue &offset) const { return read_u16_be(offset.as_int()); }
+
+    int64_t read_u16_le(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u16_le sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 2 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u16_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint16_t val = static_cast<uint16_t>((*bytes_val)[idx]) |
+                       (static_cast<uint16_t>((*bytes_val)[idx + 1]) << 8);
+        return static_cast<int64_t>(val);
+    }
+    int64_t read_u16_le(const MemeValue &offset) const { return read_u16_le(offset.as_int()); }
+
+    void write_u16_be(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u16_be sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 2 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u16_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t u = static_cast<uint32_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>((u >> 8) & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>(u & 0xFF);
+    }
+    void write_u16_be(const MemeValue &offset, const MemeValue &val) const { write_u16_be(offset.as_int(), val.as_int()); }
+    void write_u16_be(int64_t offset, const MemeValue &val) const { write_u16_be(offset, val.as_int()); }
+    void write_u16_be(const MemeValue &offset, int64_t val) const { write_u16_be(offset.as_int(), val); }
+
+    void write_u16_le(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u16_le sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 2 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u16_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t u = static_cast<uint32_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>(u & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((u >> 8) & 0xFF);
+    }
+    void write_u16_le(const MemeValue &offset, const MemeValue &val) const { write_u16_le(offset.as_int(), val.as_int()); }
+    void write_u16_le(int64_t offset, const MemeValue &val) const { write_u16_le(offset, val.as_int()); }
+    void write_u16_le(const MemeValue &offset, int64_t val) const { write_u16_le(offset.as_int(), val); }
+
+    int64_t read_u32_be(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u32_be sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u32_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t b0 = (*bytes_val)[idx];
+        uint32_t b1 = (*bytes_val)[idx + 1];
+        uint32_t b2 = (*bytes_val)[idx + 2];
+        uint32_t b3 = (*bytes_val)[idx + 3];
+        return static_cast<int64_t>((b0 << 24) | (b1 << 16) | (b2 << 8) | b3);
+    }
+    int64_t read_u32_be(const MemeValue &offset) const { return read_u32_be(offset.as_int()); }
+
+    int64_t read_u32_le(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u32_le sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u32_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t b0 = (*bytes_val)[idx];
+        uint32_t b1 = (*bytes_val)[idx + 1];
+        uint32_t b2 = (*bytes_val)[idx + 2];
+        uint32_t b3 = (*bytes_val)[idx + 3];
+        return static_cast<int64_t>(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24));
+    }
+    int64_t read_u32_le(const MemeValue &offset) const { return read_u32_le(offset.as_int()); }
+
+    void write_u32_be(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u32_be sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u32_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t u = static_cast<uint64_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>((u >> 24) & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((u >> 16) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((u >> 8) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>(u & 0xFF);
+    }
+    void write_u32_be(const MemeValue &offset, const MemeValue &val) const { write_u32_be(offset.as_int(), val.as_int()); }
+    void write_u32_be(int64_t offset, const MemeValue &val) const { write_u32_be(offset, val.as_int()); }
+    void write_u32_be(const MemeValue &offset, int64_t val) const { write_u32_be(offset.as_int(), val); }
+
+    void write_u32_le(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u32_le sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u32_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t u = static_cast<uint64_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>(u & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((u >> 8) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((u >> 16) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>((u >> 24) & 0xFF);
+    }
+    void write_u32_le(const MemeValue &offset, const MemeValue &val) const { write_u32_le(offset.as_int(), val.as_int()); }
+    void write_u32_le(int64_t offset, const MemeValue &val) const { write_u32_le(offset, val.as_int()); }
+    void write_u32_le(const MemeValue &offset, int64_t val) const { write_u32_le(offset.as_int(), val); }
+
+    // FLOAT64 Read/Write
+    double read_f64_be(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_f64_be sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_f64_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t val = (static_cast<uint64_t>((*bytes_val)[idx]) << 56) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 1]) << 48) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 2]) << 40) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 3]) << 32) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 4]) << 24) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 5]) << 16) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 6]) << 8) |
+                        static_cast<uint64_t>((*bytes_val)[idx + 7]);
+        double d;
+        std::memcpy(&d, &val, sizeof(d));
+        return d;
+    }
+    double read_f64_be(const MemeValue &offset) const { return read_f64_be(offset.as_int()); }
+
+    double read_f64_le(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_f64_le sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_f64_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t val =  static_cast<uint64_t>((*bytes_val)[idx]) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 1]) << 8) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 2]) << 16) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 3]) << 24) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 4]) << 32) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 5]) << 40) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 6]) << 48) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 7]) << 56);
+        double d;
+        std::memcpy(&d, &val, sizeof(d));
+        return d;
+    }
+    double read_f64_le(const MemeValue &offset) const { return read_f64_le(offset.as_int()); }
+
+    void write_f64_be(int64_t offset, double val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_f64_be sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_f64_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t bits;
+        std::memcpy(&bits, &val, sizeof(bits));
+        (*bytes_val)[idx]     = static_cast<uint8_t>((bits >> 56) & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((bits >> 48) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((bits >> 40) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>((bits >> 32) & 0xFF);
+        (*bytes_val)[idx + 4] = static_cast<uint8_t>((bits >> 24) & 0xFF);
+        (*bytes_val)[idx + 5] = static_cast<uint8_t>((bits >> 16) & 0xFF);
+        (*bytes_val)[idx + 6] = static_cast<uint8_t>((bits >> 8) & 0xFF);
+        (*bytes_val)[idx + 7] = static_cast<uint8_t>(bits & 0xFF);
+    }
+    void write_f64_be(const MemeValue &offset, const MemeValue &val) const { write_f64_be(offset.as_int(), val.as_double()); }
+    void write_f64_be(int64_t offset, const MemeValue &val) const { write_f64_be(offset, val.as_double()); }
+    void write_f64_be(const MemeValue &offset, double val) const { write_f64_be(offset.as_int(), val); }
+
+    void write_f64_le(int64_t offset, double val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_f64_le sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_f64_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t bits;
+        std::memcpy(&bits, &val, sizeof(bits));
+        (*bytes_val)[idx]     = static_cast<uint8_t>(bits & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((bits >> 8) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((bits >> 16) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>((bits >> 24) & 0xFF);
+        (*bytes_val)[idx + 4] = static_cast<uint8_t>((bits >> 32) & 0xFF);
+        (*bytes_val)[idx + 5] = static_cast<uint8_t>((bits >> 40) & 0xFF);
+        (*bytes_val)[idx + 6] = static_cast<uint8_t>((bits >> 48) & 0xFF);
+        (*bytes_val)[idx + 7] = static_cast<uint8_t>((bits >> 56) & 0xFF);
+    }
+    void write_f64_le(const MemeValue &offset, const MemeValue &val) const { write_f64_le(offset.as_int(), val.as_double()); }
+    void write_f64_le(int64_t offset, const MemeValue &val) const { write_f64_le(offset, val.as_double()); }
+    void write_f64_le(const MemeValue &offset, double val) const { write_f64_le(offset.as_int(), val); }
+
+    // UINT64 Read/Write
+    int64_t read_u64_be(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u64_be sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u64_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t val = (static_cast<uint64_t>((*bytes_val)[idx]) << 56) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 1]) << 48) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 2]) << 40) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 3]) << 32) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 4]) << 24) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 5]) << 16) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 6]) << 8) |
+                        static_cast<uint64_t>((*bytes_val)[idx + 7]);
+        return static_cast<int64_t>(val);
+    }
+    int64_t read_u64_be(const MemeValue &offset) const { return read_u64_be(offset.as_int()); }
+
+    int64_t read_u64_le(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_u64_le sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_u64_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t val =  static_cast<uint64_t>((*bytes_val)[idx]) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 1]) << 8) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 2]) << 16) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 3]) << 24) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 4]) << 32) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 5]) << 40) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 6]) << 48) |
+                       (static_cast<uint64_t>((*bytes_val)[idx + 7]) << 56);
+        return static_cast<int64_t>(val);
+    }
+    int64_t read_u64_le(const MemeValue &offset) const { return read_u64_le(offset.as_int()); }
+
+    void write_u64_be(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u64_be sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u64_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t u = static_cast<uint64_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>((u >> 56) & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((u >> 48) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((u >> 40) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>((u >> 32) & 0xFF);
+        (*bytes_val)[idx + 4] = static_cast<uint8_t>((u >> 24) & 0xFF);
+        (*bytes_val)[idx + 5] = static_cast<uint8_t>((u >> 16) & 0xFF);
+        (*bytes_val)[idx + 6] = static_cast<uint8_t>((u >> 8) & 0xFF);
+        (*bytes_val)[idx + 7] = static_cast<uint8_t>(u & 0xFF);
+    }
+    void write_u64_be(const MemeValue &offset, const MemeValue &val) const { write_u64_be(offset.as_int(), val.as_int()); }
+    void write_u64_be(int64_t offset, const MemeValue &val) const { write_u64_be(offset, val.as_int()); }
+    void write_u64_be(const MemeValue &offset, int64_t val) const { write_u64_be(offset.as_int(), val); }
+
+    void write_u64_le(int64_t offset, int64_t val) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("write_u64_le sirf bytes par kaam karta hai!");
+        ensure_bytes();
+        int64_t origOffset = offset;
+        int64_t sz = static_cast<int64_t>(bytes_val->size());
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 8 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! write_u64_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint64_t u = static_cast<uint64_t>(val);
+        (*bytes_val)[idx]     = static_cast<uint8_t>(u & 0xFF);
+        (*bytes_val)[idx + 1] = static_cast<uint8_t>((u >> 8) & 0xFF);
+        (*bytes_val)[idx + 2] = static_cast<uint8_t>((u >> 16) & 0xFF);
+        (*bytes_val)[idx + 3] = static_cast<uint8_t>((u >> 24) & 0xFF);
+        (*bytes_val)[idx + 4] = static_cast<uint8_t>((u >> 32) & 0xFF);
+        (*bytes_val)[idx + 5] = static_cast<uint8_t>((u >> 40) & 0xFF);
+        (*bytes_val)[idx + 6] = static_cast<uint8_t>((u >> 48) & 0xFF);
+        (*bytes_val)[idx + 7] = static_cast<uint8_t>((u >> 56) & 0xFF);
+    }
+    void write_u64_le(const MemeValue &offset, const MemeValue &val) const { write_u64_le(offset.as_int(), val.as_int()); }
+    void write_u64_le(int64_t offset, const MemeValue &val) const { write_u64_le(offset, val.as_int()); }
+    void write_u64_le(const MemeValue &offset, int64_t val) const { write_u64_le(offset.as_int(), val); }
+
+    // INT32 Signed Read/Write
+    int64_t read_i32_be(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_i32_be sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_i32_be offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t b0 = (*bytes_val)[idx];
+        uint32_t b1 = (*bytes_val)[idx + 1];
+        uint32_t b2 = (*bytes_val)[idx + 2];
+        uint32_t b3 = (*bytes_val)[idx + 3];
+        return static_cast<int64_t>(static_cast<int32_t>((b0 << 24) | (b1 << 16) | (b2 << 8) | b3));
+    }
+    int64_t read_i32_be(const MemeValue &offset) const { return read_i32_be(offset.as_int()); }
+
+    int64_t read_i32_le(int64_t offset) const {
+        if (type != TYPE_BYTES) throw std::runtime_error("read_i32_le sirf bytes par kaam karta hai!");
+        int64_t origOffset = offset;
+        int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+        if (offset < 0) offset += sz;
+        if (offset < 0 || offset + 4 > sz) {
+            throw std::runtime_error("Aukaat ke bahar! read_i32_le offset " + std::to_string(origOffset) + 
+                                     " out of bounds (length " + std::to_string(sz) + ")");
+        }
+        size_t idx = static_cast<size_t>(offset);
+        uint32_t b0 = (*bytes_val)[idx];
+        uint32_t b1 = (*bytes_val)[idx + 1];
+        uint32_t b2 = (*bytes_val)[idx + 2];
+        uint32_t b3 = (*bytes_val)[idx + 3];
+        return static_cast<int64_t>(static_cast<int32_t>(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)));
+    }
+    int64_t read_i32_le(const MemeValue &offset) const { return read_i32_le(offset.as_int()); }
+
+    void write_i32_be(int64_t offset, int64_t val) const {
+        write_u32_be(offset, val);
+    }
+    void write_i32_be(const MemeValue &offset, const MemeValue &val) const { write_i32_be(offset.as_int(), val.as_int()); }
+    void write_i32_be(int64_t offset, const MemeValue &val) const { write_i32_be(offset, val.as_int()); }
+    void write_i32_be(const MemeValue &offset, int64_t val) const { write_i32_be(offset.as_int(), val); }
+
+    void write_i32_le(int64_t offset, int64_t val) const {
+        write_u32_le(offset, val);
+    }
+    void write_i32_le(const MemeValue &offset, const MemeValue &val) const { write_i32_le(offset.as_int(), val.as_int()); }
+    void write_i32_le(int64_t offset, const MemeValue &val) const { write_i32_le(offset, val.as_int()); }
+    void write_i32_le(const MemeValue &offset, int64_t val) const { write_i32_le(offset.as_int(), val); }
+
+    // Hex conversions
+    MemeValue to_hex() const {
+        if (type != TYPE_BYTES || !bytes_val || bytes_val->empty()) return MemeValue("");
+        std::string out;
+        out.reserve(bytes_val->size() * 2);
+        static const char hexChars[] = "0123456789abcdef";
+        for (uint8_t b : *bytes_val) {
+            out.push_back(hexChars[(b >> 4) & 0x0F]);
+            out.push_back(hexChars[b & 0x0F]);
+        }
+        return MemeValue(out);
+    }
+    MemeValue hex() const { return to_hex(); }
+
+    static MemeValue from_hex(const std::string &hexStr) {
+        std::vector<uint8_t> data;
+        std::string clean;
+        for (char c : hexStr) {
+            if (std::isxdigit(static_cast<unsigned char>(c))) clean += c;
+        }
+        if (clean.size() % 2 != 0) clean = "0" + clean;
+        data.reserve(clean.size() / 2);
+        for (size_t i = 0; i < clean.size(); i += 2) {
+            std::string byteStr = clean.substr(i, 2);
+            uint8_t byteVal = static_cast<uint8_t>(std::strtoul(byteStr.c_str(), nullptr, 16));
+            data.push_back(byteVal);
+        }
+        return MemeValue(std::move(data));
+    }
+    static MemeValue from_hex(const MemeValue &hexVal) {
+        return from_hex(hexVal.to_string());
+    }
+
     // Map methods
+    bool has(int64_t target) const {
+        if (type == TYPE_BYTES) {
+            if (!bytes_val) return false;
+            uint8_t tb = static_cast<uint8_t>(target & 0xFF);
+            for (uint8_t b : *bytes_val) {
+                if (b == tb) return true;
+            }
+            return false;
+        }
+        return false;
+    }
     bool has(const std::string &key) const {
         if (type == TYPE_MAP) {
             return map_val.find(key) != map_val.end();
@@ -697,7 +1383,10 @@ public:
         }
         return false;
     }
-    bool has(const MemeValue &key) const { return has(key.to_string()); }
+    bool has(const MemeValue &key) const {
+        if (type == TYPE_BYTES) return has(key.as_int());
+        return has(key.to_string());
+    }
     bool has(const char *key) const { return has(std::string(key ? key : "")); }
     bool hai_kya(const std::string &key) const { return has(key); }
     bool hai_kya(const MemeValue &key) const { return has(key); }
@@ -791,6 +1480,26 @@ public:
     MemeValue akshar_list() const { return chars(); }
 
     MemeValue slice(int64_t start, int64_t end = INT64_MIN) const {
+        if (type == TYPE_BYTES) {
+            int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
+            if (start < 0) start += sz;
+            if (start < 0) start = 0;
+            if (start > sz) start = sz;
+
+            if (end == INT64_MIN) {
+                end = sz;
+            } else {
+                if (end < 0) end += sz;
+                if (end < 0) end = 0;
+                if (end > sz) end = sz;
+            }
+
+            std::vector<uint8_t> out;
+            if (start < end && bytes_val) {
+                out.assign(bytes_val->begin() + start, bytes_val->begin() + end);
+            }
+            return MemeValue(std::move(out));
+        }
         if (type != TYPE_STRING) return MemeValue("");
         int64_t sz = static_cast<int64_t>(s_val.size());
         if (start < 0) start += sz;
@@ -896,7 +1605,13 @@ public:
         size_t last = s_val.find_last_not_of(" \t\r\n");
         return MemeValue(s_val.substr(first, last - first + 1));
     }
-    MemeValue saaf() const { return trim(); }
+    MemeValue saaf() const {
+        if (type == TYPE_BYTES) {
+            clear();
+            return *this;
+        }
+        return trim();
+    }
     MemeValue strip() const { return trim(); }
 
     MemeValue to_upper() const {
@@ -1816,6 +2531,27 @@ struct FileModule {
     std::string padh(const std::string &path) { return read(path); }
     std::string padh(const MemeValue &path) { return read(path); }
 
+    MemeValue read_bytes(const std::string &path) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f.is_open()) {
+            throw std::runtime_error("File gayab ho gayi! Path: '" + path + "'");
+        }
+        f.seekg(0, std::ios::end);
+        std::streamsize size = f.tellg();
+        f.seekg(0, std::ios::beg);
+        std::vector<uint8_t> data;
+        if (size > 0) {
+            data.resize(static_cast<size_t>(size));
+            if (!f.read(reinterpret_cast<char*>(data.data()), size)) {
+                throw std::runtime_error("File padhne mein lafda ho gaya! Path: '" + path + "'");
+            }
+        }
+        return MemeValue(std::move(data));
+    }
+    MemeValue read_bytes(const MemeValue &path) { return read_bytes(path.to_string()); }
+    MemeValue padh_bytes(const std::string &path) { return read_bytes(path); }
+    MemeValue padh_bytes(const MemeValue &path) { return read_bytes(path); }
+
     bool write(const std::string &path, const std::string &content) {
         std::ofstream f(path, std::ios::trunc);
         if (!f.is_open()) {
@@ -1837,6 +2573,31 @@ struct FileModule {
     bool likh(const MemeValue &path, const MemeValue &content) { return write(path, content); }
     bool likh(const std::string &path, const MemeValue &content) { return write(path, content); }
     bool likh(const MemeValue &path, const std::string &content) { return write(path, content); }
+
+    bool write_bytes(const std::string &path, const MemeValue &data) {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        if (!f.is_open()) {
+            throw std::runtime_error("File kholne mein lafda ho gaya! Path: '" + path + "'");
+        }
+        if (data.type == MemeValue::TYPE_BYTES && data.bytes_val && !data.bytes_val->empty()) {
+            f.write(reinterpret_cast<const char*>(data.bytes_val->data()), data.bytes_val->size());
+        } else if (data.type == MemeValue::TYPE_LIST) {
+            std::vector<uint8_t> buf;
+            buf.reserve(data.list_val.size());
+            for (const auto &elem : data.list_val) {
+                buf.push_back(static_cast<uint8_t>(elem.as_int() & 0xFF));
+            }
+            if (!buf.empty()) {
+                f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+            }
+        } else if (data.type == MemeValue::TYPE_STRING) {
+            f.write(data.s_val.data(), data.s_val.size());
+        }
+        return true;
+    }
+    bool write_bytes(const MemeValue &path, const MemeValue &data) { return write_bytes(path.to_string(), data); }
+    bool likh_bytes(const std::string &path, const MemeValue &data) { return write_bytes(path, data); }
+    bool likh_bytes(const MemeValue &path, const MemeValue &data) { return write_bytes(path, data); }
 
     bool append(const std::string &path, const std::string &content) {
         std::ofstream f(path, std::ios::app);
@@ -2958,6 +3719,7 @@ inline std::string meme_to_string_print(const T &val) {
     if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
         return val ? "han" : "nhi";
     } else if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        if (val.type == MemeValue::TYPE_BYTES) return val.repr();
         return val.to_string();
     } else if constexpr (std::is_same_v<std::decay_t<T>, std::string>) {
         return val;
@@ -3004,6 +3766,189 @@ void print_dikha_opts(const E &endVal, const S &sepVal, const St &styleVal, cons
         std::cout << styleReset;
     }
     std::cout << endStr;
+}
+
+// ==========================================
+// 13. Byte Buffer & Bitwise Primitives
+// ==========================================
+
+struct MemeBytesConstructor {
+    MemeValue operator()() const {
+        return MemeValue(std::vector<uint8_t>{});
+    }
+    MemeValue operator()(int64_t size) const {
+        if (size < 0) size = 0;
+        return MemeValue(std::vector<uint8_t>(static_cast<size_t>(size), 0));
+    }
+    MemeValue operator()(int size) const {
+        return (*this)(static_cast<int64_t>(size));
+    }
+    MemeValue operator()(size_t size) const {
+        return (*this)(static_cast<int64_t>(size));
+    }
+    MemeValue operator()(const std::vector<MemeValue> &list) const {
+        std::vector<uint8_t> data;
+        data.reserve(list.size());
+        for (const auto &elem : list) {
+            data.push_back(static_cast<uint8_t>(elem.as_int() & 0xFF));
+        }
+        return MemeValue(std::move(data));
+    }
+    MemeValue operator()(const std::vector<uint8_t> &data) const {
+        return MemeValue(data);
+    }
+    MemeValue operator()(std::vector<uint8_t> &&data) const {
+        return MemeValue(std::move(data));
+    }
+    MemeValue operator()(const std::string &str) const {
+        std::vector<uint8_t> data(str.begin(), str.end());
+        return MemeValue(std::move(data));
+    }
+    MemeValue operator()(const MemeValue &val) const {
+        if (val.type == MemeValue::TYPE_BYTES) {
+            if (!val.bytes_val) return MemeValue(std::vector<uint8_t>{});
+            return MemeValue(*val.bytes_val);
+        }
+        if (val.type == MemeValue::TYPE_INT) {
+            return (*this)(val.i_val);
+        }
+        if (val.type == MemeValue::TYPE_LIST) {
+            return (*this)(val.list_val);
+        }
+        if (val.type == MemeValue::TYPE_STRING) {
+            return (*this)(val.s_val);
+        }
+        return MemeValue(std::vector<uint8_t>{});
+    }
+
+    static MemeValue from_hex(const std::string &hexStr) {
+        return MemeValue::from_hex(hexStr);
+    }
+    static MemeValue from_hex(const MemeValue &hexVal) {
+        return MemeValue::from_hex(hexVal);
+    }
+    static MemeValue hex_se(const std::string &hexStr) { return from_hex(hexStr); }
+    static MemeValue hex_se(const MemeValue &hexVal) { return from_hex(hexVal); }
+
+    const MemeBytesConstructor *operator->() const { return this; }
+};
+
+inline MemeBytesConstructor bytes;
+inline MemeBytesConstructor kaccha_data;
+inline MemeBytesConstructor bytearray;
+
+inline MemeValue band(int64_t a, int64_t b) { return MemeValue(a & b); }
+inline MemeValue band(const MemeValue &a, const MemeValue &b) { return MemeValue(a.as_int() & b.as_int()); }
+inline MemeValue band(int64_t a, const MemeValue &b) { return MemeValue(a & b.as_int()); }
+inline MemeValue band(const MemeValue &a, int64_t b) { return MemeValue(a.as_int() & b); }
+
+inline MemeValue bor(int64_t a, int64_t b) { return MemeValue(a | b); }
+inline MemeValue bor(const MemeValue &a, const MemeValue &b) { return MemeValue(a.as_int() | b.as_int()); }
+inline MemeValue bor(int64_t a, const MemeValue &b) { return MemeValue(a | b.as_int()); }
+inline MemeValue bor(const MemeValue &a, int64_t b) { return MemeValue(a.as_int() | b); }
+
+inline MemeValue bxor(int64_t a, int64_t b) { return MemeValue(a ^ b); }
+inline MemeValue bxor(const MemeValue &a, const MemeValue &b) { return MemeValue(a.as_int() ^ b.as_int()); }
+inline MemeValue bxor(int64_t a, const MemeValue &b) { return MemeValue(a ^ b.as_int()); }
+inline MemeValue bxor(const MemeValue &a, int64_t b) { return MemeValue(a.as_int() ^ b); }
+
+inline MemeValue bnot(int64_t a) { return MemeValue(~a); }
+inline MemeValue bnot(const MemeValue &a) { return MemeValue(~a.as_int()); }
+
+inline MemeValue bshl(int64_t a, int64_t n) {
+    if (n < 0 || n >= 64) return MemeValue(0LL);
+    return MemeValue(static_cast<int64_t>(static_cast<uint64_t>(a) << n));
+}
+inline MemeValue bshl(const MemeValue &a, const MemeValue &n) { return bshl(a.as_int(), n.as_int()); }
+inline MemeValue bshl(int64_t a, const MemeValue &n) { return bshl(a, n.as_int()); }
+inline MemeValue bshl(const MemeValue &a, int64_t n) { return bshl(a.as_int(), n); }
+
+inline MemeValue bshr(int64_t a, int64_t n) {
+    if (n < 0 || n >= 64) return MemeValue(a < 0 ? -1LL : 0LL);
+    return MemeValue(a >> n);
+}
+inline MemeValue bshr(const MemeValue &a, const MemeValue &n) { return bshr(a.as_int(), n.as_int()); }
+inline MemeValue bshr(int64_t a, const MemeValue &n) { return bshr(a, n.as_int()); }
+inline MemeValue bshr(const MemeValue &a, int64_t n) { return bshr(a.as_int(), n); }
+
+inline MemeValue from_hex(const std::string &s) { return MemeValue::from_hex(s); }
+inline MemeValue from_hex(const MemeValue &s) { return MemeValue::from_hex(s); }
+
+template <typename T>
+inline std::string kya_hai(const T &val) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        switch (val.type) {
+        case MemeValue::TYPE_NALLA: return "nalla";
+        case MemeValue::TYPE_INT: return "int";
+        case MemeValue::TYPE_FLOAT: return "float";
+        case MemeValue::TYPE_BOOL: return "bool";
+        case MemeValue::TYPE_STRING: return "string";
+        case MemeValue::TYPE_LIST: return "list";
+        case MemeValue::TYPE_MAP: return "map";
+        case MemeValue::TYPE_BYTES: return "bytes";
+        case MemeValue::TYPE_OPTION: return "option";
+        case MemeValue::TYPE_RESULT: return "result";
+        case MemeValue::TYPE_POINTER: return "pointer";
+        case MemeValue::TYPE_OBJECT: return "object";
+        }
+        return "nalla";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, int64_t> || std::is_same_v<std::decay_t<T>, int>) {
+        return "int";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, double> || std::is_same_v<std::decay_t<T>, float>) {
+        return "float";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, bool>) {
+        return "bool";
+    } else if constexpr (std::is_same_v<std::decay_t<T>, std::string>) {
+        return "string";
+    } else {
+        return "object";
+    }
+}
+inline std::string aukaat(const MemeValue &v) { return kya_hai(v); }
+inline std::string pata_laga(const MemeValue &v) { return kya_hai(v); }
+
+template <typename T>
+inline std::string string(const T &val) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        return val.to_string();
+    } else if constexpr (std::is_arithmetic_v<std::decay_t<T>>) {
+        return std::to_string(val);
+    } else {
+        std::ostringstream ss;
+        ss << val;
+        return ss.str();
+    }
+}
+inline std::string bol(const MemeValue &v) { return string(v); }
+inline std::string shabd(const MemeValue &v) { return string(v); }
+
+template <typename T, typename U>
+inline bool assert_eq(const T &a, const U &b, const std::string &msg = "Assertion error") {
+    MemeValue va(a);
+    MemeValue vb(b);
+    if (!(va == vb)) {
+        throw std::runtime_error(msg + ": Expected '" + vb.to_string() + "' but got '" + va.to_string() + "'");
+    }
+    return true;
+}
+
+template <typename T, typename U>
+inline bool assert_ne(const T &a, const U &b, const std::string &msg = "Assertion error") {
+    MemeValue va(a);
+    MemeValue vb(b);
+    if (va == vb) {
+        throw std::runtime_error(msg + ": Values should not be equal: '" + va.to_string() + "'");
+    }
+    return true;
+}
+
+template <typename T>
+inline bool assert(const T &cond, const std::string &msg = "Assertion failed!") {
+    MemeValue vc(cond);
+    if (!vc.is_truthy()) {
+        throw std::runtime_error(msg);
+    }
+    return true;
 }
 
 #endif // MEME_RUNTIME_H

@@ -1,0 +1,298 @@
+// ==============================================================================
+// App 2: Binary TLV (Type-Length-Value) Serializer & Deserializer in MEMElang
+// Runs on both Tree-Walking Interpreter and Native AOT Compiler
+// ==============================================================================
+
+// Encodes a single TLV record
+jugaad encode_int32(val) {
+    pakad buf = bytes(7);
+    buf.write_u8(0, 1); // TAG_INT32 = 1
+    buf.write_u16_be(1, 4);
+    buf.write_i32_be(3, val);
+    ye_le buf;
+}
+
+jugaad encode_float64(val) {
+    pakad buf = bytes(11);
+    buf.write_u8(0, 2); // TAG_FLOAT64 = 2
+    buf.write_u16_be(1, 8);
+    buf.write_f64_be(3, val);
+    ye_le buf;
+}
+
+jugaad encode_string(val) {
+    pakad payload = bytes(val);
+    pakad p_len: int = payload.length();
+    pakad buf = bytes(3);
+    buf.write_u8(0, 3); // TAG_STRING = 3
+    buf.write_u16_be(1, p_len);
+    buf.push(payload);
+    ye_le buf;
+}
+
+jugaad encode_bytes(val) {
+    pakad b_len: int = val.length();
+    pakad buf = bytes(3);
+    buf.write_u8(0, 4); // TAG_BYTES = 4
+    buf.write_u16_be(1, b_len);
+    buf.push(val);
+    ye_le buf;
+}
+
+jugaad encode_bool(val) {
+    pakad buf = bytes(4);
+    buf.write_u8(0, 5); // TAG_BOOL = 5
+    buf.write_u16_be(1, 1);
+    dekh val {
+        buf.write_u8(3, 1);
+    } warna {
+        buf.write_u8(3, 0);
+    }
+    ye_le buf;
+}
+
+// Decodes a single TLV record from stream starting at offset
+// Returns [tag, value, next_offset]
+jugaad decode_tlv_record(stream, offset) {
+    pakad TAG_INT32 = 1;
+    pakad TAG_FLOAT64 = 2;
+    pakad TAG_STRING = 3;
+    pakad TAG_BYTES = 4;
+    pakad TAG_BOOL = 5;
+
+    pakad s_len: int = stream.length();
+    pakad off: int = offset;
+    pakad available = s_len - off;
+    dekh available < 3 {
+        chillao "Incomplete header: available bytes < 3";
+    }
+
+    pakad tag = stream.read_u8(off);
+    pakad rec_len = stream.read_u16_be(off + 1);
+    pakad val_offset = off + 3;
+
+    dekh (s_len - val_offset) < rec_len {
+        chillao "Truncated value: expected bytes not available";
+    }
+
+    pakad next_offset = val_offset + rec_len;
+    pakad val = nalla;
+
+    dekh tag == TAG_INT32 {
+        dekh rec_len != 4 {
+            chillao "Invalid length for INT32: expected 4";
+        }
+        val = stream.read_i32_be(val_offset);
+    } warna dekh tag == TAG_FLOAT64 {
+        dekh rec_len != 8 {
+            chillao "Invalid length for FLOAT64: expected 8";
+        }
+        val = stream.read_f64_be(val_offset);
+    } warna dekh tag == TAG_STRING {
+        pakad sub = stream.slice(val_offset, next_offset);
+        val = sub.to_string();
+    } warna dekh tag == TAG_BYTES {
+        val = stream.slice(val_offset, next_offset);
+    } warna dekh tag == TAG_BOOL {
+        dekh rec_len != 1 {
+            chillao "Invalid length for BOOL: expected 1";
+        }
+        pakad b_val = stream.read_u8(val_offset);
+        dekh b_val != 0 && b_val != 1 {
+            chillao "Invalid BOOL byte: must be 0 or 1";
+        }
+        val = (b_val == 1);
+    } warna {
+        chillao "Unknown tag";
+    }
+
+    ye_le [tag, val, next_offset];
+}
+
+// Decodes full stream into a list of [tag, val]
+jugaad decode_tlv_stream(stream) {
+    pakad records = [];
+    pakad offset = 0;
+    pakad s_len: int = stream.length();
+    jabtak offset < s_len {
+        pakad res = decode_tlv_record(stream, offset);
+        records.push([res[0], res[1]]);
+        offset = res[2];
+    }
+    ye_le records;
+}
+
+// Verification self-test
+jugaad run_verify() {
+    pakad TAG_INT32 = 1;
+    pakad TAG_FLOAT64 = 2;
+    pakad TAG_STRING = 3;
+    pakad TAG_BYTES = 4;
+    pakad TAG_BOOL = 5;
+
+    // Vector 1: INT32 (42) -> 0100040000002a
+    pakad enc_int = encode_int32(42);
+    dekh enc_int.to_hex() != "0100040000002a" {
+        chillao "INT32 vector mismatch";
+    }
+    pakad dec_int = decode_tlv_record(enc_int, 0);
+    dekh dec_int[0] != TAG_INT32 || dec_int[1] != 42 {
+        chillao "INT32 decode mismatch";
+    }
+    dikha "[PASS] Vector INT32 42";
+
+    // Vector 2: FLOAT64 (pi) -> 020008400921fb54442d18
+    pakad enc_pi = encode_float64(3.141592653589793);
+    dekh enc_pi.to_hex() != "020008400921fb54442d18" {
+        chillao "FLOAT64 vector mismatch";
+    }
+    pakad dec_pi = decode_tlv_record(enc_pi, 0);
+    dekh dec_pi[0] != TAG_FLOAT64 {
+        chillao "FLOAT64 decode mismatch";
+    }
+    dikha "[PASS] Vector FLOAT64 pi";
+
+    // Vector 3: STRING ("Hello, MEMElang!") -> 03001048656c6c6f2c204d454d456c616e6721
+    pakad enc_str = encode_string("Hello, MEMElang!");
+    dekh enc_str.to_hex() != "03001048656c6c6f2c204d454d456c616e6721" {
+        chillao "STRING vector mismatch";
+    }
+    pakad dec_str = decode_tlv_record(enc_str, 0);
+    dekh dec_str[1] != "Hello, MEMElang!" {
+        chillao "STRING decode mismatch";
+    }
+    dikha "[PASS] Vector STRING Hello";
+
+    // Vector 4: BYTES (0xDEADBEEF) -> 040004deadbeef
+    pakad raw_db = bytes.from_hex("deadbeef");
+    pakad enc_bytes = encode_bytes(raw_db);
+    dekh enc_bytes.to_hex() != "040004deadbeef" {
+        chillao "BYTES vector mismatch";
+    }
+    dikha "[PASS] Vector BYTES deadbeef";
+
+    // Vector 5: BOOL true / false
+    pakad enc_true = encode_bool(sach);
+    pakad enc_false = encode_bool(jhooth);
+    dekh enc_true.to_hex() != "05000101" || enc_false.to_hex() != "05000100" {
+        chillao "BOOL vector mismatch";
+    }
+    dikha "[PASS] Vector BOOL true/false";
+
+    // Vector 6: Composite 36-Byte Record
+    pakad composite = bytes(0);
+    composite.push(encode_int32(101));
+    composite.push(encode_string("temp_sensor"));
+    composite.push(encode_float64(23.5));
+    composite.push(encode_bool(sach));
+    pakad comp_len: int = composite.length();
+    dekh comp_len != 36 {
+        chillao "Composite record length != 36";
+    }
+    dekh composite.to_hex() != "0100040000006503000b74656d705f73656e736f72020008403780000000000005000101" {
+        chillao "Composite hex mismatch";
+    }
+    pakad recs = decode_tlv_stream(composite);
+    pakad recs_len: int = recs.length();
+    dekh recs_len != 4 {
+        chillao "Composite record count != 4";
+    }
+    dikha "[PASS] Vector Composite 36B Record";
+
+    // Boundary Cases
+    pakad enc_empty_s = encode_string("");
+    dekh enc_empty_s.to_hex() != "030000" {
+        chillao "Empty string mismatch";
+    }
+
+    pakad enc_empty_b = encode_bytes(bytes(0));
+    dekh enc_empty_b.to_hex() != "040000" {
+        chillao "Empty bytes mismatch";
+    }
+
+    pakad enc_max = encode_int32(2147483647);
+    dekh enc_max.to_hex() != "0100047fffffff" {
+        chillao "INT32 MAX mismatch";
+    }
+
+    pakad enc_min = encode_int32(-2147483648);
+    dekh enc_min.to_hex() != "01000480000000" {
+        chillao "INT32 MIN mismatch";
+    }
+
+    pakad enc_neg1 = encode_int32(-1);
+    dekh enc_neg1.to_hex() != "010004ffffffff" {
+        chillao "INT32 -1 mismatch";
+    }
+
+    // Error Rejection Tests
+    pakad caught_hdr = jhooth;
+    koshish {
+        decode_tlv_record(bytes([1, 0]), 0);
+    } sambhal (e) {
+        caught_hdr = sach;
+    }
+    dekh !caught_hdr { chillao "Accepted truncated header"; }
+
+    pakad caught_val = jhooth;
+    koshish {
+        decode_tlv_record(bytes.from_hex("0100040000"), 0);
+    } sambhal (e) {
+        caught_val = sach;
+    }
+    dekh !caught_val { chillao "Accepted truncated value"; }
+
+    pakad caught_bool = jhooth;
+    koshish {
+        decode_tlv_record(bytes.from_hex("05000102"), 0);
+    } sambhal (e) {
+        caught_bool = sach;
+    }
+    dekh !caught_bool { chillao "Accepted invalid bool byte"; }
+
+    dikha "[PASS] Boundary Cases & Error Rejections";
+    dikha "[TLV_CODEC] ALL TESTS PASSED";
+    dikha "OK";
+}
+
+// Benchmark loop
+jugaad run_benchmark(iterations) {
+    pakad t0 = samay.now();
+    pakad total_bytes = 0;
+    pakad total_records = 0;
+
+    pakad iter = 0;
+    jabtak iter < iterations {
+        pakad comp = bytes(0);
+        comp.push(encode_int32(101));
+        comp.push(encode_string("temp_sensor"));
+        comp.push(encode_float64(23.5));
+        comp.push(encode_bool(sach));
+
+        pakad recs = decode_tlv_stream(comp);
+        total_bytes = total_bytes + comp.length();
+        total_records = total_records + recs.length();
+        iter = iter + 1;
+    }
+
+    pakad t1 = samay.now();
+    pakad elapsed_sec = t1 - t0;
+    dekh elapsed_sec <= 0.0 {
+        elapsed_sec = 0.000001;
+    }
+    pakad elapsed_ms = elapsed_sec * 1000.0;
+    pakad ops_per_sec = (total_records + 0.0) / elapsed_sec;
+
+    dikha f"elapsed_ms={elapsed_ms} throughput_ops_s={ops_per_sec} records_processed={total_records} bytes_encoded={total_bytes}";
+}
+
+// Entrypoint
+dekh sys.args.length() > 1 && sys.args[1] == "--benchmark" {
+    pakad iters = 10000;
+    dekh sys.args.length() > 2 {
+        iters = bina_point(sys.args[2]);
+    }
+    run_benchmark(iters);
+} warna {
+    run_verify();
+}

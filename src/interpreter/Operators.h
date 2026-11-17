@@ -351,7 +351,7 @@ inline Value divide(const Value &a, const Value &b)
         if (rhs == 0)
         {
             throw std::runtime_error(
-                "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+                "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         }
         long long lhs = std::get<long long>(a.data);
         if (lhs == std::numeric_limits<long long>::min() && rhs == -1)
@@ -373,7 +373,7 @@ inline Value divide(const Value &a, const Value &b)
             if (rhs == 0)
             {
                 throw std::runtime_error(
-                    "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+                    "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
             }
             long long lhs = da.asInt();
             if (lhs == std::numeric_limits<long long>::min() && rhs == -1)
@@ -387,7 +387,7 @@ inline Value divide(const Value &a, const Value &b)
         if (rhs == 0.0)
         {
             throw std::runtime_error(
-                "Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+                "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         }
         return Value(da.asDouble() / rhs);
     }

@@ -1,0 +1,301 @@
+// ==============================================================================
+// App 1: Packet Framer & Circular Ring Buffer (MEMElang Dual-Engine Implementation)
+// ==============================================================================
+
+jugaad compute_adler32(buf, offset, length) {
+    pakad MOD = 65521;
+    pakad s1 = 1;
+    pakad s2 = 0;
+    pakad i = 0;
+    jabtak i < length {
+        pakad b = buf[offset + i];
+        s1 = (s1 + b) % MOD;
+        s2 = (s2 + s1) % MOD;
+        i = i + 1;
+    }
+    ye_le bor(bshl(s2, 16), s1);
+}
+
+jugaad pack_frame(seq_id, payload) {
+    pakad p_len: int = payload.length();
+    pakad total_sz: int = 12 + p_len;
+    pakad frame = bytes(total_sz);
+    frame.write_u16_be(0, 43605); // 0xAA55
+    frame.write_u32_be(2, seq_id);
+    frame.write_u16_be(6, p_len);
+    pakad i = 0;
+    jabtak i < p_len {
+        frame[8 + i] = payload[i];
+        i = i + 1;
+    }
+    pakad chk = compute_adler32(payload, 0, p_len);
+    frame.write_u32_be(8 + p_len, chk);
+    ye_le frame;
+}
+
+jugaad unpack_frame(frame) {
+    pakad f_len: int = frame.length();
+    dekh f_len < 12 {
+        ye_le [];
+    }
+    pakad magic = frame.read_u16_be(0);
+    dekh magic != 43605 {
+        ye_le [];
+    }
+    pakad seq_id = frame.read_u32_be(2);
+    pakad p_len = frame.read_u16_be(6);
+    dekh f_len < (12 + p_len) {
+        ye_le [];
+    }
+    pakad payload = frame.slice(8, 8 + p_len);
+    pakad chk = frame.read_u32_be(8 + p_len);
+    pakad expected_chk = compute_adler32(payload, 0, p_len);
+    dekh chk != expected_chk {
+        ye_le [];
+    }
+    ye_le [seq_id, payload];
+}
+
+sancha RingBuffer {
+    pakad buf;
+    pakad capacity;
+    pakad head;
+    pakad tail;
+    pakad size;
+
+    kaam shuru(cap_val) {
+        khud.capacity = cap_val;
+        khud.buf = bytes(cap_val);
+        khud.head = 0;
+        khud.tail = 0;
+        khud.size = 0;
+    }
+
+    kaam free_space() {
+        ye_le khud.capacity - khud.size;
+    }
+
+    kaam available() {
+        ye_le khud.size;
+    }
+
+    kaam write(chunk) {
+        pakad to_write: int = chunk.length();
+        pakad free_sp = khud.capacity - khud.size;
+        dekh to_write > free_sp {
+            to_write = free_sp;
+        }
+        pakad i = 0;
+        jabtak i < to_write {
+            khud.buf[khud.head] = chunk[i];
+            khud.head = (khud.head + 1) % khud.capacity;
+            i = i + 1;
+        }
+        khud.size = khud.size + to_write;
+        ye_le to_write;
+    }
+
+    kaam read(len_val) {
+        pakad to_read: int = len_val;
+        dekh to_read > khud.size {
+            to_read = khud.size;
+        }
+        pakad res = bytes(to_read);
+        pakad i = 0;
+        jabtak i < to_read {
+            res[i] = khud.buf[khud.tail];
+            khud.tail = (khud.tail + 1) % khud.capacity;
+            i = i + 1;
+        }
+        khud.size = khud.size - to_read;
+        ye_le res;
+    }
+
+    kaam peek(offset, len_val) {
+        pakad off: int = offset;
+        pakad l_val: int = len_val;
+        dekh (off + l_val) > khud.size {
+            ye_le bytes(0);
+        }
+        pakad res = bytes(l_val);
+        pakad idx = (khud.tail + off) % khud.capacity;
+        pakad i = 0;
+        jabtak i < l_val {
+            res[i] = khud.buf[idx];
+            idx = (idx + 1) % khud.capacity;
+            i = i + 1;
+        }
+        ye_le res;
+    }
+
+    kaam skip(len_val) {
+        pakad to_skip: int = len_val;
+        dekh to_skip > khud.size {
+            to_skip = khud.size;
+        }
+        khud.tail = (khud.tail + to_skip) % khud.capacity;
+        khud.size = khud.size - to_skip;
+    }
+
+    kaam pop_frame() {
+        jabtak khud.size >= 12 {
+            pakad hdr = khud.peek(0, 8);
+            dekh hdr.length() < 8 {
+                ye_le [];
+            }
+            pakad magic = hdr.read_u16_be(0);
+            dekh magic == 43605 {
+                pakad p_len = hdr.read_u16_be(6);
+                pakad total = 12 + p_len;
+                dekh khud.size >= total {
+                    pakad f_bytes = khud.read(total);
+                    pakad unpacked = unpack_frame(f_bytes);
+                    dekh unpacked.length() == 2 {
+                        ye_le unpacked;
+                    }
+                } warna {
+                    ye_le [];
+                }
+            } warna {
+                khud.skip(1);
+            }
+        }
+        ye_le [];
+    }
+}
+
+jugaad run_verify() {
+    // Vector 1.1: Empty payload
+    pakad f1 = pack_frame(0, bytes(0));
+    pakad u1 = unpack_frame(f1);
+    dekh u1.length() != 2 || u1[0] != 0 || u1[1].length() != 0 {
+        chillao "Vector 1.1 failed";
+    }
+
+    // Vector 1.2: PING
+    pakad ping_payload = bytes([80, 73, 78, 71]);
+    pakad f2 = pack_frame(1, ping_payload);
+    pakad u2 = unpack_frame(f2);
+    dekh u2.length() != 2 || u2[0] != 1 || u2[1].length() != 4 {
+        chillao "Vector 1.2 failed";
+    }
+
+    // Vector 1.3: HELLO MEMELANG
+    pakad hello_payload = bytes([72, 69, 76, 76, 79, 32, 77, 69, 77, 69, 76, 65, 78, 71]);
+    pakad f3 = pack_frame(42, hello_payload);
+    pakad u3 = unpack_frame(f3);
+    dekh u3.length() != 2 || u3[0] != 42 || u3[1].length() != 14 {
+        chillao "Vector 1.3 failed";
+    }
+
+    // Vector 1.4: 16 Zeros
+    pakad zeros_payload = bytes(16);
+    pakad f4 = pack_frame(100, zeros_payload);
+    pakad u4 = unpack_frame(f4);
+    dekh u4.length() != 2 || u4[0] != 100 {
+        chillao "Vector 1.4 failed";
+    }
+
+    // Vector 1.5: 16 Ones
+    pakad ones_payload = bytes(16);
+    pakad i_ones = 0;
+    jabtak i_ones < 16 {
+        ones_payload[i_ones] = 255;
+        i_ones = i_ones + 1;
+    }
+    pakad f5 = pack_frame(101, ones_payload);
+    pakad u5 = unpack_frame(f5);
+    dekh u5.length() != 2 || u5[0] != 101 {
+        chillao "Vector 1.5 failed";
+    }
+
+    // Ring Buffer Wrap-around
+    pakad rb = RingBuffer(64);
+    rb.write(bytes(50));
+    rb.read(40);
+    pakad w = rb.write(f3);
+    dekh w != 26 {
+        chillao "Ring buffer wrap-around write failed";
+    }
+    rb.read(10);
+    pakad rec = rb.read(26);
+    pakad u_rec = unpack_frame(rec);
+    dekh u_rec.length() != 2 || u_rec[0] != 42 {
+        chillao "Ring buffer wrap-around reconstruct failed";
+    }
+
+    // Corrupted stream resynchronization
+    pakad garbage = bytes([255, 222, 173, 190, 239, 0]);
+    pakad rb_sync = RingBuffer(64);
+    rb_sync.write(garbage);
+    rb_sync.write(f2);
+    pakad popped = rb_sync.pop_frame();
+    dekh popped.length() != 2 || popped[0] != 1 {
+        chillao "Resynchronization failed";
+    }
+
+    dikha "[PACKET_FRAMER] ALL TESTS PASSED [PASS] OK";
+}
+
+jugaad run_benchmark(iters, p_size) {
+    pakad payload = bytes(p_size);
+    pakad i = 0;
+    jabtak i < p_size {
+        payload[i] = 66; // 'B'
+        i = i + 1;
+    }
+    pakad rb = RingBuffer(262144);
+    pakad frame = pack_frame(1, payload);
+    pakad f_len: int = frame.length();
+    pakad total_bytes: int = f_len * iters;
+
+    pakad t0 = samay.now();
+    pakad frames_processed = 0;
+    pakad checksum_acc = 0;
+
+    pakad iter = 0;
+    jabtak iter < iters {
+        rb.write(frame);
+        pakad popped = rb.pop_frame();
+        dekh popped.length() == 2 {
+            frames_processed = frames_processed + 1;
+            pakad p = popped[1];
+            pakad c = compute_adler32(p, 0, p.length());
+            checksum_acc = checksum_acc + c;
+        }
+        iter = iter + 1;
+    }
+
+    pakad t1 = samay.now();
+    pakad elapsed_sec = t1 - t0;
+    dekh elapsed_sec <= 0.0 {
+        elapsed_sec = 0.000001;
+    }
+    pakad elapsed_ms = elapsed_sec * 1000.0;
+    pakad total_mb = (0.0 + total_bytes) / 1048576.0;
+    pakad throughput_mb_s = total_mb / elapsed_sec;
+
+    dikha f"elapsed_ms={elapsed_ms} throughput_mb_s={throughput_mb_s} frames_processed={frames_processed} checksum_acc={checksum_acc}";
+}
+
+pakad is_bench = 0;
+pakad iters = 10000;
+pakad p_size = 256;
+
+dekh sys.args.length() >= 2 {
+    dekh sys.args[1] == "--benchmark" {
+        is_bench = 1;
+        dekh sys.args.length() >= 3 {
+            iters = bina_point(sys.args[2]);
+        }
+        dekh sys.args.length() >= 4 {
+            p_size = bina_point(sys.args[3]);
+        }
+    }
+}
+
+dekh is_bench == 1 {
+    run_benchmark(iters, p_size);
+} warna {
+    run_verify();
+}

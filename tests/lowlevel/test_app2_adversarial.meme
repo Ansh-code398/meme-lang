@@ -1,0 +1,202 @@
+// ==============================================================================
+// MEMElang Adversarial Test Suite: App 2 — Binary TLV Codec
+// Evaluated by: Challenger 1 (teamwork_challenger_m2_1)
+// ==============================================================================
+
+jugaad encode_int32(val) {
+    pakad buf = bytes(7);
+    buf.write_u8(0, 1);
+    buf.write_u16_be(1, 4);
+    buf.write_i32_be(3, val);
+    ye_le buf;
+}
+
+jugaad encode_float64(val) {
+    pakad buf = bytes(11);
+    buf.write_u8(0, 2);
+    buf.write_u16_be(1, 8);
+    buf.write_f64_be(3, val);
+    ye_le buf;
+}
+
+jugaad encode_string(val) {
+    pakad payload = bytes(val);
+    pakad p_len: int = payload.length();
+    pakad buf = bytes(3);
+    buf.write_u8(0, 3);
+    buf.write_u16_be(1, p_len);
+    buf.push(payload);
+    ye_le buf;
+}
+
+jugaad encode_bytes(val) {
+    pakad b_len: int = val.length();
+    pakad buf = bytes(3);
+    buf.write_u8(0, 4);
+    buf.write_u16_be(1, b_len);
+    buf.push(val);
+    ye_le buf;
+}
+
+jugaad encode_bool(val) {
+    pakad buf = bytes(4);
+    buf.write_u8(0, 5);
+    buf.write_u16_be(1, 1);
+    dekh val {
+        buf.write_u8(3, 1);
+    } warna {
+        buf.write_u8(3, 0);
+    }
+    ye_le buf;
+}
+
+jugaad decode_tlv_record(stream, offset) {
+    pakad TAG_INT32 = 1;
+    pakad TAG_FLOAT64 = 2;
+    pakad TAG_STRING = 3;
+    pakad TAG_BYTES = 4;
+    pakad TAG_BOOL = 5;
+
+    pakad s_len: int = stream.length();
+    pakad off: int = offset;
+    pakad available = s_len - off;
+    dekh available < 3 {
+        chillao "Incomplete header: available bytes < 3";
+    }
+
+    pakad tag = stream.read_u8(off);
+    pakad rec_len = stream.read_u16_be(off + 1);
+    pakad val_offset = off + 3;
+
+    dekh (s_len - val_offset) < rec_len {
+        chillao "Truncated value: expected bytes not available";
+    }
+
+    pakad next_offset = val_offset + rec_len;
+    pakad val = nalla;
+
+    dekh tag == TAG_INT32 {
+        dekh rec_len != 4 { chillao "Invalid length for INT32"; }
+        val = stream.read_i32_be(val_offset);
+    } warna dekh tag == TAG_FLOAT64 {
+        dekh rec_len != 8 { chillao "Invalid length for FLOAT64"; }
+        val = stream.read_f64_be(val_offset);
+    } warna dekh tag == TAG_STRING {
+        pakad sub = stream.slice(val_offset, next_offset);
+        val = sub.to_string();
+    } warna dekh tag == TAG_BYTES {
+        val = stream.slice(val_offset, next_offset);
+    } warna dekh tag == TAG_BOOL {
+        dekh rec_len != 1 { chillao "Invalid length for BOOL"; }
+        pakad b_val = stream.read_u8(val_offset);
+        dekh b_val != 0 && b_val != 1 { chillao "Invalid BOOL byte"; }
+        val = (b_val == 1);
+    } warna {
+        chillao "Unknown tag";
+    }
+
+    ye_le [tag, val, next_offset];
+}
+
+dikha "=== Running App 2 Adversarial Suite (MEMElang) ===";
+
+// 1. Extreme Floats
+pakad float_cases = [
+    ["pos_inf", "7ff0000000000000"],
+    ["neg_inf", "fff0000000000000"],
+    ["nan", "7ff8000000000000"],
+    ["pos_zero", "0000000000000000"],
+    ["neg_zero", "8000000000000000"],
+    ["subnormal_min", "0000000000000001"],
+    ["subnormal_large", "000730d67819e8d2"],
+    ["max_normal", "7fefffffffffffff"]
+];
+
+pakad fi = 0;
+jabtak fi < float_cases.length() {
+    pakad tc = float_cases[fi];
+    pakad name = tc[0];
+    pakad hx = tc[1];
+    pakad raw = bytes.from_hex(hx);
+    pakad f_val = raw.read_f64_be(0);
+    pakad enc = encode_float64(f_val);
+    pakad dec = decode_tlv_record(enc, 0);
+    pakad re_enc = encode_float64(dec[1]);
+    
+    dekh name == "nan" {
+        dekh dec[0] != 2 { chillao "NaN decode tag mismatch"; }
+    } warna {
+        dekh enc.to_hex() != re_enc.to_hex() {
+            chillao f"Float roundtrip mismatch for {name}: {enc.to_hex()} != {re_enc.to_hex()}";
+        }
+    }
+    fi = fi + 1;
+}
+dikha "[PASS] 8 IEEE-754 Extreme Floats roundtrip";
+
+// 2. Extreme INT32 Values
+pakad int_cases = [
+    [2147483647, "0100047fffffff"],
+    [-2147483648, "01000480000000"],
+    [0, "01000400000000"],
+    [-1, "010004ffffffff"],
+    [1, "01000400000001"]
+];
+
+pakad ii = 0;
+jabtak ii < int_cases.length() {
+    pakad tc = int_cases[ii];
+    pakad v = tc[0];
+    pakad exp_h = tc[1];
+    pakad enc = encode_int32(v);
+    dekh enc.to_hex() != exp_h { chillao f"INT32 hex mismatch: {enc.to_hex()}"; }
+    pakad dec = decode_tlv_record(enc, 0);
+    dekh dec[1] != v { chillao f"INT32 decode mismatch: {dec[1]}"; }
+    ii = ii + 1;
+}
+dikha "[PASS] 5 Extreme INT32 values roundtrip";
+
+// 3. Error Rejection Matrix (16 Cases)
+pakad err_hexes = [
+    "01", "0100", "0100040000", "020008000000",
+    "0300056162", "040005aabb", "050001",
+    "010003000000", "0100050000000000",
+    "02000400000000", "0500020000",
+    "05000102", "050001ff",
+    "00000100", "06000100", "ff000100"
+];
+
+pakad err_passed = 0;
+pakad ei = 0;
+jabtak ei < err_hexes.length() {
+    pakad raw = bytes.from_hex(err_hexes[ei]);
+    pakad caught = jhooth;
+    koshish {
+        decode_tlv_record(raw, 0);
+    } sambhal (e) {
+        caught = sach;
+    }
+    dekh caught { err_passed = err_passed + 1; }
+    ei = ei + 1;
+}
+
+dekh err_passed == err_hexes.length() {
+    dikha f"[PASS] All {err_passed} error cases rejected";
+} warna {
+    dikha f"[FAIL] Only rejected {err_passed}/{err_hexes.length()}";
+    chillao "Error matrix failure";
+}
+
+// 4. Large Bytes (65535 bytes)
+pakad max_b = bytes(65535);
+max_b[0] = 120; // 'x'
+max_b[65534] = 122; // 'z'
+pakad enc_max_b = encode_bytes(max_b);
+pakad dec_max_b = decode_tlv_record(enc_max_b, 0);
+dekh dec_max_b[0] == 4 && dec_max_b[1].length() == 65535 && dec_max_b[1][0] == 120 && dec_max_b[1][65534] == 122 {
+    dikha "[PASS] 65535-byte BYTES payload roundtrip";
+} warna {
+    chillao "65535 BYTES payload failed";
+}
+
+dikha "=== App 2 Adversarial Suite Complete: ALL PASSED ===";

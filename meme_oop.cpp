@@ -1,27 +1,9 @@
 /**
  * ==============================================================================
- * PROJECT: MEMElang - Full Parody Object-Oriented Language Engine
- * PURPOSE: Comprehensive Single-File College Project Submission (< 1200 lines)
- *
- * OOP CONCEPTS DEMONSTRATED IN THIS CODEBASE:
- * 1. ENCAPSULATION: Scope isolation in Environment, object state in MemeInstance.
- * 2. ABSTRACTION  : Pure virtual base classes (Expr, Stmt, MemeCallable) defining AST nodes.
- * 3. INHERITANCE  : 
- *    - C++ Level    : Deep hierarchies for AST Nodes, Callables, and Control-flow Signals.
- *    - Language Level: Subclassing via 'se' / 'nepo' with dynamic method resolution.
- * 4. POLYMORPHISM : Dynamic dispatch via virtual eval()/exec(), method overriding,
- *                   and dynamic 'khud'/'apun' (this) pointer binding.
- *
- * COMPLETE FEATURE SET:
- * - Full OOP: Classes (sancha/biradari), Inheritance (se/nepo), Methods (kar/jugaad),
- *             Constructors (shuru), this (khud/apun), Dynamic properties, Overriding.
- * - Control Flow: dekh / warna (if / else if / else), jabtak (while), ghoom (for-range),
- *                 wapas / ye_le (return), bas / bas_kar (break), chal (continue).
- * - Full Operator Precedence: +, -, *, /, %, ==, !=, <, <=, >, >=, aur (&&), ya (||), !.
- * - Types & I/O: Strings with repeat ("ha"*5), numbers (int/float), booleans (haan/nahi),
- *                null (kuch_nahi/nalla), dikha/flex (print), puch/pooch (input),
- *                built-ins (point_wala, kya_hai, gin).
- * ==============================================================================
+ * PROJECT: MEMElang (AN INTERPRETED OBJECT-ORIENTED PROGRAMMING LANGUAGE)
+ * MADE BY: ANSH SHARMA & SARTHAK JAIN
+ * SUBJECT: OBJECT ORIENTED PROGRAMMING (OOP) IN C++
+==============================================================================
  */
 
 #include <iostream>
@@ -49,18 +31,25 @@ class BlockStmt;
 class Expr;
 
 // ==============================================================================
-// 1. CONTROL FLOW SIGNALS (C++ Exception-Based Stack Unwinding)
+// 1. CONTROL FLOW SIGNALS
 // ==============================================================================
 class ReturnSignal : public std::exception {
 public:
     shared_ptr<Value> value;
     ReturnSignal(Value v);
+    const char* what() const noexcept override { return "Arey kehna kya chahte ho? 'return' function ke bahar kahan le ja rahe ho?"; }
 };
-class BreakSignal : public std::exception {};
-class ContinueSignal : public std::exception {};
+class BreakSignal : public std::exception {
+public:
+    const char* what() const noexcept override { return "Arey arey arey! 'break' loop ke bahar kya kar raha hai?"; }
+};
+class ContinueSignal : public std::exception {
+public:
+    const char* what() const noexcept override { return "Control Majnu! 'continue' loop ke bahar nahi chal sakta!"; }
+};
 
 // ==============================================================================
-// 2. RUNTIME VALUES & OPERATOR SEMANTICS
+// 2. RUNTIME VALUES & OPERATOR SEMANTICS (OFFICIAL MEME ERRORS)
 // ==============================================================================
 struct Value {
     enum Type { NIL, BOOL, NUM, STR, CALLABLE, INSTANCE } type = NIL;
@@ -83,7 +72,7 @@ struct Value {
 
     string typeName() const {
         switch (type) {
-            case NIL: return "nalla";
+            case NIL: return "null";
             case BOOL: return "bool";
             case NUM: return isFloat ? "float" : "int";
             case STR: return "string";
@@ -105,8 +94,8 @@ struct Value {
 
     string toString() const {
         switch (type) {
-            case NIL: return "nalla";
-            case BOOL: return bVal ? "han" : "nhi";
+            case NIL: return "null";
+            case BOOL: return bVal ? "true" : "false";
             case NUM: {
                 if (!isFloat) return to_string((long long)numVal);
                 string s = to_string(numVal);
@@ -146,19 +135,26 @@ bool valEquals(const Value& a, const Value& b) {
 
 Value valAdd(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
-        return Value(a.numVal + b.numVal, a.isFloat || b.isFloat);
+        if (!a.isFloat && !b.isFloat) {
+            long long ia = (long long)a.numVal, ib = (long long)b.numVal, res = 0;
+            if (__builtin_add_overflow(ia, ib, &res)) {
+                throw runtime_error("25 din mein paisa double karte-karte integer overflow ho gaya! Aukaat ke bahar chala gaya jod.");
+            }
+            return Value(res);
+        }
+        return Value(a.numVal + b.numVal, true);
     }
     if (a.type == Value::STR || b.type == Value::STR) {
         return Value(a.toString() + b.toString());
     }
-    throw runtime_error("Invalid operands for + operator: " + a.typeName() + " and " + b.typeName());
+    throw runtime_error("Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko add (+) nahi kar sakte!");
 }
 
 Value valSub(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
         return Value(a.numVal - b.numVal, a.isFloat || b.isFloat);
     }
-    throw runtime_error("Invalid operands for - operator");
+    throw runtime_error("Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ke beech subtraction (-) nahi ho sakta!");
 }
 
 Value valMul(const Value& a, const Value& b) {
@@ -167,46 +163,48 @@ Value valMul(const Value& a, const Value& b) {
     }
     if (a.type == Value::STR && b.type == Value::NUM) {
         long long count = (long long)b.numVal;
+        if (count < 0) throw runtime_error("Delulu is not the solulu! String ko negative baar kaise multiply karoge?");
         string res = "";
         for (long long i = 0; i < count; i++) res += a.strVal;
         return Value(res);
     }
     if (a.type == Value::NUM && b.type == Value::STR) {
         long long count = (long long)a.numVal;
+        if (count < 0) throw runtime_error("Delulu is not the solulu! String ko negative baar kaise multiply karoge?");
         string res = "";
         for (long long i = 0; i < count; i++) res += b.strVal;
         return Value(res);
     }
-    throw runtime_error("Invalid operands for * operator");
+    throw runtime_error("Ye sab doglapan hai! In types ke beech multiplication (*) nahi ho sakta!");
 }
 
 Value valDiv(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
-        if (b.numVal == 0.0) throw runtime_error("zero se divide karega? Math ro rahi hai kone mein!");
+        if (b.numVal == 0.0) throw runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
         double res = a.numVal / b.numVal;
         bool flt = a.isFloat || b.isFloat || (floor(res) != res);
         return Value(res, flt);
     }
-    throw runtime_error("Invalid operands for / operator");
+    throw runtime_error("Seb ko santre se mat tolo! '" + a.typeName() + "' ko '" + b.typeName() + "' se divide (/) nahi kar sakte!");
 }
 
 Value valMod(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) {
         long long ib = (long long)b.numVal;
-        if (ib == 0) throw runtime_error("Zero se modulo nahi hota dost!");
+        if (ib == 0) throw runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
         return Value((long long)a.numVal % ib);
     }
-    throw runtime_error("Invalid operands for % operator");
+    throw runtime_error("Seb ko santre se mat tolo! Modulo (%) sirf numbers ke beech hota hai, '" + a.typeName() + "' aur '" + b.typeName() + "' pe nahi!");
 }
 
 bool valLess(const Value& a, const Value& b) {
     if (a.type == Value::NUM && b.type == Value::NUM) return a.numVal < b.numVal;
     if (a.type == Value::STR && b.type == Value::STR) return a.strVal < b.strVal;
-    throw runtime_error("Invalid operands for < operator");
+    throw runtime_error("Seb ko santre se mat tolo! '" + a.typeName() + "' aur '" + b.typeName() + "' ko compare nahi kar sakte!");
 }
 
 // ==============================================================================
-// 3. ENCAPSULATION: ENVIRONMENT & SCOPING
+// 3. ENCAPSULATION: SCOPING & ENVIRONMENT
 // ==============================================================================
 class Environment : public enable_shared_from_this<Environment> {
     shared_ptr<Environment> parent;
@@ -217,16 +215,17 @@ public:
     void assign(const string& name, Value val) {
         if (bindings.count(name)) { bindings[name] = val; return; }
         if (parent) { parent->assign(name, val); return; }
-        bindings[name] = val;
+        throw runtime_error("Chuna laga diya! '" + name + "' naam ka koi variable hi nahi hai. Pehle 'let " + name + ";' likh!");
     }
     Value get(const string& name) {
         if (bindings.count(name)) return bindings[name];
-        return parent ? parent->get(name) : Value();
+        if (parent) return parent->get(name);
+        throw runtime_error("Rasode mein kaun tha?! Ye '" + name + "' bina bataye kahan se aaya? Pehle 'let " + name + ";' se declare kar!");
     }
 };
 
 // ==============================================================================
-// 4. OOP ABSTRACTION: CALLABLES, CLASSES & INSTANCES
+// 4. OOP CORE: CALLABLES, CLASSES & INSTANCES
 // ==============================================================================
 class MemeCallable {
 public:
@@ -258,16 +257,21 @@ public:
     shared_ptr<MemeClass> superclass;
     map<string, shared_ptr<MemeFunction>> methods;
 
-    MemeClass(string n, shared_ptr<MemeClass> sup = nullptr)
-        : name(std::move(n)), superclass(sup) {}
+    MemeClass(string n, shared_ptr<MemeClass> sup = nullptr) : name(std::move(n)), superclass(sup) {}
 
     shared_ptr<MemeFunction> findMethod(const string& mName) {
         if (methods.count(mName)) return methods[mName];
         return superclass ? superclass->findMethod(mName) : nullptr;
     }
 
+    shared_ptr<MemeFunction> findConstructor() {
+        if (methods.count("constructor")) return methods["constructor"];
+        if (methods.count("init")) return methods["init"];
+        return superclass ? superclass->findConstructor() : nullptr;
+    }
+
     int arity() const override {
-        auto init = const_cast<MemeClass*>(this)->findMethod("shuru");
+        auto init = const_cast<MemeClass*>(this)->findConstructor();
         return init ? init->arity() : 0;
     }
     string toString() const override { return "<class " + name + ">"; }
@@ -286,7 +290,7 @@ public:
         if (auto method = klass->findMethod(prop)) {
             return Value(method->bind(Value(shared_from_this())));
         }
-        return Value();
+        throw runtime_error("Khopdi tod saale ka! '" + (klass ? klass->name : "object") + "' ke paas '" + prop + "' naam ka kuch nahi hai!");
     }
     void set(const string& prop, Value val) { fields[prop] = val; }
 };
@@ -294,7 +298,7 @@ public:
 Value MemeClass::call(shared_ptr<Environment> env, const vector<Value>& args) {
     auto inst = make_shared<MemeInstance>(shared_from_this());
     Value instVal(inst);
-    if (auto init = findMethod("shuru")) {
+    if (auto init = findConstructor()) {
         init->bind(instVal)->call(env, args);
     }
     return instVal;
@@ -302,8 +306,7 @@ Value MemeClass::call(shared_ptr<Environment> env, const vector<Value>& args) {
 
 shared_ptr<MemeFunction> MemeFunction::bind(Value instance) {
     auto boundEnv = make_shared<Environment>(closure);
-    boundEnv->define("khud", instance);
-    boundEnv->define("apun", instance); // meme alias for khud
+    boundEnv->define("this", instance);
     return make_shared<MemeFunction>(name, params, body, boundEnv);
 }
 
@@ -341,6 +344,13 @@ public:
     Value eval(shared_ptr<Environment>) override { return val; }
 };
 
+class GroupExpr : public Expr {
+public:
+    shared_ptr<Expr> inner;
+    GroupExpr(shared_ptr<Expr> i) : inner(i) {}
+    Value eval(shared_ptr<Environment> env) override { return inner->eval(env); }
+};
+
 class VarExpr : public Expr {
 public:
     string name;
@@ -349,9 +359,9 @@ public:
 };
 
 class AssignExpr : public Expr {
+public:
     string name;
     shared_ptr<Expr> valExpr;
-public:
     AssignExpr(string n, shared_ptr<Expr> v) : name(std::move(n)), valExpr(v) {}
     Value eval(shared_ptr<Environment> env) override {
         Value v = valExpr->eval(env);
@@ -369,9 +379,9 @@ public:
         Value r = right->eval(env);
         if (op == "-") {
             if (r.type == Value::NUM) return Value(-r.numVal, r.isFloat);
-            throw runtime_error("Invalid operand for unary -");
+            throw runtime_error("'" + r.typeName() + "' ke aage minus (-) kaise laga diya!");
         }
-        if (op == "!" || op == "na") return Value(!r.isTruthy());
+        if (op == "!" || op == "not") return Value(!r.isTruthy());
         return Value();
     }
 };
@@ -384,8 +394,7 @@ public:
     BinaryExpr(shared_ptr<Expr> l, string o, shared_ptr<Expr> r)
         : left(l), op(std::move(o)), right(r) {}
     Value eval(shared_ptr<Environment> env) override {
-        Value l = left->eval(env);
-        Value r = right->eval(env);
+        Value l = left->eval(env), r = right->eval(env);
         if (op == "+") return valAdd(l, r);
         if (op == "-") return valSub(l, r);
         if (op == "*") return valMul(l, r);
@@ -410,11 +419,8 @@ public:
         : left(l), op(std::move(o)), right(r) {}
     Value eval(shared_ptr<Environment> env) override {
         Value l = left->eval(env);
-        if (op == "ya" || op == "||") {
-            if (l.isTruthy()) return l;
-        } else { // "aur" or "&&"
-            if (!l.isTruthy()) return l;
-        }
+        if (op == "||" || op == "or") { if (l.isTruthy()) return l; }
+        else { if (!l.isTruthy()) return l; }
         return right->eval(env);
     }
 };
@@ -427,22 +433,21 @@ public:
     Value eval(shared_ptr<Environment> env) override {
         Value o = object->eval(env);
         if (o.type == Value::INSTANCE && o.inst) return o.inst->get(name);
-        return Value();
+        throw runtime_error("Khopdi tod saale ka! Null ya non-object pe property '" + name + "' dhundh rahe ho!");
     }
 };
 
 class SetExpr : public Expr {
+public:
     shared_ptr<Expr> object;
     string name;
     shared_ptr<Expr> valExpr;
-public:
     SetExpr(shared_ptr<Expr> o, string n, shared_ptr<Expr> v)
         : object(o), name(std::move(n)), valExpr(v) {}
     Value eval(shared_ptr<Environment> env) override {
-        Value v = valExpr->eval(env);
-        Value o = object->eval(env);
-        if (o.type == Value::INSTANCE && o.inst) o.inst->set(name, v);
-        return v;
+        Value v = valExpr->eval(env), o = object->eval(env);
+        if (o.type == Value::INSTANCE && o.inst) { o.inst->set(name, v); return v; }
+        throw runtime_error("Ye sab doglapan hai! Non-object pe property assign nahi hoti!");
     }
 };
 
@@ -458,42 +463,35 @@ public:
         if (cVal.type == Value::CALLABLE && cVal.callable) {
             return cVal.callable->call(env, evaluatedArgs);
         }
-        throw runtime_error("Can only call functions or classes! Found: " + cVal.typeName());
+        throw runtime_error("Beta, tumse na ho payega! '" + cVal.toString() + "' koi function thodi hai jo call kar rahe ho!");
     }
 };
 
-class PoochExpr : public Expr {
+class InputExpr : public Expr {
     shared_ptr<Expr> prompt;
 public:
-    PoochExpr(shared_ptr<Expr> p = nullptr) : prompt(p) {}
+    InputExpr(shared_ptr<Expr> p = nullptr) : prompt(p) {}
     Value eval(shared_ptr<Environment> env) override {
         if (prompt) { prompt->eval(env).print(); cout << flush; }
         string line;
         if (!getline(cin, line)) return Value("");
-        // Like Python's input(), captures entire line with all spaces preserved
         return Value(line);
     }
 };
 
-// Statements
 class BlockStmt : public Stmt {
 public:
     vector<shared_ptr<Stmt>> stmts;
-    void exec(shared_ptr<Environment> env) override {
-        for (auto& s : stmts) s->exec(env);
-    }
+    void exec(shared_ptr<Environment> env) override { for (auto& s : stmts) s->exec(env); }
 };
 
 Value MemeFunction::call(shared_ptr<Environment>, const vector<Value>& args) {
+    if (args.size() != params.size()) {
+        throw runtime_error("Gaddari korbe! Function ne " + to_string(params.size()) + " arguments maange the, aur tumne " + to_string(args.size()) + " chipka diye!");
+    }
     auto env = make_shared<Environment>(closure);
-    for (size_t i = 0; i < params.size(); i++) {
-        env->define(params[i], (i < args.size()) ? args[i] : Value());
-    }
-    try {
-        body->exec(env);
-    } catch (const ReturnSignal& sig) {
-        return *sig.value;
-    }
+    for (size_t i = 0; i < params.size(); i++) env->define(params[i], args[i]);
+    try { body->exec(env); } catch (const ReturnSignal& sig) { return *sig.value; }
     return Value();
 }
 
@@ -522,24 +520,18 @@ class VarStmt : public Stmt {
     shared_ptr<Expr> init;
 public:
     VarStmt(string n, shared_ptr<Expr> i) : name(std::move(n)), init(i) {}
-    void exec(shared_ptr<Environment> env) override {
-        env->define(name, init ? init->eval(env) : Value());
-    }
+    void exec(shared_ptr<Environment> env) override { env->define(name, init ? init->eval(env) : Value()); }
 };
 
 class IfStmt : public Stmt {
     shared_ptr<Expr> cond;
-    shared_ptr<Stmt> thenBranch;
-    shared_ptr<Stmt> elseBranch;
+    shared_ptr<Stmt> thenBranch, elseBranch;
 public:
     IfStmt(shared_ptr<Expr> c, shared_ptr<Stmt> t, shared_ptr<Stmt> e = nullptr)
         : cond(c), thenBranch(t), elseBranch(e) {}
     void exec(shared_ptr<Environment> env) override {
-        if (cond->eval(env).isTruthy()) {
-            thenBranch->exec(env);
-        } else if (elseBranch) {
-            elseBranch->exec(env);
-        }
+        if (cond->eval(env).isTruthy()) thenBranch->exec(env);
+        else if (elseBranch) elseBranch->exec(env);
     }
 };
 
@@ -550,13 +542,9 @@ public:
     WhileStmt(shared_ptr<Expr> c, shared_ptr<Stmt> b) : cond(c), body(b) {}
     void exec(shared_ptr<Environment> env) override {
         while (cond->eval(env).isTruthy()) {
-            try {
-                body->exec(env);
-            } catch (const BreakSignal&) {
-                break;
-            } catch (const ContinueSignal&) {
-                continue;
-            }
+            try { body->exec(env); }
+            catch (const BreakSignal&) { break; }
+            catch (const ContinueSignal&) { continue; }
         }
     }
 };
@@ -569,22 +557,16 @@ public:
     ForRangeStmt(string v, shared_ptr<Expr> s, shared_ptr<Expr> e, shared_ptr<Expr> st, shared_ptr<Stmt> b)
         : varName(std::move(v)), startExpr(s), endExpr(e), stepExpr(st), body(b) {}
     void exec(shared_ptr<Environment> env) override {
-        long long start = (long long)startExpr->eval(env).numVal;
-        long long end = (long long)endExpr->eval(env).numVal;
+        long long start = (long long)startExpr->eval(env).numVal, end = (long long)endExpr->eval(env).numVal;
         long long step = (start <= end) ? 1 : -1;
         if (stepExpr) step = (long long)stepExpr->eval(env).numVal;
-        if (step == 0) throw runtime_error("Step cannot be zero in loop!");
-
+        if (step == 0) throw runtime_error("Step 0 rakhoge toh loop qayamat tak chalega! Infinite loop se bacho dost!");
         auto loopEnv = make_shared<Environment>(env);
         for (long long cur = start; (step > 0 ? cur <= end : cur >= end); cur += step) {
             loopEnv->define(varName, Value(cur));
-            try {
-                body->exec(loopEnv);
-            } catch (const BreakSignal&) {
-                break;
-            } catch (const ContinueSignal&) {
-                continue;
-            }
+            try { body->exec(loopEnv); }
+            catch (const BreakSignal&) { break; }
+            catch (const ContinueSignal&) { continue; }
         }
     }
 };
@@ -603,9 +585,7 @@ class ReturnStmt : public Stmt {
     shared_ptr<Expr> expr;
 public:
     ReturnStmt(shared_ptr<Expr> e) : expr(e) {}
-    void exec(shared_ptr<Environment> env) override {
-        throw ReturnSignal(expr ? expr->eval(env) : Value());
-    }
+    void exec(shared_ptr<Environment> env) override { throw ReturnSignal(expr ? expr->eval(env) : Value()); }
 };
 
 class FuncDeclStmt : public Stmt {
@@ -616,8 +596,7 @@ public:
     FuncDeclStmt(string n, vector<string> p, shared_ptr<BlockStmt> b)
         : name(std::move(n)), params(std::move(p)), body(b) {}
     void exec(shared_ptr<Environment> env) override {
-        auto fn = make_shared<MemeFunction>(name, params, body, env);
-        env->define(name, Value(fn));
+        env->define(name, Value(make_shared<MemeFunction>(name, params, body, env)));
     }
 };
 
@@ -632,29 +611,26 @@ public:
         if (!superName.empty()) {
             Value sVal = env->get(superName);
             if (sVal.type == Value::CALLABLE) super = dynamic_pointer_cast<MemeClass>(sVal.callable);
+            if (!super) throw runtime_error("Fake nepotism! '" + superName + "' koi class nahi hai, isko inherit kaise karoge?");
         }
         auto cls = make_shared<MemeClass>(name, super);
-        for (auto& m : methods) {
-            cls->methods[m->name] = make_shared<MemeFunction>(m->name, m->params, m->body, env);
-        }
+        for (auto& m : methods) cls->methods[m->name] = make_shared<MemeFunction>(m->name, m->params, m->body, env);
         env->define(name, Value(cls));
     }
 };
 
 // ==============================================================================
-// 6. MEME LEXER (TOKENIZER)
+// 6. TOKENIZER (CLEAN ENGLISH KEYWORDS, NO ALIASES, OFFICIAL MEME ERRORS)
 // ==============================================================================
 enum TokType {
     IDENT, STR, NUM,
-    // Keywords & meme aliases
-    KW_SANCHA, KW_SE, KW_KAR, KW_LE, KW_DIKHA, KW_KHUD,
-    KW_DEKH, KW_WARNA, KW_JABTAK, KW_GHOOM, KW_BAS, KW_CHAL, KW_WAPAS,
-    KW_AUR, KW_YA, KW_HAAN, KW_NAHI, KW_KUCH_NAHI, KW_PUCH,
-    // Operators & symbols
+    KW_CLASS, KW_EXTENDS, KW_FUNCTION, KW_LET, KW_THIS,
+    KW_IF, KW_ELSE, KW_WHILE, KW_FOR, KW_IN, KW_TO, KW_STEP,
+    KW_RETURN, KW_BREAK, KW_CONTINUE, KW_PRINT, KW_INPUT,
+    KW_TRUE, KW_FALSE, KW_NULL, KW_AND, KW_OR, KW_NOT,
     EQUAL_EQUAL, BANG_EQUAL, LESS_EQUAL, GREATER_EQUAL,
     LESS, GREATER, PLUS, MINUS, STAR, SLASH, PERCENT,
-    BANG, EQUAL,
-    LEFT_BRACE, RIGHT_BRACE, LEFT_PAREN, RIGHT_PAREN,
+    BANG, EQUAL, LEFT_BRACE, RIGHT_BRACE, LEFT_PAREN, RIGHT_PAREN,
     COMMA, DOT, SEMICOLON, T_EOF
 };
 
@@ -663,20 +639,28 @@ struct Token {
     string text;
     double num = 0;
     bool isFloat = false;
+    int line = 1;
 };
 
 vector<Token> tokenize(const string& src) {
     vector<Token> tokens;
     size_t i = 0, n = src.size();
+    int currentLine = 1;
+
     while (i < n) {
+        if (src[i] == '\n') { currentLine++; i++; continue; }
         if (isspace(src[i])) { i++; continue; }
         if (src[i] == '/' && i + 1 < n && src[i + 1] == '/') {
             while (i < n && src[i] != '\n') i++;
             continue;
         }
-        if (src[i] == '"') {
-            string s; i++;
-            while (i < n && src[i] != '"') {
+        if (src[i] == '"' || src[i] == '\'') {
+            char quote = src[i++];
+            string s;
+            bool closed = false;
+            while (i < n) {
+                if (src[i] == '\n') currentLine++;
+                if (src[i] == quote) { closed = true; i++; break; }
                 if (src[i] == '\\' && i + 1 < n) {
                     i++;
                     if (src[i] == 'n') s += '\n';
@@ -687,8 +671,8 @@ vector<Token> tokenize(const string& src) {
                 }
                 s += src[i++];
             }
-            if (i < n) i++;
-            tokens.push_back({TokType::STR, s, 0, false});
+            if (!closed) throw runtime_error("😒 String khol ke chhod diya... band tera baap karega?");
+            tokens.push_back({TokType::STR, s, 0, false, currentLine});
             continue;
         }
         if (isdigit(src[i])) {
@@ -698,75 +682,78 @@ vector<Token> tokenize(const string& src) {
                 if (src[i] == '.') flt = true;
                 i++;
             }
-            tokens.push_back({TokType::NUM, "", stod(src.substr(start, i - start)), flt});
+            tokens.push_back({TokType::NUM, "", stod(src.substr(start, i - start)), flt, currentLine});
             continue;
         }
         if (isalpha(src[i]) || src[i] == '_') {
             size_t start = i;
             while (i < n && (isalnum(src[i]) || src[i] == '_')) i++;
             string w = src.substr(start, i - start);
-            if (w == "sancha" || w == "biradari") tokens.push_back({TokType::KW_SANCHA, w});
-            else if (w == "se" || w == "nepo") tokens.push_back({TokType::KW_SE, w});
-            else if (w == "kar" || w == "jugaad") tokens.push_back({TokType::KW_KAR, w});
-            else if (w == "le" || w == "pakad") tokens.push_back({TokType::KW_LE, w});
-            else if (w == "dikha" || w == "flex") tokens.push_back({TokType::KW_DIKHA, w});
-            else if (w == "khud" || w == "apun") tokens.push_back({TokType::KW_KHUD, w});
-            else if (w == "dekh") tokens.push_back({TokType::KW_DEKH, w});
-            else if (w == "warna") tokens.push_back({TokType::KW_WARNA, w});
-            else if (w == "jabtak") tokens.push_back({TokType::KW_JABTAK, w});
-            else if (w == "ghoom" || w == "ghuma") tokens.push_back({TokType::KW_GHOOM, w});
-            else if (w == "bas" || w == "bas_kar") tokens.push_back({TokType::KW_BAS, w});
-            else if (w == "chal") tokens.push_back({TokType::KW_CHAL, w});
-            else if (w == "wapas" || w == "ye_le") tokens.push_back({TokType::KW_WAPAS, w});
-            else if (w == "aur") tokens.push_back({TokType::KW_AUR, w});
-            else if (w == "ya") tokens.push_back({TokType::KW_YA, w});
-            else if (w == "haan" || w == "han" || w == "real" || w == "true") tokens.push_back({TokType::KW_HAAN, w});
-            else if (w == "nahi" || w == "nhi" || w == "cap" || w == "false") tokens.push_back({TokType::KW_NAHI, w});
-            else if (w == "kuch_nahi" || w == "kuch_nhi" || w == "nalla" || w == "null") tokens.push_back({TokType::KW_KUCH_NAHI, w});
-            else if (w == "puch" || w == "pooch") tokens.push_back({TokType::KW_PUCH, w});
-            else tokens.push_back({TokType::IDENT, w});
+            if (w == "class") tokens.push_back({TokType::KW_CLASS, w, 0, false, currentLine});
+            else if (w == "extends") tokens.push_back({TokType::KW_EXTENDS, w, 0, false, currentLine});
+            else if (w == "function") tokens.push_back({TokType::KW_FUNCTION, w, 0, false, currentLine});
+            else if (w == "let") tokens.push_back({TokType::KW_LET, w, 0, false, currentLine});
+            else if (w == "this") tokens.push_back({TokType::KW_THIS, w, 0, false, currentLine});
+            else if (w == "if") tokens.push_back({TokType::KW_IF, w, 0, false, currentLine});
+            else if (w == "else") tokens.push_back({TokType::KW_ELSE, w, 0, false, currentLine});
+            else if (w == "while") tokens.push_back({TokType::KW_WHILE, w, 0, false, currentLine});
+            else if (w == "for") tokens.push_back({TokType::KW_FOR, w, 0, false, currentLine});
+            else if (w == "in") tokens.push_back({TokType::KW_IN, w, 0, false, currentLine});
+            else if (w == "to") tokens.push_back({TokType::KW_TO, w, 0, false, currentLine});
+            else if (w == "step") tokens.push_back({TokType::KW_STEP, w, 0, false, currentLine});
+            else if (w == "return") tokens.push_back({TokType::KW_RETURN, w, 0, false, currentLine});
+            else if (w == "break") tokens.push_back({TokType::KW_BREAK, w, 0, false, currentLine});
+            else if (w == "continue") tokens.push_back({TokType::KW_CONTINUE, w, 0, false, currentLine});
+            else if (w == "print") tokens.push_back({TokType::KW_PRINT, w, 0, false, currentLine});
+            else if (w == "input") tokens.push_back({TokType::KW_INPUT, w, 0, false, currentLine});
+            else if (w == "true") tokens.push_back({TokType::KW_TRUE, w, 0, false, currentLine});
+            else if (w == "false") tokens.push_back({TokType::KW_FALSE, w, 0, false, currentLine});
+            else if (w == "null") tokens.push_back({TokType::KW_NULL, w, 0, false, currentLine});
+            else if (w == "and") tokens.push_back({TokType::KW_AND, w, 0, false, currentLine});
+            else if (w == "or") tokens.push_back({TokType::KW_OR, w, 0, false, currentLine});
+            else if (w == "not") tokens.push_back({TokType::KW_NOT, w, 0, false, currentLine});
+            else tokens.push_back({TokType::IDENT, w, 0, false, currentLine});
             continue;
         }
 
-        // Two-character operators
         if (i + 1 < n) {
             string op2 = src.substr(i, 2);
-            if (op2 == "==") { tokens.push_back({TokType::EQUAL_EQUAL, op2}); i += 2; continue; }
-            if (op2 == "!=") { tokens.push_back({TokType::BANG_EQUAL, op2}); i += 2; continue; }
-            if (op2 == "<=") { tokens.push_back({TokType::LESS_EQUAL, op2}); i += 2; continue; }
-            if (op2 == ">=") { tokens.push_back({TokType::GREATER_EQUAL, op2}); i += 2; continue; }
-            if (op2 == "&&") { tokens.push_back({TokType::KW_AUR, op2}); i += 2; continue; }
-            if (op2 == "||") { tokens.push_back({TokType::KW_YA, op2}); i += 2; continue; }
+            if (op2 == "==") { tokens.push_back({TokType::EQUAL_EQUAL, op2, 0, false, currentLine}); i += 2; continue; }
+            if (op2 == "!=") { tokens.push_back({TokType::BANG_EQUAL, op2, 0, false, currentLine}); i += 2; continue; }
+            if (op2 == "<=") { tokens.push_back({TokType::LESS_EQUAL, op2, 0, false, currentLine}); i += 2; continue; }
+            if (op2 == ">=") { tokens.push_back({TokType::GREATER_EQUAL, op2, 0, false, currentLine}); i += 2; continue; }
+            if (op2 == "&&") { tokens.push_back({TokType::KW_AND, op2, 0, false, currentLine}); i += 2; continue; }
+            if (op2 == "||") { tokens.push_back({TokType::KW_OR, op2, 0, false, currentLine}); i += 2; continue; }
         }
 
-        // Single character symbols
         char c = src[i++];
         switch (c) {
-            case '{': tokens.push_back({TokType::LEFT_BRACE, "{"}); break;
-            case '}': tokens.push_back({TokType::RIGHT_BRACE, "}"}); break;
-            case '(': tokens.push_back({TokType::LEFT_PAREN, "("}); break;
-            case ')': tokens.push_back({TokType::RIGHT_PAREN, ")"}); break;
-            case ',': tokens.push_back({TokType::COMMA, ","}); break;
-            case '.': tokens.push_back({TokType::DOT, "."}); break;
-            case ';': tokens.push_back({TokType::SEMICOLON, ";"}); break;
-            case '=': tokens.push_back({TokType::EQUAL, "="}); break;
-            case '+': tokens.push_back({TokType::PLUS, "+"}); break;
-            case '-': tokens.push_back({TokType::MINUS, "-"}); break;
-            case '*': tokens.push_back({TokType::STAR, "*"}); break;
-            case '/': tokens.push_back({TokType::SLASH, "/"}); break;
-            case '%': tokens.push_back({TokType::PERCENT, "%"}); break;
-            case '!': tokens.push_back({TokType::BANG, "!"}); break;
-            case '<': tokens.push_back({TokType::LESS, "<"}); break;
-            case '>': tokens.push_back({TokType::GREATER, ">"}); break;
-            default: break;
+            case '{': tokens.push_back({TokType::LEFT_BRACE, "{", 0, false, currentLine}); break;
+            case '}': tokens.push_back({TokType::RIGHT_BRACE, "}", 0, false, currentLine}); break;
+            case '(': tokens.push_back({TokType::LEFT_PAREN, "(", 0, false, currentLine}); break;
+            case ')': tokens.push_back({TokType::RIGHT_PAREN, ")", 0, false, currentLine}); break;
+            case ',': tokens.push_back({TokType::COMMA, ",", 0, false, currentLine}); break;
+            case '.': tokens.push_back({TokType::DOT, ".", 0, false, currentLine}); break;
+            case ';': tokens.push_back({TokType::SEMICOLON, ";", 0, false, currentLine}); break;
+            case '=': tokens.push_back({TokType::EQUAL, "=", 0, false, currentLine}); break;
+            case '+': tokens.push_back({TokType::PLUS, "+", 0, false, currentLine}); break;
+            case '-': tokens.push_back({TokType::MINUS, "-", 0, false, currentLine}); break;
+            case '*': tokens.push_back({TokType::STAR, "*", 0, false, currentLine}); break;
+            case '/': tokens.push_back({TokType::SLASH, "/", 0, false, currentLine}); break;
+            case '%': tokens.push_back({TokType::PERCENT, "%", 0, false, currentLine}); break;
+            case '!': tokens.push_back({TokType::BANG, "!", 0, false, currentLine}); break;
+            case '<': tokens.push_back({TokType::LESS, "<", 0, false, currentLine}); break;
+            case '>': tokens.push_back({TokType::GREATER, ">", 0, false, currentLine}); break;
+            default:
+                throw runtime_error("😭 Chi sasura! Ye kaisa alien symbol ghusa diye ho code mein: " + string(1, c));
         }
     }
-    tokens.push_back({TokType::T_EOF, ""});
+    tokens.push_back({TokType::T_EOF, "", 0, false, currentLine});
     return tokens;
 }
 
 // ==============================================================================
-// 7. MEME PARSER (PRECEDENCE CLIMBING & RECURSIVE DESCENT)
+// 7. PARSER (PYTHON/JS STYLE WITH EXACT MEME ERRORS FROM DOCS)
 // ==============================================================================
 class Parser {
     vector<Token> tokens;
@@ -779,48 +766,57 @@ class Parser {
     bool match(TokType t) { if (check(t)) { advance(); return true; } return false; }
     Token consume(TokType t, const string& err) {
         if (check(t)) return advance();
-        throw runtime_error("Parse Error: " + err + " (found: '" + peek().text + "')");
+        throw runtime_error(err);
     }
 
-    // Expressions
+    void checkSemicolon() {
+        if (match(TokType::SEMICOLON)) return;
+        if (cur > 0 && cur < tokens.size() && tokens[cur].type != TokType::RIGHT_BRACE && tokens[cur].type != TokType::T_EOF) {
+            if (tokens[cur].line == tokens[cur - 1].line) {
+                throw runtime_error("Chhoti bachi ho kya?! Line ke end mein ';' lagana bhool gaye!");
+            }
+        }
+    }
+
     shared_ptr<Expr> primary() {
+        if (check(TokType::T_EOF)) {
+            throw runtime_error("Moye Moye! Expression adhoori chhod ke code beech mein hi khatam kar diya.");
+        }
         if (match(TokType::NUM)) return make_shared<LiteralExpr>(Value(previous().num, previous().isFloat));
         if (match(TokType::STR)) return make_shared<LiteralExpr>(Value(previous().text));
-        if (match(TokType::KW_HAAN)) return make_shared<LiteralExpr>(Value(true));
-        if (match(TokType::KW_NAHI)) return make_shared<LiteralExpr>(Value(false));
-        if (match(TokType::KW_KUCH_NAHI)) return make_shared<LiteralExpr>(Value());
-        if (match(TokType::KW_KHUD)) return make_shared<VarExpr>("khud");
+        if (match(TokType::KW_TRUE)) return make_shared<LiteralExpr>(Value(true));
+        if (match(TokType::KW_FALSE)) return make_shared<LiteralExpr>(Value(false));
+        if (match(TokType::KW_NULL)) return make_shared<LiteralExpr>(Value());
+        if (match(TokType::KW_THIS)) return make_shared<VarExpr>("this");
         if (match(TokType::IDENT)) return make_shared<VarExpr>(previous().text);
-        if (match(TokType::KW_PUCH)) {
+        if (match(TokType::KW_INPUT)) {
             shared_ptr<Expr> prompt = nullptr;
             if (match(TokType::LEFT_PAREN)) {
                 if (!check(TokType::RIGHT_PAREN)) prompt = expression();
-                consume(TokType::RIGHT_PAREN, "Expected ')' after pooch");
-            } else if (check(TokType::STR)) {
-                prompt = primary();
+                consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
             }
-            return make_shared<PoochExpr>(prompt);
+            return make_shared<InputExpr>(prompt);
         }
         if (match(TokType::LEFT_PAREN)) {
             auto expr = expression();
-            consume(TokType::RIGHT_PAREN, "Expected ')' after expression");
-            return expr;
+            consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
+            return make_shared<GroupExpr>(expr);
         }
-        throw runtime_error("Unexpected token in expression: '" + peek().text + "'");
+        throw runtime_error("Aayein? Baigan! 😭\nYe '" + peek().text + "' beech mein kahan se tapak pada?\nSaala ye dukh kahe khatam nahi hota be... dhang se syntax likh le!");
     }
 
     shared_ptr<Expr> postfix() {
         auto expr = primary();
         while (true) {
             if (match(TokType::DOT)) {
-                string name = consume(TokType::IDENT, "Expected property name after '.'").text;
+                string name = consume(TokType::IDENT, "Ye sab doglapan hai! Dot '.' ke baad property ka naam chahiye!").text;
                 expr = make_shared<GetExpr>(expr, name);
             } else if (match(TokType::LEFT_PAREN)) {
                 vector<shared_ptr<Expr>> args;
                 if (!check(TokType::RIGHT_PAREN)) {
                     do { args.push_back(expression()); } while (match(TokType::COMMA));
                 }
-                consume(TokType::RIGHT_PAREN, "Expected ')' after arguments");
+                consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
                 expr = make_shared<CallExpr>(expr, args);
             } else {
                 break;
@@ -830,7 +826,7 @@ class Parser {
     }
 
     shared_ptr<Expr> unary() {
-        if (match(TokType::BANG) || match(TokType::MINUS)) {
+        if (match(TokType::BANG) || match(TokType::MINUS) || match(TokType::KW_NOT)) {
             string op = previous().text;
             return make_shared<UnaryExpr>(op, unary());
         }
@@ -880,7 +876,7 @@ class Parser {
 
     shared_ptr<Expr> logicalAnd() {
         auto expr = equality();
-        while (match(TokType::KW_AUR)) {
+        while (match(TokType::KW_AND)) {
             string op = previous().text;
             auto right = equality();
             expr = make_shared<LogicalExpr>(expr, op, right);
@@ -890,7 +886,7 @@ class Parser {
 
     shared_ptr<Expr> logicalOr() {
         auto expr = logicalAnd();
-        while (match(TokType::KW_YA)) {
+        while (match(TokType::KW_OR)) {
             string op = previous().text;
             auto right = logicalAnd();
             expr = make_shared<LogicalExpr>(expr, op, right);
@@ -901,10 +897,13 @@ class Parser {
     shared_ptr<Expr> assignment() {
         auto expr = logicalOr();
         if (match(TokType::EQUAL)) {
+            if (dynamic_pointer_cast<GroupExpr>(expr)) {
+                throw runtime_error("Ye sab doglapan hai! '=' ke left side mein sirf seedha variable ya property aata hai, koi equation ya bracket nahi!");
+            }
             auto val = assignment();
             if (auto v = dynamic_pointer_cast<VarExpr>(expr)) return make_shared<AssignExpr>(v->name, val);
             if (auto g = dynamic_pointer_cast<GetExpr>(expr)) return make_shared<SetExpr>(g->object, g->name, val);
-            throw runtime_error("Invalid assignment target");
+            throw runtime_error("Ye sab doglapan hai! '=' ke left side mein sirf seedha variable ya property aata hai, koi equation ya bracket nahi!");
         }
         return expr;
     }
@@ -916,114 +915,121 @@ public:
 
     shared_ptr<BlockStmt> block() {
         auto b = make_shared<BlockStmt>();
-        consume(TokType::LEFT_BRACE, "Expected '{' before block");
+        consume(TokType::LEFT_BRACE, "Curly brace '{' khol ke chhod diya... band tera baap karega?");
         while (!check(TokType::RIGHT_BRACE) && !check(TokType::T_EOF)) {
             b->stmts.push_back(statement());
         }
-        consume(TokType::RIGHT_BRACE, "Expected '}' after block");
+        consume(TokType::RIGHT_BRACE, "Curly brace '{' khol ke chhod diya... band tera baap karega?");
         return b;
     }
 
     shared_ptr<Stmt> statement() {
-        if (match(TokType::KW_DIKHA)) {
+        if (match(TokType::KW_PRINT)) {
             vector<shared_ptr<Expr>> exprs;
-            if (!check(TokType::SEMICOLON)) {
-                do { exprs.push_back(expression()); } while (match(TokType::COMMA));
+            if (match(TokType::LEFT_PAREN)) {
+                if (!check(TokType::RIGHT_PAREN)) {
+                    do { exprs.push_back(expression()); } while (match(TokType::COMMA));
+                }
+                consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
+            } else {
+                if (!check(TokType::SEMICOLON) && !check(TokType::RIGHT_BRACE) && !check(TokType::T_EOF)) {
+                    do { exprs.push_back(expression()); } while (match(TokType::COMMA));
+                }
             }
-            consume(TokType::SEMICOLON, "Expected ';' after dikha");
+            checkSemicolon();
             return make_shared<PrintStmt>(exprs);
         }
-        if (match(TokType::KW_LE)) {
-            string name = consume(TokType::IDENT, "Expected variable name after 'le'").text;
+        if (match(TokType::KW_LET)) {
+            string name = consume(TokType::IDENT, "Ye sab doglapan hai! 'let' ke baad variable ka naam hona chahiye!").text;
             shared_ptr<Expr> init = match(TokType::EQUAL) ? expression() : nullptr;
-            consume(TokType::SEMICOLON, "Expected ';' after variable declaration");
+            checkSemicolon();
             return make_shared<VarStmt>(name, init);
         }
-        if (match(TokType::KW_DEKH)) {
+        if (match(TokType::KW_IF)) {
+            bool paren = match(TokType::LEFT_PAREN);
             auto cond = expression();
+            if (dynamic_pointer_cast<AssignExpr>(cond)) {
+                throw runtime_error("Control Uday, control! 'if' mein '=' (assign) nahi, '==' (compare) lagta hai!");
+            }
+            if (paren) consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
             auto thenBranch = block();
             shared_ptr<Stmt> elseBranch = nullptr;
-            if (match(TokType::KW_WARNA)) {
-                if (check(TokType::KW_DEKH)) {
-                    advance();
-                    auto nextCond = expression();
-                    auto nextThen = block();
-                    shared_ptr<Stmt> nextElse = nullptr;
-                    if (match(TokType::KW_WARNA)) {
-                        nextElse = check(TokType::KW_DEKH) ? statement() : block();
-                    }
-                    elseBranch = make_shared<IfStmt>(nextCond, nextThen, nextElse);
-                } else {
-                    elseBranch = block();
-                }
+            if (match(TokType::KW_ELSE)) {
+                if (check(TokType::KW_IF)) elseBranch = statement();
+                else elseBranch = block();
             }
             return make_shared<IfStmt>(cond, thenBranch, elseBranch);
         }
-        if (match(TokType::KW_JABTAK)) {
+        if (match(TokType::KW_WHILE)) {
+            bool paren = match(TokType::LEFT_PAREN);
             auto cond = expression();
+            if (dynamic_pointer_cast<AssignExpr>(cond)) {
+                throw runtime_error("Control Uday, control! 'while' mein '=' (assign) nahi, '==' (compare) lagta hai!");
+            }
+            if (paren) consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
             auto body = block();
             return make_shared<WhileStmt>(cond, body);
         }
-        if (match(TokType::KW_GHOOM)) {
-            string varName = consume(TokType::IDENT, "Expected loop variable name after 'ghoom'").text;
-            consume(TokType::KW_SE, "Expected 'se' before start range");
+        if (match(TokType::KW_FOR)) {
+            string varName = consume(TokType::IDENT, "Kisko ghumana hai? 'for' ke baad loop variable ka naam likh!").text;
+            consume(TokType::KW_IN, "Ye sab doglapan hai! 'for' loop mein 'in' lagana zaroori hai!");
             auto start = expression();
-            consume(TokType::KW_SE, "Expected 'se' before end range");
+            consume(TokType::KW_TO, "Ye sab doglapan hai! Range ke liye 'to' lagana zaroori hai (Jaise: for i in 1 to 10)!");
             auto end = expression();
             shared_ptr<Expr> step = nullptr;
-            if (match(TokType::KW_SE)) step = expression();
+            if (match(TokType::KW_STEP)) step = expression();
             auto body = block();
             return make_shared<ForRangeStmt>(varName, start, end, step, body);
         }
-        if (match(TokType::KW_BAS)) {
-            consume(TokType::SEMICOLON, "Expected ';' after bas");
+        if (match(TokType::KW_BREAK)) {
+            checkSemicolon();
             return make_shared<BreakStmt>();
         }
-        if (match(TokType::KW_CHAL)) {
-            consume(TokType::SEMICOLON, "Expected ';' after chal");
+        if (match(TokType::KW_CONTINUE)) {
+            checkSemicolon();
             return make_shared<ContinueStmt>();
         }
-        if (match(TokType::KW_WAPAS)) {
+        if (match(TokType::KW_RETURN)) {
             shared_ptr<Expr> val = nullptr;
-            if (!check(TokType::SEMICOLON)) val = expression();
-            consume(TokType::SEMICOLON, "Expected ';' after return");
+            if (!check(TokType::SEMICOLON) && !check(TokType::RIGHT_BRACE)) val = expression();
+            checkSemicolon();
             return make_shared<ReturnStmt>(val);
         }
-        if (match(TokType::KW_KAR)) {
-            string name = consume(TokType::IDENT, "Expected function name after 'kar'").text;
-            consume(TokType::LEFT_PAREN, "Expected '(' after function name");
+        if (match(TokType::KW_FUNCTION)) {
+            string name = consume(TokType::IDENT, "Ye sab doglapan hai! 'function' ke baad valid function name likh!").text;
+            consume(TokType::LEFT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
             vector<string> params;
             if (!check(TokType::RIGHT_PAREN)) {
-                do { params.push_back(consume(TokType::IDENT, "Expected parameter name").text); } while (match(TokType::COMMA));
+                do { params.push_back(consume(TokType::IDENT, "Parameter ka valid naam likh!").text); } while (match(TokType::COMMA));
             }
-            consume(TokType::RIGHT_PAREN, "Expected ')' after parameters");
+            consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
             auto body = block();
             return make_shared<FuncDeclStmt>(name, params, body);
         }
-        if (match(TokType::KW_SANCHA)) {
-            string name = consume(TokType::IDENT, "Expected class name after 'sancha'").text;
-            string super = match(TokType::KW_SE) ? consume(TokType::IDENT, "Expected superclass name after 'se'").text : "";
-            consume(TokType::LEFT_BRACE, "Expected '{' before class body");
+        if (match(TokType::KW_CLASS)) {
+            string name = consume(TokType::IDENT, "Kiski class le rahe ho? 'class' ke baad naam toh likh mere dost!").text;
+            string super = match(TokType::KW_EXTENDS) ? consume(TokType::IDENT, "Fake nepotism! 'extends' ke baad parent class ka naam kaun likhega?").text : "";
+            consume(TokType::LEFT_BRACE, "Curly brace '{' khol ke chhod diya... band tera baap karega?");
             vector<shared_ptr<FuncDeclStmt>> methods;
             while (!check(TokType::RIGHT_BRACE) && !check(TokType::T_EOF)) {
-                consume(TokType::KW_KAR, "Expected 'kar' before method declaration");
-                string mName = consume(TokType::IDENT, "Expected method name").text;
-                consume(TokType::LEFT_PAREN, "Expected '(' after method name");
+                match(TokType::KW_FUNCTION);
+                string mName = consume(TokType::IDENT, "Class method ka valid naam likh!").text;
+                consume(TokType::LEFT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
                 vector<string> params;
                 if (!check(TokType::RIGHT_PAREN)) {
-                    do { params.push_back(consume(TokType::IDENT, "Expected parameter name").text); } while (match(TokType::COMMA));
+                    do { params.push_back(consume(TokType::IDENT, "Parameter ka naam likho!").text); } while (match(TokType::COMMA));
                 }
-                consume(TokType::RIGHT_PAREN, "Expected ')' after parameters");
+                consume(TokType::RIGHT_PAREN, "Bracket '(' khol ke chhod diya... band tera baap karega?");
                 auto body = block();
                 methods.push_back(make_shared<FuncDeclStmt>(mName, params, body));
             }
-            consume(TokType::RIGHT_BRACE, "Expected '}' after class body");
+            consume(TokType::RIGHT_BRACE, "Curly brace '{' khol ke chhod diya... band tera baap karega?");
             return make_shared<ClassStmt>(name, super, methods);
         }
         if (check(TokType::LEFT_BRACE)) return block();
 
         auto e = expression();
-        consume(TokType::SEMICOLON, "Expected ';' after expression");
+        checkSemicolon();
         return make_shared<ExprStmt>(e);
     }
 
@@ -1039,37 +1045,25 @@ public:
 // ==============================================================================
 shared_ptr<Environment> createGlobalEnvironment() {
     auto env = make_shared<Environment>();
-    // kya_hai: returns the type of the value
-    env->define("kya_hai", Value(make_shared<NativeFunction>("kya_hai", 1, [](const vector<Value>& args) {
-        return Value(args.empty() ? "nalla" : args[0].typeName());
+    env->define("type", Value(make_shared<NativeFunction>("type", 1, [](const vector<Value>& args) {
+        return Value(args.empty() ? "null" : args[0].typeName());
     })));
-
-    // point_wala: converts string or int to float
-    env->define("point_wala", Value(make_shared<NativeFunction>("point_wala", 1, [](const vector<Value>& args) {
-        if (args.empty()) return Value(0.0, true);
-        if (args[0].type == Value::NUM) return Value(args[0].numVal, true);
-        if (args[0].type == Value::STR) {
-            try { return Value(stod(args[0].strVal), true); } catch (...) {}
-        }
-        return Value(0.0, true);
-    })));
-
-    // gin: string length
-    env->define("gin", Value(make_shared<NativeFunction>("gin", 1, [](const vector<Value>& args) {
+    env->define("len", Value(make_shared<NativeFunction>("len", 1, [](const vector<Value>& args) {
         if (args.empty() || args[0].type != Value::STR) return Value(0);
         return Value((long long)args[0].strVal.size());
     })));
-
-    // pooch / puch: input like Python (captures whole line with spaces)
-    auto poochFn = Value(make_shared<NativeFunction>("pooch", 0, [](const vector<Value>& args) {
-        if (!args.empty()) { args[0].print(); cout << flush; }
-        string line;
-        if (!getline(cin, line)) return Value("");
-        return Value(line);
-    }));
-    env->define("pooch", poochFn);
-    env->define("puch", poochFn);
-
+    env->define("float", Value(make_shared<NativeFunction>("float", 1, [](const vector<Value>& args) {
+        if (args.empty()) return Value(0.0, true);
+        if (args[0].type == Value::NUM) return Value(args[0].numVal, true);
+        if (args[0].type == Value::STR) { try { return Value(stod(args[0].strVal), true); } catch (...) {} }
+        return Value(0.0, true);
+    })));
+    env->define("int", Value(make_shared<NativeFunction>("int", 1, [](const vector<Value>& args) {
+        if (args.empty()) return Value(0);
+        if (args[0].type == Value::NUM) return Value((long long)args[0].numVal);
+        if (args[0].type == Value::STR) { try { return Value((long long)stoll(args[0].strVal)); } catch (...) {} }
+        return Value(0);
+    })));
     return env;
 }
 
@@ -1082,71 +1076,71 @@ int main(int argc, char* argv[]) {
         code = argv[2];
     } else if (argc > 1) {
         ifstream file(argv[1]);
-        if (!file.is_open()) { cerr << "Error: Cannot open file " << argv[1] << "\n"; return 1; }
+        if (!file.is_open()) {
+            cerr << "\n❌ Gadbad ho gayi:\nFile '" << argv[1] << "' gayab hai! Sahi path daalo warna main isse out hoon.\n\n";
+            return 1;
+        }
         stringstream ss; ss << file.rdbuf(); code = ss.str();
     } else {
-        // Built-in Complete Parody OOP Showcase
         code = R"(
-            dikha "=== MEMElang Complete Feature Showcase ===";
+            print("=== Welcome to Minimal OOP Language Showcase ===");
 
-            // 1. Base Class with Constructor & Method
-            sancha Banda {
-                kar shuru(naam, umar) {
-                    khud.naam = naam;
-                    khud.umar = umar;
+            // 1. Base Class: Person (Encapsulation of State & Behavior)
+            class Person {
+                constructor(name, age) {
+                    this.name = name;
+                    this.age = age;
                 }
-                kar parichay() {
-                    dikha "Namaste! Mera naam", khud.naam, "hai aur umar", khud.umar, "saal hai.";
+
+                intro() {
+                    print("Namaste! My name is", this.name, "and my age is", this.age, "years.");
                 }
-                kar kaam() {
-                    dikha khud.naam, "seedha sadha kaam karta hai.";
+
+                work() {
+                    print(this.name, "does simple honest work.");
                 }
             }
 
-            // 2. Subclass with Inheritance & Method Overriding
-            sancha Don se Banda {
-                kar shuru(naam, umar, ilaka) {
-                    khud.naam = naam;
-                    khud.umar = umar;
-                    khud.ilaka = ilaka;
+            // 2. Subclass: Don (Inheritance via 'extends' & Polymorphic Overriding)
+            class Don extends Person {
+                constructor(name, age, city) {
+                    this.name = name;
+                    this.age = age;
+                    this.city = city;
                 }
-                kar kaam() {
-                    dikha "Khatarnak kaam! Mai", khud.ilaka, "ka Don hoon!";
+
+                work() {
+                    print("Dangerous work! I am the Don of", this.city + "!");
                 }
-                kar dhamki() {
-                    dikha "Utha le re baba!", khud.naam, "se panga mat lena!";
+
+                threat() {
+                    print("Utha le re baba!", this.name, "se panga mat lena!");
                 }
             }
 
-            le baburao = Don("Baburao Apte", 50, "Khadakwasla");
-            baburao.parichay();
-            baburao.kaam();
-            baburao.dhamki();
+            let raju = Person("Raju", 25);
+            raju.intro();
+            raju.work();
+
+            print("");
+
+            let baburao = Don("Baburao Ganpatrao Apte", 50, "Khadakwasla");
+            baburao.intro();  // Inherited method from Person
+            baburao.work();   // Overridden method from Don
+            baburao.threat(); // Subclass specific method
+
             baburao.dialogue = "Khopdi tod saale ka!";
-            dikha "Dialogue:", baburao.dialogue;
+            print("Baburao favorite dialogue:", baburao.dialogue);
 
-            // 3. Functions, Recursion, Loops & Break/Continue
-            dikha "\n--- Loop & Fibonacci Demonstration ---";
-            kar fib(n) {
-                dekh n <= 0 { wapas 0; }
-                dekh n == 1 { wapas 1; }
-                wapas fib(n - 1) + fib(n - 2);
+            print("\n--- Loops & Control Flow ---");
+            for i in 1 to 3 {
+                print("Loop count:", i);
             }
 
-            ghoom i se 0 se 5 {
-                dikha "fib(", i, ") =", fib(i);
+            function add(a, b) {
+                return a + b;
             }
-
-            dikha "\n--- While Loop (jabtak) with Break (bas) ---";
-            le count = 1;
-            jabtak count <= 10 {
-                dekh count == 4 {
-                    dikha "Count reached 4, breaking out!";
-                    bas;
-                }
-                dikha "Step:", count;
-                count = count + 1;
-            }
+            print("20 + 26 =", add(20, 26));
         )";
     }
 
@@ -1157,7 +1151,7 @@ int main(int argc, char* argv[]) {
         auto globalScope = createGlobalEnvironment();
         for (auto& stmt : program) stmt->exec(globalScope);
     } catch (const exception& e) {
-        cerr << "Runtime Error: " << e.what() << "\n";
+        cerr << "\n❌ Gadbad ho gayi:\n" << e.what() << "\n\n";
         return 1;
     }
 

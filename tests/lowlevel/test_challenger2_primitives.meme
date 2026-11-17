@@ -1,0 +1,294 @@
+// ==============================================================================
+// Challenger 2: Adversarial Stress Test Suite for Runtime Byte Primitives
+// ==============================================================================
+
+dikha "=== Running Challenger 2 Runtime Primitives Adversarial Suite ===";
+
+jugaad check_eq(actual, expected, test_name) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+jugaad check_true(cond, test_name) {
+    dekh !cond {
+        dikha f"[FAIL] {test_name}: Expected true, got false";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// 1. FLOAT64 BE & LE Roundtrip & Bit-Pattern Accuracy
+// ------------------------------------------------------------------------------
+pakad b8 = bytes(8);
+
+// 1.1 Zero (0.0)
+b8.write_f64_be(0, 0.0);
+check_eq(b8.read_f64_be(0), 0.0, "C2_f64_be_zero_val");
+check_eq(b8.to_hex(), "0000000000000000", "C2_f64_be_zero_hex");
+
+b8.write_f64_le(0, 0.0);
+check_eq(b8.read_f64_le(0), 0.0, "C2_f64_le_zero_val");
+check_eq(b8.to_hex(), "0000000000000000", "C2_f64_le_zero_hex");
+
+// 1.2 One (1.0): 0x3FF0000000000000
+b8.write_f64_be(0, 1.0);
+check_eq(b8.read_f64_be(0), 1.0, "C2_f64_be_one_val");
+check_eq(b8.to_hex(), "3ff0000000000000", "C2_f64_be_one_hex");
+
+b8.write_f64_le(0, 1.0);
+check_eq(b8.read_f64_le(0), 1.0, "C2_f64_le_one_val");
+check_eq(b8.to_hex(), "000000000000f03f", "C2_f64_le_one_hex");
+
+// 1.3 Negative One (-1.0): 0xBFF0000000000000
+b8.write_f64_be(0, -1.0);
+check_eq(b8.read_f64_be(0), -1.0, "C2_f64_be_neg_one_val");
+check_eq(b8.to_hex(), "bff0000000000000", "C2_f64_be_neg_one_hex");
+
+b8.write_f64_le(0, -1.0);
+check_eq(b8.read_f64_le(0), -1.0, "C2_f64_le_neg_one_val");
+check_eq(b8.to_hex(), "000000000000f0bf", "C2_f64_le_neg_one_hex");
+
+// 1.4 Arbitrary double precision: 10.5 (0x4025000000000000)
+b8.write_f64_be(0, 10.5);
+check_eq(b8.read_f64_be(0), 10.5, "C2_f64_be_10_5_val");
+check_eq(b8.to_hex(), "4025000000000000", "C2_f64_be_10_5_hex");
+
+// 1.5 Fractional repeating precision: 54.35 (0x404B2CCCCCCCCCCD)
+b8.write_f64_be(0, 54.35);
+check_eq(b8.to_hex(), "404b2ccccccccccd", "C2_f64_be_54_35_hex");
+pakad read_54_35 = b8.read_f64_be(0);
+check_true(read_54_35 > 54.34999999 && read_54_35 < 54.35000001, "C2_f64_be_54_35_val");
+
+// ------------------------------------------------------------------------------
+// 2. UINT64 BE & LE Roundtrip & Boundary Patterns
+// ------------------------------------------------------------------------------
+// 2.1 Zero
+b8.write_u64_be(0, 0);
+check_eq(b8.read_u64_be(0), 0, "C2_u64_be_zero_val");
+check_eq(b8.to_hex(), "0000000000000000", "C2_u64_be_zero_hex");
+
+b8.write_u64_le(0, 0);
+check_eq(b8.read_u64_le(0), 0, "C2_u64_le_zero_val");
+check_eq(b8.to_hex(), "0000000000000000", "C2_u64_le_zero_hex");
+
+// 2.2 32-bit boundary (0xFFFFFFFF = 4294967295)
+b8.write_u64_be(0, 4294967295);
+check_eq(b8.read_u64_be(0), 4294967295, "C2_u64_be_32bit_max_val");
+check_eq(b8.to_hex(), "00000000ffffffff", "C2_u64_be_32bit_max_hex");
+
+b8.write_u64_le(0, 4294967295);
+check_eq(b8.read_u64_le(0), 4294967295, "C2_u64_le_32bit_max_val");
+check_eq(b8.to_hex(), "ffffffff00000000", "C2_u64_le_32bit_max_hex");
+
+// 2.3 Beyond 32-bit (0x100000000 = 4294967296)
+b8.write_u64_be(0, 4294967296);
+check_eq(b8.read_u64_be(0), 4294967296, "C2_u64_be_2pow32_val");
+check_eq(b8.to_hex(), "0000000100000000", "C2_u64_be_2pow32_hex");
+
+// 2.4 Max signed 64-bit (0x7FFFFFFFFFFFFFFF = 9223372036854775807)
+b8.write_u64_be(0, 9223372036854775807);
+check_eq(b8.read_u64_be(0), 9223372036854775807, "C2_u64_be_max_i64_val");
+check_eq(b8.to_hex(), "7fffffffffffffff", "C2_u64_be_max_i64_hex");
+
+// ------------------------------------------------------------------------------
+// 3. INT32 BE & LE Signed Integer Roundtrip & Boundaries
+// ------------------------------------------------------------------------------
+pakad b4 = bytes(4);
+
+// 3.1 Zero
+b4.write_i32_be(0, 0);
+check_eq(b4.read_i32_be(0), 0, "C2_i32_be_zero_val");
+check_eq(b4.to_hex(), "00000000", "C2_i32_be_zero_hex");
+
+b4.write_i32_le(0, 0);
+check_eq(b4.read_i32_le(0), 0, "C2_i32_le_zero_val");
+check_eq(b4.to_hex(), "00000000", "C2_i32_le_zero_hex");
+
+// 3.2 Negative One (-1)
+b4.write_i32_be(0, -1);
+check_eq(b4.read_i32_be(0), -1, "C2_i32_be_neg_one_val");
+check_eq(b4.to_hex(), "ffffffff", "C2_i32_be_neg_one_hex");
+
+b4.write_i32_le(0, -1);
+check_eq(b4.read_i32_le(0), -1, "C2_i32_le_neg_one_val");
+check_eq(b4.to_hex(), "ffffffff", "C2_i32_le_neg_one_hex");
+
+// 3.3 INT32_MAX: 2147483647 (0x7FFFFFFF)
+b4.write_i32_be(0, 2147483647);
+check_eq(b4.read_i32_be(0), 2147483647, "C2_i32_be_max_val");
+check_eq(b4.to_hex(), "7fffffff", "C2_i32_be_max_hex");
+
+b4.write_i32_le(0, 2147483647);
+check_eq(b4.read_i32_le(0), 2147483647, "C2_i32_le_max_val");
+check_eq(b4.to_hex(), "ffffff7f", "C2_i32_le_max_hex");
+
+// 3.4 INT32_MIN: -2147483648 (0x80000000)
+b4.write_i32_be(0, -2147483648);
+check_eq(b4.read_i32_be(0), -2147483648, "C2_i32_be_min_val");
+check_eq(b4.to_hex(), "80000000", "C2_i32_be_min_hex");
+
+b4.write_i32_le(0, -2147483648);
+check_eq(b4.read_i32_le(0), -2147483648, "C2_i32_le_min_val");
+check_eq(b4.to_hex(), "00000080", "C2_i32_le_min_hex");
+
+// 3.5 Arbitrary negative number: -123456
+b4.write_i32_be(0, -123456);
+check_eq(b4.read_i32_be(0), -123456, "C2_i32_be_neg123456_val");
+
+b4.write_i32_le(0, -123456);
+check_eq(b4.read_i32_le(0), -123456, "C2_i32_le_neg123456_val");
+
+// ------------------------------------------------------------------------------
+// 4. Out-of-Bounds Exceptions & Safety (Positive Offsets)
+// ------------------------------------------------------------------------------
+pakad b16 = bytes(16);
+
+// 4.1 Exact boundary: 8-byte write at offset 8 on 16-byte buffer -> fills [8..15]
+b16.write_f64_be(8, 99.9);
+check_true(b16.read_f64_be(8) > 99.89 && b16.read_f64_be(8) < 99.91, "C2_f64_be_exact_boundary_16");
+
+// 4.2 Boundary overflow: offset 9 on 16-byte buffer (needs 9+8=17 bytes)
+pakad c_f64_ovf = jhooth;
+try {
+    b16.read_f64_be(9);
+} catch (e) {
+    c_f64_ovf = sach;
+}
+check_true(c_f64_ovf, "C2_f64_be_overflow_offset_9_throws");
+
+pakad c_f64_w_ovf = jhooth;
+try {
+    b16.write_f64_be(9, 1.0);
+} catch (e) {
+    c_f64_w_ovf = sach;
+}
+check_true(c_f64_w_ovf, "C2_f64_be_write_overflow_offset_9_throws");
+
+// 4.3 Large positive out-of-bounds offset
+pakad c_f64_large = jhooth;
+try {
+    b16.read_f64_be(1000);
+} catch (e) {
+    c_f64_large = sach;
+}
+check_true(c_f64_large, "C2_f64_be_large_offset_throws");
+
+// 4.4 UINT64 out of bounds
+pakad c_u64_ovf = jhooth;
+try {
+    b16.read_u64_be(9);
+} catch (e) {
+    c_u64_ovf = sach;
+}
+check_true(c_u64_ovf, "C2_u64_be_overflow_offset_9_throws");
+
+pakad c_u64_w_ovf = jhooth;
+try {
+    b16.write_u64_be(9, 123);
+} catch (e) {
+    c_u64_w_ovf = sach;
+}
+check_true(c_u64_w_ovf, "C2_u64_be_write_overflow_offset_9_throws");
+
+// 4.5 INT32 out of bounds: offset 13 on 16-byte buffer (needs 13+4=17 bytes)
+pakad c_i32_ovf = jhooth;
+try {
+    b16.read_i32_be(13);
+} catch (e) {
+    c_i32_ovf = sach;
+}
+check_true(c_i32_ovf, "C2_i32_be_overflow_offset_13_throws");
+
+pakad c_i32_w_ovf = jhooth;
+try {
+    b16.write_i32_be(13, 42);
+} catch (e) {
+    c_i32_w_ovf = sach;
+}
+check_true(c_i32_w_ovf, "C2_i32_be_write_overflow_offset_13_throws");
+
+// 4.6 Zero-length buffer out of bounds
+pakad b0 = bytes(0);
+
+pakad c_b0_f64 = jhooth;
+try {
+    b0.read_f64_be(0);
+} catch (e) {
+    c_b0_f64 = sach;
+}
+check_true(c_b0_f64, "C2_zero_len_read_f64_throws");
+
+pakad c_b0_f64_w = jhooth;
+try {
+    b0.write_f64_be(0, 1.0);
+} catch (e) {
+    c_b0_f64_w = sach;
+}
+check_true(c_b0_f64_w, "C2_zero_len_write_f64_throws");
+
+pakad c_b0_u64 = jhooth;
+try {
+    b0.read_u64_be(0);
+} catch (e) {
+    c_b0_u64 = sach;
+}
+check_true(c_b0_u64, "C2_zero_len_read_u64_throws");
+
+pakad c_b0_i32 = jhooth;
+try {
+    b0.read_i32_be(0);
+} catch (e) {
+    c_b0_i32 = sach;
+}
+check_true(c_b0_i32, "C2_zero_len_read_i32_throws");
+
+// ------------------------------------------------------------------------------
+// 5. Negative Offset Exception Safety
+// ------------------------------------------------------------------------------
+// Offset -1 on 8-byte buffer
+pakad c_neg1_f64 = jhooth;
+try {
+    b8.read_f64_be(-1);
+} catch (e) {
+    c_neg1_f64 = sach;
+}
+check_true(c_neg1_f64, "C2_neg_offset_minus1_read_f64_throws");
+
+pakad c_neg1_f64_w = jhooth;
+try {
+    b8.write_f64_be(-1, 2.0);
+} catch (e) {
+    c_neg1_f64_w = sach;
+}
+check_true(c_neg1_f64_w, "C2_neg_offset_minus1_write_f64_throws");
+
+pakad c_neg1_u64 = jhooth;
+try {
+    b8.read_u64_be(-1);
+} catch (e) {
+    c_neg1_u64 = sach;
+}
+check_true(c_neg1_u64, "C2_neg_offset_minus1_read_u64_throws");
+
+pakad c_neg1_i32 = jhooth;
+try {
+    b4.read_i32_be(-1);
+} catch (e) {
+    c_neg1_i32 = sach;
+}
+check_true(c_neg1_i32, "C2_neg_offset_minus1_read_i32_throws");
+
+// Extreme negative offset (-1000)
+pakad c_neg_large = jhooth;
+try {
+    b8.read_f64_be(-1000);
+} catch (e) {
+    c_neg_large = sach;
+}
+check_true(c_neg_large, "C2_extreme_neg_offset_throws");
+
+dikha "=== Challenger 2 Runtime Primitives Suite: ALL TESTS PASSED ===";

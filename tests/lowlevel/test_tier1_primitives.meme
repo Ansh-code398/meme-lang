@@ -1,0 +1,119 @@
+// ==============================================================================
+// MEMElang Low-Level E2E Test Suite - Tier 1: Feature Coverage (Primitives)
+// Authoritative Source: TEST_INFRA.md, PROJECT.md, and Explorer 2 Report
+//
+// Features Verified:
+//   - Byte Buffer allocation: bytes(n), bytes([list]), byte literals
+//   - Subscript indexing: read and write
+//   - Typed Endian I/O: read/write u8, u16_be/le, u32_be/le
+//   - Buffer utilities: slice, length, to_hex, from_hex, push
+//   - Bitwise builtins: band, bor, bxor, bnot, bshl, bshr
+// Note: Strict zero tolerance for forbidden words repository-wide.
+// ==============================================================================
+
+dikha "=== Running Low-Level Tier 1 Primitives Test Suite ===";
+
+// Test helper: Assert equality
+jugaad check_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// Test helper: Assert boolean condition
+jugaad check_true(cond: sach, test_name: bol) {
+    dekh !cond {
+        dikha f"[FAIL] {test_name}: Expected true, got false";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// F2: Byte Buffer Allocation and Length
+// ------------------------------------------------------------------------------
+pakad b1 = bytes(8);
+check_eq(b1.length(), 8, "T1_byte_buffer_alloc_size");
+check_eq(b1[0], 0, "T1_byte_buffer_zero_initialized");
+check_eq(b1[7], 0, "T1_byte_buffer_zero_initialized_end");
+
+pakad b2 = bytes([10, 20, 30, 40]);
+check_eq(b2.length(), 4, "T1_byte_buffer_from_list_length");
+check_eq(b2[0], 10, "T1_byte_buffer_from_list_read_0");
+check_eq(b2[1], 20, "T1_byte_buffer_from_list_read_1");
+check_eq(b2[3], 40, "T1_byte_buffer_from_list_read_3");
+
+// ------------------------------------------------------------------------------
+// F2: Subscript Read/Write and Endian I/O
+// ------------------------------------------------------------------------------
+b1[0] = 42;
+check_eq(b1[0], 42, "T1_byte_buffer_subscript_write");
+
+b1.write_u8(1, 255);
+check_eq(b1.read_u8(1), 255, "T1_byte_buffer_u8_read_write");
+
+// Big-Endian 16-bit: 0x1234 -> bytes [0x12, 0x34]
+b1.write_u16_be(2, 4660);
+check_eq(b1.read_u16_be(2), 4660, "T1_byte_buffer_u16_be_roundtrip");
+check_eq(b1[2], 18, "T1_byte_buffer_u16_be_high_byte"); // 0x12 = 18
+check_eq(b1[3], 52, "T1_byte_buffer_u16_be_low_byte");  // 0x34 = 52
+
+// Little-Endian 16-bit: 0x1234 -> bytes [0x34, 0x12]
+b1.write_u16_le(4, 4660);
+check_eq(b1.read_u16_le(4), 4660, "T1_byte_buffer_u16_le_roundtrip");
+check_eq(b1[4], 52, "T1_byte_buffer_u16_le_low_byte");  // 0x34 = 52
+check_eq(b1[5], 18, "T1_byte_buffer_u16_le_high_byte"); // 0x12 = 18
+
+// 32-bit integer: 0xDEADBEEF = 3735928559
+pakad b32 = bytes(8);
+b32.write_u32_be(0, 3735928559);
+check_eq(b32.read_u32_be(0), 3735928559, "T1_byte_buffer_u32_be_roundtrip");
+check_eq(b32[0], 222, "T1_byte_buffer_u32_be_byte0"); // 0xDE = 222
+check_eq(b32[1], 173, "T1_byte_buffer_u32_be_byte1"); // 0xAD = 173
+check_eq(b32[2], 190, "T1_byte_buffer_u32_be_byte2"); // 0xBE = 190
+check_eq(b32[3], 239, "T1_byte_buffer_u32_be_byte3"); // 0xEF = 239
+
+b32.write_u32_le(4, 3735928559);
+check_eq(b32.read_u32_le(4), 3735928559, "T1_byte_buffer_u32_le_roundtrip");
+check_eq(b32[4], 239, "T1_byte_buffer_u32_le_byte0"); // 0xEF = 239
+check_eq(b32[5], 190, "T1_byte_buffer_u32_le_byte1"); // 0xBE = 190
+check_eq(b32[6], 173, "T1_byte_buffer_u32_le_byte2"); // 0xAD = 173
+check_eq(b32[7], 222, "T1_byte_buffer_u32_le_byte3"); // 0xDE = 222
+
+// Slicing and Hex Conversion
+pakad sliced = b1.slice(2, 4);
+check_eq(sliced.length(), 2, "T1_byte_buffer_slice_length");
+check_eq(sliced.read_u16_be(0), 4660, "T1_byte_buffer_slice_content");
+
+pakad hex_str = b1.to_hex();
+check_true(hex_str.length() >= 12, "T1_byte_buffer_to_hex_valid");
+
+pakad decoded_hex = bytes.from_hex("aa551234");
+check_eq(decoded_hex.length(), 4, "T1_byte_buffer_from_hex_length");
+check_eq(decoded_hex.read_u16_be(0), 43605, "T1_byte_buffer_from_hex_content");
+
+// Push byte to buffer
+pakad b_push = bytes([1, 2]);
+b_push.push(3);
+check_eq(b_push.length(), 3, "T1_byte_buffer_push_length");
+check_eq(b_push[2], 3, "T1_byte_buffer_push_value");
+
+// ------------------------------------------------------------------------------
+// F3: Bitwise Builtin Primitives
+// ------------------------------------------------------------------------------
+check_eq(band(12, 10), 8, "T1_bitwise_band");       // 1100 & 1010 = 1000 (8)
+check_eq(bor(12, 10), 14, "T1_bitwise_bor");        // 1100 | 1010 = 1110 (14)
+check_eq(bxor(12, 10), 6, "T1_bitwise_bxor");       // 1100 ^ 1010 = 0110 (6)
+check_eq(bshl(1, 4), 16, "T1_bitwise_bshl");        // 1 << 4 = 16
+check_eq(bshr(32, 2), 8, "T1_bitwise_bshr");        // 32 >> 2 = 8
+check_eq(bnot(0), -1, "T1_bitwise_bnot_zero");      // ~0 = -1
+check_eq(bnot(-1), 0, "T1_bitwise_bnot_neg1");      // ~(-1) = 0
+check_eq(band(0x0F0F, 0xFFFF), 3855, "T1_bitwise_band_mask"); // 0x0F0F = 3855
+check_eq(bor(0xAA00, 0x0055), 43605, "T1_bitwise_bor_combine"); // 0xAA55 = 43605
+check_eq(bxor(0xAAAA, 0x5555), 65535, "T1_bitwise_bxor_complement"); // 0xFFFF = 65535
+check_eq(bshl(1, 16), 65536, "T1_bitwise_bshl_16");
+check_eq(bshr(65536, 16), 1, "T1_bitwise_bshr_16");
+
+dikha "=== Low-Level Tier 1 Primitives: All Tests Passed ===";

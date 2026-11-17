@@ -25,6 +25,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <unistd.h>
 #include <termios.h>
@@ -9647,6 +9648,502 @@ static Value getBytesMethod(const std::shared_ptr<MemeBytes> &bytes, const std::
             return Value(false);
         }));
     }
+
+    // --- Typed Endian Read Methods ---
+    if (name == "read_u8")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u8: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) >= bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u8 offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            return Value(static_cast<long long>(bytes->data[static_cast<size_t>(offset)]));
+        }));
+    }
+    if (name == "read_u16_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u16_be: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 2 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u16_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint16_t val = (static_cast<uint16_t>(bytes->data[idx]) << 8) |
+                            static_cast<uint16_t>(bytes->data[idx + 1]);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+    if (name == "read_u16_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u16_le: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 2 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u16_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint16_t val = static_cast<uint16_t>(bytes->data[idx]) |
+                           (static_cast<uint16_t>(bytes->data[idx + 1]) << 8);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+    if (name == "read_u32_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u32_be: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u32_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = (static_cast<uint32_t>(bytes->data[idx]) << 24) |
+                           (static_cast<uint32_t>(bytes->data[idx + 1]) << 16) |
+                           (static_cast<uint32_t>(bytes->data[idx + 2]) << 8) |
+                            static_cast<uint32_t>(bytes->data[idx + 3]);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+    if (name == "read_u32_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u32_le: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u32_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val =  static_cast<uint32_t>(bytes->data[idx]) |
+                           (static_cast<uint32_t>(bytes->data[idx + 1]) << 8) |
+                           (static_cast<uint32_t>(bytes->data[idx + 2]) << 16) |
+                           (static_cast<uint32_t>(bytes->data[idx + 3]) << 24);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+
+    // --- Typed Endian Write Methods ---
+    if (name == "write_u8")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u8: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) >= bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u8 offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            bytes->data[static_cast<size_t>(offset)] = static_cast<uint8_t>(vVal.asInt() & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_u16_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u16_be: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 2 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u16_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = static_cast<uint32_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>(val & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_u16_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u16_le: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 2 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u16_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = static_cast<uint32_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>(val & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_u32_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u32_be: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u32_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = static_cast<uint64_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>((val >> 24) & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>(val & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_u32_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u32_le: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u32_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = static_cast<uint64_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>(val & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+
+    // --- FLOAT64 Endian Methods ---
+    if (name == "read_f64_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_f64_be: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_f64_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = (static_cast<uint64_t>(bytes->data[idx]) << 56) |
+                           (static_cast<uint64_t>(bytes->data[idx + 1]) << 48) |
+                           (static_cast<uint64_t>(bytes->data[idx + 2]) << 40) |
+                           (static_cast<uint64_t>(bytes->data[idx + 3]) << 32) |
+                           (static_cast<uint64_t>(bytes->data[idx + 4]) << 24) |
+                           (static_cast<uint64_t>(bytes->data[idx + 5]) << 16) |
+                           (static_cast<uint64_t>(bytes->data[idx + 6]) << 8) |
+                            static_cast<uint64_t>(bytes->data[idx + 7]);
+            double d;
+            std::memcpy(&d, &val, sizeof(d));
+            return Value(d);
+        }));
+    }
+    if (name == "read_f64_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_f64_le: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_f64_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val =  static_cast<uint64_t>(bytes->data[idx]) |
+                           (static_cast<uint64_t>(bytes->data[idx + 1]) << 8) |
+                           (static_cast<uint64_t>(bytes->data[idx + 2]) << 16) |
+                           (static_cast<uint64_t>(bytes->data[idx + 3]) << 24) |
+                           (static_cast<uint64_t>(bytes->data[idx + 4]) << 32) |
+                           (static_cast<uint64_t>(bytes->data[idx + 5]) << 40) |
+                           (static_cast<uint64_t>(bytes->data[idx + 6]) << 48) |
+                           (static_cast<uint64_t>(bytes->data[idx + 7]) << 56);
+            double d;
+            std::memcpy(&d, &val, sizeof(d));
+            return Value(d);
+        }));
+    }
+    if (name == "write_f64_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_f64_be: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_f64_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            double d = vVal.asDouble();
+            uint64_t bits;
+            std::memcpy(&bits, &d, sizeof(bits));
+            bytes->data[idx]     = static_cast<uint8_t>((bits >> 56) & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((bits >> 48) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((bits >> 40) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((bits >> 32) & 0xFF);
+            bytes->data[idx + 4] = static_cast<uint8_t>((bits >> 24) & 0xFF);
+            bytes->data[idx + 5] = static_cast<uint8_t>((bits >> 16) & 0xFF);
+            bytes->data[idx + 6] = static_cast<uint8_t>((bits >> 8) & 0xFF);
+            bytes->data[idx + 7] = static_cast<uint8_t>(bits & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_f64_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_f64_le: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_f64_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            double d = vVal.asDouble();
+            uint64_t bits;
+            std::memcpy(&bits, &d, sizeof(bits));
+            bytes->data[idx]     = static_cast<uint8_t>(bits & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((bits >> 8) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((bits >> 16) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((bits >> 24) & 0xFF);
+            bytes->data[idx + 4] = static_cast<uint8_t>((bits >> 32) & 0xFF);
+            bytes->data[idx + 5] = static_cast<uint8_t>((bits >> 40) & 0xFF);
+            bytes->data[idx + 6] = static_cast<uint8_t>((bits >> 48) & 0xFF);
+            bytes->data[idx + 7] = static_cast<uint8_t>((bits >> 56) & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+
+    // --- UINT64 Endian Methods ---
+    if (name == "read_u64_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u64_be: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u64_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = (static_cast<uint64_t>(bytes->data[idx]) << 56) |
+                           (static_cast<uint64_t>(bytes->data[idx + 1]) << 48) |
+                           (static_cast<uint64_t>(bytes->data[idx + 2]) << 40) |
+                           (static_cast<uint64_t>(bytes->data[idx + 3]) << 32) |
+                           (static_cast<uint64_t>(bytes->data[idx + 4]) << 24) |
+                           (static_cast<uint64_t>(bytes->data[idx + 5]) << 16) |
+                           (static_cast<uint64_t>(bytes->data[idx + 6]) << 8) |
+                            static_cast<uint64_t>(bytes->data[idx + 7]);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+    if (name == "read_u64_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_u64_le: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_u64_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val =  static_cast<uint64_t>(bytes->data[idx]) |
+                           (static_cast<uint64_t>(bytes->data[idx + 1]) << 8) |
+                           (static_cast<uint64_t>(bytes->data[idx + 2]) << 16) |
+                           (static_cast<uint64_t>(bytes->data[idx + 3]) << 24) |
+                           (static_cast<uint64_t>(bytes->data[idx + 4]) << 32) |
+                           (static_cast<uint64_t>(bytes->data[idx + 5]) << 40) |
+                           (static_cast<uint64_t>(bytes->data[idx + 6]) << 48) |
+                           (static_cast<uint64_t>(bytes->data[idx + 7]) << 56);
+            return Value(static_cast<long long>(val));
+        }));
+    }
+    if (name == "write_u64_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u64_be: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u64_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = static_cast<uint64_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>((val >> 56) & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 48) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 40) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((val >> 32) & 0xFF);
+            bytes->data[idx + 4] = static_cast<uint8_t>((val >> 24) & 0xFF);
+            bytes->data[idx + 5] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 6] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 7] = static_cast<uint8_t>(val & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_u64_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_u64_le: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 8 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_u64_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint64_t val = static_cast<uint64_t>(vVal.asInt());
+            bytes->data[idx]     = static_cast<uint8_t>(val & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+            bytes->data[idx + 4] = static_cast<uint8_t>((val >> 32) & 0xFF);
+            bytes->data[idx + 5] = static_cast<uint8_t>((val >> 40) & 0xFF);
+            bytes->data[idx + 6] = static_cast<uint8_t>((val >> 48) & 0xFF);
+            bytes->data[idx + 7] = static_cast<uint8_t>((val >> 56) & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+
+    // --- INT32 Signed Endian Methods ---
+    if (name == "read_i32_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_i32_be: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_i32_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = (static_cast<uint32_t>(bytes->data[idx]) << 24) |
+                           (static_cast<uint32_t>(bytes->data[idx + 1]) << 16) |
+                           (static_cast<uint32_t>(bytes->data[idx + 2]) << 8) |
+                            static_cast<uint32_t>(bytes->data[idx + 3]);
+            return Value(static_cast<long long>(static_cast<int32_t>(val)));
+        }));
+    }
+    if (name == "read_i32_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            if (!offVal.isNumeric()) throw std::runtime_error("read_i32_le: offset number hona chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! read_i32_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val =  static_cast<uint32_t>(bytes->data[idx]) |
+                           (static_cast<uint32_t>(bytes->data[idx + 1]) << 8) |
+                           (static_cast<uint32_t>(bytes->data[idx + 2]) << 16) |
+                           (static_cast<uint32_t>(bytes->data[idx + 3]) << 24);
+            return Value(static_cast<long long>(static_cast<int32_t>(val)));
+        }));
+    }
+    if (name == "write_i32_be")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_i32_be: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_i32_be offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = static_cast<uint32_t>(static_cast<int32_t>(vVal.asInt()));
+            bytes->data[idx]     = static_cast<uint8_t>((val >> 24) & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>(val & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "write_i32_le")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 2, [bytes](Interpreter &, const std::vector<Value> &args) {
+            if (!bytes) throw std::runtime_error("Bytes object is null!");
+            Value offVal = args[0].deref();
+            Value vVal = args[1].deref();
+            if (!offVal.isNumeric() || !vVal.isNumeric())
+                throw std::runtime_error("write_i32_le: offset aur value number hone chahiye!");
+            long long offset = offVal.asInt();
+            if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes->data.size())
+                throw std::runtime_error("Aukaat ke bahar! write_i32_le offset " + std::to_string(offset) +
+                                         " out of bounds (length " + std::to_string(bytes->data.size()) + ")");
+            size_t idx = static_cast<size_t>(offset);
+            uint32_t val = static_cast<uint32_t>(static_cast<int32_t>(vVal.asInt()));
+            bytes->data[idx]     = static_cast<uint8_t>(val & 0xFF);
+            bytes->data[idx + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            bytes->data[idx + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            bytes->data[idx + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+            return Value(std::monostate{});
+        }));
+    }
+    if (name == "from_hex")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 1, [](Interpreter &, const std::vector<Value> &args) {
+            Value v = args[0].deref();
+            if (!std::holds_alternative<std::string>(v.data))
+                throw std::runtime_error("from_hex requires a string argument!");
+            const std::string &hex = std::get<std::string>(v.data);
+            std::string clean;
+            clean.reserve(hex.size());
+            for (char c : hex)
+            {
+                if (!std::isspace(static_cast<unsigned char>(c)))
+                    clean.push_back(c);
+            }
+            if (clean.size() % 2 != 0)
+                throw std::runtime_error("from_hex: invalid hex string length (must have even number of digits)");
+            auto out = std::make_shared<MemeBytes>();
+            out->data.reserve(clean.size() / 2);
+            for (size_t i = 0; i < clean.size(); i += 2)
+            {
+                auto hexVal = [](char c) -> int {
+                    if (c >= '0' && c <= '9') return c - '0';
+                    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                    return -1;
+                };
+                int hi = hexVal(clean[i]);
+                int lo = hexVal(clean[i + 1]);
+                if (hi < 0 || lo < 0)
+                    throw std::runtime_error(std::string("from_hex: invalid hex character '") + clean[i] + "'");
+                out->data.push_back(static_cast<uint8_t>((hi << 4) | lo));
+            }
+            return Value(out);
+        }));
+    }
     throw std::runtime_error("Khopdi tod saale ka! 'bytes' ke paas '" + name + "' naam ka koi method nahi hai!");
 }
 
@@ -10329,6 +10826,99 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("bytes", bytesFunc);
     globals->define("kaccha_data", bytesFunc);
     globals->define("bytearray", bytesFunc);
+
+    // Bitwise builtins
+    auto bandFunc = Value(std::make_shared<NativeMethodCallable>("band", 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (!a.isNumeric() || !b.isNumeric())
+            throw std::runtime_error("band ke liye dono operands number hone chahiye!");
+        return Value(static_cast<long long>(a.asInt() & b.asInt()));
+    }));
+    globals->define("band", bandFunc);
+
+    auto borFunc = Value(std::make_shared<NativeMethodCallable>("bor", 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (!a.isNumeric() || !b.isNumeric())
+            throw std::runtime_error("bor ke liye dono operands number hone chahiye!");
+        return Value(static_cast<long long>(a.asInt() | b.asInt()));
+    }));
+    globals->define("bor", borFunc);
+
+    auto bxorFunc = Value(std::make_shared<NativeMethodCallable>("bxor", 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        Value b = args[1].deref();
+        if (!a.isNumeric() || !b.isNumeric())
+            throw std::runtime_error("bxor ke liye dono operands number hone chahiye!");
+        return Value(static_cast<long long>(a.asInt() ^ b.asInt()));
+    }));
+    globals->define("bxor", bxorFunc);
+
+    auto bnotFunc = Value(std::make_shared<NativeMethodCallable>("bnot", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        if (!a.isNumeric())
+            throw std::runtime_error("bnot ke liye operand number hona chahiye!");
+        return Value(static_cast<long long>(~a.asInt()));
+    }));
+    globals->define("bnot", bnotFunc);
+
+    auto bshlFunc = Value(std::make_shared<NativeMethodCallable>("bshl", 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        Value nVal = args[1].deref();
+        if (!a.isNumeric() || !nVal.isNumeric())
+            throw std::runtime_error("bshl ke liye dono operands number hone chahiye!");
+        long long shift = nVal.asInt();
+        if (shift < 0) throw std::runtime_error("bshl: negative shift count allowed nahi hai!");
+        if (shift >= 64) return Value(static_cast<long long>(0));
+        uint64_t val = static_cast<uint64_t>(a.asInt());
+        return Value(static_cast<long long>(val << shift));
+    }));
+    globals->define("bshl", bshlFunc);
+
+    auto bshrFunc = Value(std::make_shared<NativeMethodCallable>("bshr", 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value a = args[0].deref();
+        Value nVal = args[1].deref();
+        if (!a.isNumeric() || !nVal.isNumeric())
+            throw std::runtime_error("bshr ke liye dono operands number hone chahiye!");
+        long long shift = nVal.asInt();
+        if (shift < 0) throw std::runtime_error("bshr: negative shift count allowed nahi hai!");
+        long long val = a.asInt();
+        if (shift >= 64) return Value(val < 0 ? static_cast<long long>(-1) : static_cast<long long>(0));
+        return Value(static_cast<long long>(val >> shift));
+    }));
+    globals->define("bshr", bshrFunc);
+
+    // Global from_hex
+    globals->define("from_hex", Value(std::make_shared<NativeMethodCallable>("from_hex", 1, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        Value v = args[0].deref();
+        if (!std::holds_alternative<std::string>(v.data))
+            throw std::runtime_error("from_hex requires a string argument!");
+        const std::string &hex = std::get<std::string>(v.data);
+        std::string clean;
+        clean.reserve(hex.size());
+        for (char c : hex) {
+            if (!std::isspace(static_cast<unsigned char>(c))) clean.push_back(c);
+        }
+        if (clean.size() % 2 != 0)
+            throw std::runtime_error("from_hex: invalid hex string length (must have even number of digits)");
+        auto out = std::make_shared<MemeBytes>();
+        out->data.reserve(clean.size() / 2);
+        for (size_t i = 0; i < clean.size(); i += 2) {
+            auto hexVal = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            };
+            int hi = hexVal(clean[i]);
+            int lo = hexVal(clean[i + 1]);
+            if (hi < 0 || lo < 0)
+                throw std::runtime_error(std::string("from_hex: invalid hex character '") + clean[i] + "'");
+            out->data.push_back(static_cast<uint8_t>((hi << 4) | lo));
+        }
+        return Value(out);
+    })));
 
     // Set constructor
     auto setFunc = Value(std::make_shared<SetConstructorCallable>());
@@ -13083,7 +13673,7 @@ Value Interpreter::evaluate(const Expr *expr)
             }
             case TokenType::DIVIDE: {
                 if (rval == 0) {
-                    throw std::runtime_error("Arre re re! 0 se divide karoge toh Brahmaand phat jayega! Zero division mana hai!");
+                    throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
                 }
                 if (lval == std::numeric_limits<long long>::min() && rval == -1) {
                     throw std::runtime_error("Integer overflow ho gaya! Is hisaab ko sambhalne ki aukaat nahi hai.");

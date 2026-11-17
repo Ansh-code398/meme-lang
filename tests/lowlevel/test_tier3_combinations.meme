@@ -1,0 +1,177 @@
+// ==============================================================================
+// MEMElang Low-Level E2E Test Suite - Tier 3: Cross-Feature Combinations
+// Authoritative Source: TEST_INFRA.md, PROJECT.md, and Explorer 3 Report
+//
+// Combinations Verified:
+//   - T3.1: Bitwise Flag Masking + Byte Buffer Serialization
+//   - T3.2: Pure MEMElang Adler-32 Checksum Algorithm (Bitwise + Buffer)
+//   - T3.3: TLV Binary Payload Encapsulated in Packet Framer Frame
+//   - T3.4: Master Buffer Slicing + Independent Frame Parsing
+//   - T3.5: Endian Symmetry & Cross-Byte Inspection
+// Note: Strict zero tolerance for forbidden words repository-wide.
+// ==============================================================================
+
+dikha "=== Running Low-Level Tier 3 Combinations Test Suite ===";
+
+// Test helper: Assert equality
+jugaad check_eq(actual, expected, test_name: bol) {
+    dekh actual != expected {
+        dikha f"[FAIL] {test_name}: Expected '{expected}', got '{actual}'";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// Test helper: Assert boolean condition
+jugaad check_true(cond: sach, test_name: bol) {
+    dekh !cond {
+        dikha f"[FAIL] {test_name}: Expected true, got false";
+        chillao f"Assertion failed in {test_name}";
+    }
+    dikha f"[PASS] {test_name}";
+}
+
+// ------------------------------------------------------------------------------
+// T3.1: Bitwise Flag Masking + Byte Buffer Serialization
+// ------------------------------------------------------------------------------
+// Flags:
+//   ACTIVE      = 1 << 0 (1)
+//   ENCRYPTED   = 1 << 1 (2)
+//   COMPRESSED  = 1 << 2 (4)
+//   PRIORITY    = (val & 0x1F) << 3 (e.g. priority 5 -> 5 << 3 = 40)
+pakad flag_active = bshl(1, 0);
+pakad flag_encrypted = bshl(1, 1);
+pakad flag_compressed = bshl(1, 2);
+pakad priority_val = 5;
+pakad flag_priority = bshl(band(priority_val, 31), 3);
+
+// Combine flags: 1 | 2 | 4 | 40 = 47
+pakad combined_flags = bor(bor(bor(flag_active, flag_encrypted), flag_compressed), flag_priority);
+check_eq(combined_flags, 47, "T3_flags_combined_val");
+
+// Pack flags into byte buffer at offset 0
+pakad flag_buf = bytes(4);
+flag_buf.write_u16_be(0, combined_flags);
+flag_buf.write_u16_be(2, 1000); // sequence
+
+// Read back and unpack flags using bitwise operations
+pakad read_flags = flag_buf.read_u16_be(0);
+check_eq(read_flags, 47, "T3_flags_read_u16_be");
+
+pakad is_active = band(read_flags, flag_active) != 0;
+pakad is_encrypted = band(read_flags, flag_encrypted) != 0;
+pakad is_compressed = band(read_flags, flag_compressed) != 0;
+pakad extracted_priority = band(bshr(read_flags, 3), 31);
+
+check_true(is_active, "T3_flag_is_active_true");
+check_true(is_encrypted, "T3_flag_is_encrypted_true");
+check_true(is_compressed, "T3_flag_is_compressed_true");
+check_eq(extracted_priority, 5, "T3_flag_extracted_priority_eq_5");
+
+// ------------------------------------------------------------------------------
+// T3.2: Pure MEMElang Adler-32 Algorithm Implementation
+// ------------------------------------------------------------------------------
+jugaad compute_adler32(buf, offset: ank, len: ank) {
+    pakad MOD = 65521;
+    pakad a = 1;
+    pakad b = 0;
+    pakad i = 0;
+    jabtak i < len {
+        pakad d = buf[offset + i];
+        a = (a + d) % MOD;
+        b = (b + a) % MOD;
+        i = i + 1;
+    }
+    ye_le bor(bshl(b, 16), a);
+}
+
+// Vector 1: Empty buffer (len = 0) -> Adler32 = 1 (0x00000001)
+pakad b_empty = bytes(0);
+check_eq(compute_adler32(b_empty, 0, 0), 1, "T3_adler32_empty_buf");
+
+// Vector 2: "PING" -> bytes [80, 73, 78, 71] -> Adler32 = 0x0302012F (50463023)
+pakad b_ping = bytes([80, 73, 78, 71]);
+check_eq(compute_adler32(b_ping, 0, 4), 50463023, "T3_adler32_ping_payload");
+
+// Vector 3: "HELLO MEMELANG" (14 bytes) -> Adler32 = 0x1CD103DB (483460059)
+pakad b_hello = bytes([72, 69, 76, 76, 79, 32, 77, 69, 77, 69, 76, 65, 78, 71]);
+check_eq(compute_adler32(b_hello, 0, 14), 483460059, "T3_adler32_hello_memelang");
+
+// ------------------------------------------------------------------------------
+// T3.3: TLV Payload Encapsulated in Packet Framer Frame
+// ------------------------------------------------------------------------------
+// Frame: Magic(0xAA55, 2B) + Seq(4B) + Len(2B) + Payload(L) + Adler32(4B)
+// Payload: TLV Tag 1 (INT32, val 101) -> 7 bytes [0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x65]
+pakad tlv_payload = bytes(7);
+tlv_payload.write_u8(0, 1);       // Tag 1 (INT32)
+tlv_payload.write_u16_be(1, 4);   // Length 4
+tlv_payload.write_u32_be(3, 101); // Value 101
+
+pakad p_len = tlv_payload.length();
+pakad chk = compute_adler32(tlv_payload, 0, p_len);
+
+// Total frame size = 2 + 4 + 2 + 7 + 4 = 19 bytes
+pakad frame = bytes(19);
+frame.write_u16_be(0, 43605); // Magic 0xAA55
+frame.write_u32_be(2, 1);     // Seq 1
+frame.write_u16_be(6, p_len); // Payload len 7
+// Copy payload
+pakad k = 0;
+jabtak k < p_len {
+    frame[8 + k] = tlv_payload[k];
+    k = k + 1;
+}
+frame.write_u32_be(15, chk);  // Adler-32 checksum at end
+
+// Now unpack frame and verify all invariants
+check_eq(frame.read_u16_be(0), 43605, "T3_framer_magic_0xAA55");
+check_eq(frame.read_u32_be(2), 1, "T3_framer_seq_1");
+check_eq(frame.read_u16_be(6), 7, "T3_framer_payload_len_7");
+
+// Slice payload and verify checksum
+pakad extracted_payload = frame.slice(8, 15);
+check_eq(extracted_payload.length(), 7, "T3_framer_extracted_payload_len");
+pakad calc_chk = compute_adler32(extracted_payload, 0, 7);
+check_eq(calc_chk, frame.read_u32_be(15), "T3_framer_checksum_verified");
+
+// Deserialize TLV from extracted payload
+check_eq(extracted_payload.read_u8(0), 1, "T3_tlv_tag_int32");
+check_eq(extracted_payload.read_u16_be(1), 4, "T3_tlv_len_4");
+check_eq(extracted_payload.read_u32_be(3), 101, "T3_tlv_val_101");
+
+// ------------------------------------------------------------------------------
+// T3.4: Master Buffer Slicing + Independent Frame Parsing
+// ------------------------------------------------------------------------------
+// Concatenate two 16-byte ping frames into a 32-byte master buffer
+pakad master = bytes(32);
+// Frame 1 at offset 0
+master.write_u16_be(0, 43605);
+master.write_u32_be(2, 10);
+master.write_u16_be(6, 4);
+master[8] = 80; master[9] = 73; master[10] = 78; master[11] = 71;
+master.write_u32_be(12, 50463023);
+
+// Frame 2 at offset 16
+master.write_u16_be(16, 43605);
+master.write_u32_be(18, 11);
+master.write_u16_be(22, 4);
+master[24] = 80; master[25] = 73; master[26] = 78; master[27] = 71;
+master.write_u32_be(28, 50463023);
+
+// Slice sub-frame 2 independently
+pakad sub_frame_2 = master.slice(16, 32);
+check_eq(sub_frame_2.length(), 16, "T3_master_slice_frame2_length");
+check_eq(sub_frame_2.read_u16_be(0), 43605, "T3_master_slice_frame2_magic");
+check_eq(sub_frame_2.read_u32_be(2), 11, "T3_master_slice_frame2_seq");
+check_eq(compute_adler32(sub_frame_2.slice(8, 12), 0, 4), 50463023, "T3_master_slice_frame2_chk");
+
+// ------------------------------------------------------------------------------
+// T3.5: Endian Symmetry & Cross-Byte Inspection
+// ------------------------------------------------------------------------------
+// 0x12345678 = 305419896
+pakad b_sym = bytes(4);
+b_sym.write_u32_be(0, 305419896);
+check_eq(b_sym.read_u32_le(0), 2018915346, "T3_endian_cross_u32_le"); // 0x78563412
+check_eq(b_sym.to_hex(), "12345678", "T3_endian_be_hex");
+
+dikha "=== Low-Level Tier 3 Combinations: All Tests Passed ===";

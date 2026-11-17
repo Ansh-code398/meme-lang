@@ -1,0 +1,175 @@
+// MEMElang Low-Level Primitives Test Suite
+// Verifies dual-engine parity across interpreter and native AOT compiler
+
+dikha "=== Test 1: Byte Buffer Constructors ===";
+pakad b_empty = bytes();
+dikha "empty_len:", b_empty.length();
+assert_eq(b_empty.length(), 0);
+
+pakad b_zero = bytes(8);
+dikha "zero_len:", b_zero.length();
+assert_eq(b_zero.length(), 8);
+assert_eq(b_zero[0], 0);
+assert_eq(b_zero[7], 0);
+
+pakad b_list = bytes([10, 20, 30, 40]);
+dikha "list_len:", b_list.length();
+assert_eq(b_list.length(), 4);
+assert_eq(b_list[0], 10);
+assert_eq(b_list[1], 20);
+assert_eq(b_list[2], 30);
+assert_eq(b_list[3], 40);
+
+pakad b_str = bytes("MEME");
+dikha "str_len:", b_str.length();
+assert_eq(b_str.length(), 4);
+assert_eq(b_str[0], 77);
+assert_eq(b_str[1], 69);
+assert_eq(b_str[2], 77);
+assert_eq(b_str[3], 69);
+
+pakad b_lit = b"GOAT";
+dikha "lit_len:", b_lit.length();
+assert_eq(b_lit.length(), 4);
+assert_eq(b_lit[0], 71);
+assert_eq(b_lit[1], 79);
+assert_eq(b_lit[2], 65);
+assert_eq(b_lit[3], 84);
+
+dikha "=== Test 2: Subscript Index Read and Write ===";
+pakad b_mut = bytes(4);
+b_mut[0] = 65;
+b_mut[1] = 66;
+b_mut[2] = 67;
+b_mut[3] = 68;
+assert_eq(b_mut[0], 65);
+assert_eq(b_mut[1], 66);
+assert_eq(b_mut[2], 67);
+assert_eq(b_mut[3], 68);
+dikha "mut_str:", b_mut.to_string();
+assert_eq(b_mut.to_string(), "ABCD");
+
+dikha "=== Test 3: Typed Endian Read & Write ===";
+pakad buf = bytes(16);
+
+// 1-byte read/write
+buf.write_u8(0, 254);
+assert_eq(buf.read_u8(0), 254);
+
+// 2-byte Big Endian: 0x1234 -> [0x12, 0x34]
+buf.write_u16_be(1, 4660);
+assert_eq(buf.read_u8(1), 18);
+assert_eq(buf.read_u8(2), 52);
+assert_eq(buf.read_u16_be(1), 4660);
+assert_eq(buf.read_u16_le(1), 13330);
+
+// 2-byte Little Endian: 0x5678 -> [0x78, 0x56]
+buf.write_u16_le(3, 22136);
+assert_eq(buf.read_u8(3), 120);
+assert_eq(buf.read_u8(4), 86);
+assert_eq(buf.read_u16_le(3), 22136);
+assert_eq(buf.read_u16_be(3), 30806);
+
+// 4-byte Big Endian: 0x11223344 -> [0x11, 0x22, 0x33, 0x44]
+buf.write_u32_be(5, 287454020);
+assert_eq(buf.read_u8(5), 17);
+assert_eq(buf.read_u8(6), 34);
+assert_eq(buf.read_u8(7), 51);
+assert_eq(buf.read_u8(8), 68);
+assert_eq(buf.read_u32_be(5), 287454020);
+assert_eq(buf.read_u32_le(5), 1144201745);
+
+// 4-byte Little Endian: 0x55667788 -> [0x88, 0x77, 0x66, 0x55]
+buf.write_u32_le(9, 1432778632);
+assert_eq(buf.read_u8(9), 136);
+assert_eq(buf.read_u8(10), 119);
+assert_eq(buf.read_u8(11), 102);
+assert_eq(buf.read_u8(12), 85);
+assert_eq(buf.read_u32_le(9), 1432778632);
+assert_eq(buf.read_u32_be(9), 2289526357);
+
+dikha "endian_checks:", "PASSED";
+
+dikha "=== Test 4: Buffer Slicing & Hex Encoding ===";
+pakad hex_src = bytes("HELLOWORLD");
+pakad s1 = hex_src.slice(0, 5);
+assert_eq(s1.length(), 5);
+assert_eq(s1.to_string(), "HELLO");
+assert_eq(s1.to_hex(), "48454c4c4f");
+
+pakad from_h1 = from_hex("48454c4c4f");
+assert_eq(from_h1.length(), 5);
+assert_eq(from_h1.to_string(), "HELLO");
+
+pakad from_h2 = bytes.from_hex("574f524c44");
+assert_eq(from_h2.length(), 5);
+assert_eq(from_h2.to_string(), "WORLD");
+
+dikha "slice_hex_checks:", "PASSED";
+
+dikha "=== Test 5: Container Push, Has, Clear ===";
+pakad b_grow = bytes();
+b_grow.push(65);
+b_grow.push(66);
+b_grow.push(67);
+assert_eq(b_grow.length(), 3);
+assert_eq(b_grow.has(65), han);
+assert_eq(b_grow.has(66), han);
+assert_eq(b_grow.has(90), nhi);
+assert_eq(b_grow.to_string(), "ABC");
+
+b_grow.clear();
+assert_eq(b_grow.length(), 0);
+assert_eq(b_grow.has(65), nhi);
+
+dikha "container_checks:", "PASSED";
+
+dikha "=== Test 6: Bitwise Builtin Functions ===";
+assert_eq(band(255, 15), 15);
+assert_eq(band(65280, 43690), 43520);
+assert_eq(bor(240, 15), 255);
+assert_eq(bor(65280, 255), 65535);
+assert_eq(bxor(43690, 21845), 65535);
+assert_eq(bxor(255, 255), 0);
+assert_eq(bnot(0), -1);
+assert_eq(bshl(1, 0), 1);
+assert_eq(bshl(1, 4), 16);
+assert_eq(bshl(1, 16), 65536);
+assert_eq(bshr(65536, 4), 4096);
+assert_eq(bshr(32, 2), 8);
+assert_eq(bshr(15, 1), 7);
+
+dikha "bitwise_checks:", "PASSED";
+
+dikha "=== Test 7: Shared Buffer Reference Semantics ===";
+kar modify_buffer(target) {
+    target.write_u8(0, 99);
+    target.write_u16_be(1, 4000);
+}
+
+pakad test_shared = bytes(4);
+test_shared.write_u8(0, 1);
+test_shared.write_u16_be(1, 2);
+modify_buffer(test_shared);
+assert_eq(test_shared.read_u8(0), 99);
+assert_eq(test_shared.read_u16_be(1), 4000);
+dikha "shared_ref_checks:", "PASSED";
+
+dikha "=== Test 8: Binary File I/O ===";
+pakad bin_payload = bytes(6);
+bin_payload.write_u8(0, 10);
+bin_payload.write_u8(1, 20);
+bin_payload.write_u32_be(2, 305419896); // 0x12345678
+
+pakad bin_path = "test_lowlevel_rw.bin";
+file.write_bytes(bin_path, bin_payload);
+
+pakad bin_loaded = file.read_bytes(bin_path);
+assert_eq(bin_loaded.length(), 6);
+assert_eq(bin_loaded.read_u8(0), 10);
+assert_eq(bin_loaded.read_u8(1), 20);
+assert_eq(bin_loaded.read_u32_be(2), 305419896);
+
+dikha "file_io_checks:", "PASSED";
+
+dikha "=== ALL LOWLEVEL PRIMITIVE TESTS PASSED ===";
