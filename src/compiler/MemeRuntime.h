@@ -758,6 +758,9 @@ public:
     }
 
     MemeValue &operator[](long long index) {
+        if (type == TYPE_MAP) {
+            return (*this)[std::to_string(index)];
+        }
         if (type == TYPE_BYTES) {
             int64_t origIdx = index;
             int64_t sz = bytes_val ? static_cast<int64_t>(bytes_val->size()) : 0;
@@ -1371,6 +1374,9 @@ public:
                 if (b == tb) return true;
             }
             return false;
+        }
+        if (type == TYPE_MAP) {
+            return map_val.find(std::to_string(target)) != map_val.end();
         }
         return false;
     }
