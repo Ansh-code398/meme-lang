@@ -2,7 +2,8 @@
 """
 Parity & Verification Test Suite for MiniSQL Database Engine
 Tests that Rust, Python, MEMElang Interpreter, and MEMElang Native AOT
-produce bit-exact functional outputs across all database operations.
+produce bit-exact functional outputs across all database operations
+for both Row-Store (MiniTable) and Columnar-Store (ColumnTable) engines.
 """
 
 import subprocess
@@ -36,22 +37,18 @@ def normalize_output(out: str) -> str:
         lines.append(line)
     return "\n".join(lines)
 
-def main():
-    print("==================================================")
-    print("🧪 Running MiniSQL Dual-Engine & Tri-Language Parity Tests")
-    print("==================================================")
+def verify_engine(engine_name: str, meme_file: str, rust_file: str, py_file: str):
+    print(f"\n--- Testing {engine_name} Engine ---")
+    stem = Path(meme_file).stem
+    meme_bin = MINISQL_DIR / f"{stem}_meme_bin"
+    rust_bin = MINISQL_DIR / f"{stem}_rust_bin"
 
-    # 1. Compile Native Binaries
     print("  • Compiling native binaries...")
-    meme_bin = MINISQL_DIR / "minisql_meme_bin"
-    rust_bin = MINISQL_DIR / "minisql_rust_bin"
+    run_cmd([str(MEME_BIN), "compile", str(MINISQL_DIR / meme_file), "-o", str(meme_bin)])
+    run_cmd(["rustc", "-O", str(MINISQL_DIR / rust_file), "-o", str(rust_bin)])
 
-    run_cmd([str(MEME_BIN), "compile", str(MINISQL_DIR / "minisql.meme"), "-o", str(meme_bin)])
-    run_cmd(["rustc", "-O", str(MINISQL_DIR / "minisql.rs"), "-o", str(rust_bin)])
-
-    # 2. Execute verification runs
     print("  • Running Python 3.12...")
-    out_py = normalize_output(run_cmd(["python3", str(MINISQL_DIR / "minisql.py")]))
+    out_py = normalize_output(run_cmd(["python3", str(MINISQL_DIR / py_file)]))
 
     print("  • Running Pure Rust (-O)...")
     out_rust = normalize_output(run_cmd([str(rust_bin)]))
@@ -60,21 +57,31 @@ def main():
     out_meme_aot = normalize_output(run_cmd([str(meme_bin)]))
 
     print("  • Running MEMElang Interpreter...")
-    out_meme_int = normalize_output(run_cmd([str(MEME_BIN), str(MINISQL_DIR / "minisql.meme")]))
+    out_meme_int = normalize_output(run_cmd([str(MEME_BIN), str(MINISQL_DIR / meme_file)]))
 
-    # 3. Assert exact parity
-    print("\n🔍 Verifying Cross-Engine Parity...")
-    assert out_py == out_rust, f"Mismatch between Python and Rust:\n--- Python ---\n{out_py}\n--- Rust ---\n{out_rust}"
-    print("  ✔ Python 3.12 <==> Pure Rust: EXACT MATCH")
+    print("  🔍 Verifying Parity...")
+    assert out_py == out_rust, f"Mismatch between Python and Rust ({engine_name}):\n--- Python ---\n{out_py}\n--- Rust ---\n{out_rust}"
+    print(f"    ✔ Python 3.12 <==> Pure Rust: EXACT MATCH")
 
-    assert out_rust == out_meme_aot, f"Mismatch between Rust and MEMElang Native AOT:\n--- Rust ---\n{out_rust}\n--- MEMElang Native ---\n{out_meme_aot}"
-    print("  ✔ Pure Rust <==> MEMElang Native AOT: EXACT MATCH")
+    assert out_rust == out_meme_aot, f"Mismatch between Rust and MEMElang Native AOT ({engine_name}):\n--- Rust ---\n{out_rust}\n--- MEMElang Native ---\n{out_meme_aot}"
+    print(f"    ✔ Pure Rust <==> MEMElang Native AOT: EXACT MATCH")
 
-    assert out_meme_aot == out_meme_int, f"Mismatch between Native AOT and Interpreter:\n--- Native ---\n{out_meme_aot}\n--- Interpreter ---\n{out_meme_int}"
-    print("  ✔ MEMElang Native AOT <==> MEMElang Interpreter: EXACT MATCH")
+    assert out_meme_aot == out_meme_int, f"Mismatch between Native AOT and Interpreter ({engine_name}):\n--- Native ---\n{out_meme_aot}\n--- Interpreter ---\n{out_meme_int}"
+    print(f"    ✔ MEMElang Native AOT <==> MEMElang Interpreter: EXACT MATCH")
+
+def main():
+    print("==================================================")
+    print("🧪 Running MiniSQL Dual-Engine & Tri-Language Parity Tests")
+    print("==================================================")
+
+    # 1. Row-Store Engine
+    verify_engine("Row-Store (MiniTable)", "minisql.meme", "minisql.rs", "minisql.py")
+
+    # 2. Column-Store Engine
+    verify_engine("Column-Store (ColumnTable)", "minisql_columnar.meme", "minisql_columnar.rs", "minisql_columnar.py")
 
     print("\n==================================================")
-    print("🎉 ALL 4 ENGINES ACHIEVED 100% PARITY CONFIRMATION!")
+    print("🎉 ALL ENGINES & STORAGE FORMATS ACHIEVED 100% PARITY!")
     print("==================================================")
 
 if __name__ == "__main__":

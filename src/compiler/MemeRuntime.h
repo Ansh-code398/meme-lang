@@ -141,6 +141,12 @@ inline std::ostream &operator<<(std::ostream &os, const MemeStringList &l) {
 
 struct MemeThreadHandle;
 struct MemeMutex;
+class MemeValue;
+
+struct MemeMapData {
+    std::unordered_map<std::string, MemeValue> map_val;
+    std::vector<std::string> map_keys;
+};
 
 class MemeValue {
 public:
@@ -165,8 +171,12 @@ public:
     bool b_val = false;
     std::string s_val = "";
     std::vector<MemeValue> list_val = {};
-    std::unordered_map<std::string, MemeValue> map_val = {};
-    std::vector<std::string> map_keys = {};
+    mutable std::shared_ptr<MemeMapData> map_data = nullptr;
+    void ensure_map() const {
+        if (!map_data) {
+            map_data = std::make_shared<MemeMapData>();
+        }
+    }
     void *ptr_val = nullptr;
     std::shared_ptr<void> obj_val = nullptr;
     bool opt_res_flag = false;
@@ -243,8 +253,7 @@ public:
           b_val(other.b_val),
           s_val(other.s_val),
           list_val(other.list_val),
-          map_val(other.map_val),
-          map_keys(other.map_keys),
+          map_data(other.map_data),
           ptr_val(other.ptr_val),
           obj_val(other.obj_val),
           opt_res_flag(other.opt_res_flag),
@@ -263,8 +272,7 @@ public:
           b_val(other.b_val),
           s_val(std::move(other.s_val)),
           list_val(std::move(other.list_val)),
-          map_val(std::move(other.map_val)),
-          map_keys(std::move(other.map_keys)),
+          map_data(std::move(other.map_data)),
           ptr_val(other.ptr_val),
           obj_val(std::move(other.obj_val)),
           opt_res_flag(other.opt_res_flag),
@@ -315,8 +323,7 @@ public:
         b_val = other.b_val;
         s_val = other.s_val;
         list_val = other.list_val;
-        map_val = other.map_val;
-        map_keys = other.map_keys;
+        map_data = other.map_data;
         ptr_val = other.ptr_val;
         obj_val = other.obj_val;
         opt_res_flag = other.opt_res_flag;
@@ -343,8 +350,7 @@ public:
         b_val = other.b_val;
         s_val = std::move(other.s_val);
         list_val = std::move(other.list_val);
-        map_val = std::move(other.map_val);
-        map_keys = std::move(other.map_keys);
+        map_data = std::move(other.map_data);
         ptr_val = other.ptr_val;
         obj_val = std::move(other.obj_val);
         opt_res_flag = other.opt_res_flag;
@@ -358,18 +364,19 @@ public:
         return *this;
     }
     MemeValue(std::unordered_map<std::string, MemeValue> m)
-        : type(TYPE_MAP), map_val(std::move(m)) {
-        for (const auto &pair : map_val) {
-            map_keys.push_back(pair.first);
+        : type(TYPE_MAP), map_data(std::make_shared<MemeMapData>()) {
+        map_data->map_val = std::move(m);
+        for (const auto &pair : map_data->map_val) {
+            map_data->map_keys.push_back(pair.first);
         }
     }
     MemeValue(std::initializer_list<std::pair<std::string, MemeValue>> init)
-        : type(TYPE_MAP) {
+        : type(TYPE_MAP), map_data(std::make_shared<MemeMapData>()) {
         for (const auto &pair : init) {
-            if (map_val.find(pair.first) == map_val.end()) {
-                map_keys.push_back(pair.first);
+            if (map_data->map_val.find(pair.first) == map_data->map_val.end()) {
+                map_data->map_keys.push_back(pair.first);
             }
-            map_val[pair.first] = pair.second;
+            map_data->map_val[pair.first] = pair.second;
         }
     }
     MemeValue(const std::vector<std::string> &vec) : type(TYPE_LIST) {
@@ -408,7 +415,7 @@ public:
         case TYPE_BOOL: return b_val;
         case TYPE_STRING: return !s_val.empty();
         case TYPE_LIST: return !list_val.empty();
-        case TYPE_MAP: return !map_val.empty();
+        case TYPE_MAP: return map_data && !map_data->map_val.empty();
         case TYPE_OPTION: return opt_res_flag;
         case TYPE_RESULT: return opt_res_flag;
         case TYPE_POINTER: return ptr_val != nullptr;
@@ -477,19 +484,21 @@ public:
         }
         case TYPE_MAP: {
             std::string res = "{";
-            for (size_t idx = 0; idx < map_keys.size(); ++idx) {
-                if (idx > 0) res += ", ";
-                const auto &k = map_keys[idx];
-                res += "\"" + k + "\": ";
-                auto it = map_val.find(k);
-                if (it != map_val.end()) {
-                    if (it->second.type == TYPE_STRING) {
-                        res += "\"" + it->second.s_val + "\"";
+            if (map_data) {
+                for (size_t idx = 0; idx < map_data->map_keys.size(); ++idx) {
+                    if (idx > 0) res += ", ";
+                    const auto &k = map_data->map_keys[idx];
+                    res += "\"" + k + "\": ";
+                    auto it = map_data->map_val.find(k);
+                    if (it != map_data->map_val.end()) {
+                        if (it->second.type == TYPE_STRING) {
+                            res += "\"" + it->second.s_val + "\"";
+                        } else {
+                            res += it->second.to_string();
+                        }
                     } else {
-                        res += it->second.to_string();
+                        res += "nalla";
                     }
-                } else {
-                    res += "nalla";
                 }
             }
             res += "}";
@@ -653,10 +662,16 @@ public:
         if (type == TYPE_STRING && other.type == TYPE_STRING) return s_val == other.s_val;
         if (type == TYPE_NALLA && other.type == TYPE_NALLA) return true;
         if (type == TYPE_MAP && other.type == TYPE_MAP) {
-            if (map_val.size() != other.map_val.size()) return false;
-            for (const auto &pair : map_val) {
-                auto it = other.map_val.find(pair.first);
-                if (it == other.map_val.end() || it->second != pair.second) {
+            if (map_data == other.map_data) return true;
+            if (!map_data || !other.map_data) {
+                size_t sz1 = map_data ? map_data->map_val.size() : 0;
+                size_t sz2 = other.map_data ? other.map_data->map_val.size() : 0;
+                return sz1 == sz2;
+            }
+            if (map_data->map_val.size() != other.map_data->map_val.size()) return false;
+            for (const auto &pair : map_data->map_val) {
+                auto it = other.map_data->map_val.find(pair.first);
+                if (it == other.map_data->map_val.end() || it->second != pair.second) {
                     return false;
                 }
             }
@@ -816,10 +831,11 @@ public:
         if (type != TYPE_MAP) {
             type = TYPE_MAP;
         }
-        if (map_val.find(key) == map_val.end()) {
-            map_keys.push_back(key);
+        ensure_map();
+        if (map_data->map_val.find(key) == map_data->map_val.end()) {
+            map_data->map_keys.push_back(key);
         }
-        return map_val[key];
+        return map_data->map_val[key];
     }
 
     MemeValue &operator[](const std::string &key) const {
@@ -886,15 +902,17 @@ public:
         }
         if (type == TYPE_LIST) const_cast<MemeValue *>(this)->list_val.clear();
         else if (type == TYPE_MAP) {
-            const_cast<MemeValue *>(this)->map_val.clear();
-            const_cast<MemeValue *>(this)->map_keys.clear();
+            if (map_data) {
+                map_data->map_val.clear();
+                map_data->map_keys.clear();
+            }
         }
     }
 
     size_t size() const {
         if (type == TYPE_LIST) return list_val.size();
         if (type == TYPE_STRING) return s_val.size();
-        if (type == TYPE_MAP) return map_val.size();
+        if (type == TYPE_MAP) return map_data ? map_data->map_val.size() : 0;
         if (type == TYPE_BYTES) return bytes_val ? bytes_val->size() : 0;
         return 0;
     }
@@ -1376,13 +1394,13 @@ public:
             return false;
         }
         if (type == TYPE_MAP) {
-            return map_val.find(std::to_string(target)) != map_val.end();
+            return map_data && map_data->map_val.find(std::to_string(target)) != map_data->map_val.end();
         }
         return false;
     }
     bool has(const std::string &key) const {
         if (type == TYPE_MAP) {
-            return map_val.find(key) != map_val.end();
+            return map_data && map_data->map_val.find(key) != map_data->map_val.end();
         }
         if (type == TYPE_STRING) {
             return s_val.find(key) != std::string::npos;
@@ -1401,9 +1419,9 @@ public:
 
     MemeValue keys() const {
         std::vector<MemeValue> res;
-        if (type == TYPE_MAP) {
-            res.reserve(map_keys.size());
-            for (const auto &k : map_keys) {
+        if (type == TYPE_MAP && map_data) {
+            res.reserve(map_data->map_keys.size());
+            for (const auto &k : map_data->map_keys) {
                 res.push_back(MemeValue(k));
             }
         }
@@ -1413,11 +1431,11 @@ public:
 
     MemeValue values() const {
         std::vector<MemeValue> res;
-        if (type == TYPE_MAP) {
-            res.reserve(map_keys.size());
-            for (const auto &k : map_keys) {
-                auto it = map_val.find(k);
-                if (it != map_val.end()) {
+        if (type == TYPE_MAP && map_data) {
+            res.reserve(map_data->map_keys.size());
+            for (const auto &k : map_data->map_keys) {
+                auto it = map_data->map_val.find(k);
+                if (it != map_data->map_val.end()) {
                     res.push_back(it->second);
                 }
             }
@@ -1427,13 +1445,13 @@ public:
     MemeValue maal() const { return values(); }
 
     bool remove(const std::string &key) {
-        if (type != TYPE_MAP) return false;
-        auto it = map_val.find(key);
-        if (it == map_val.end()) return false;
-        map_val.erase(it);
-        for (auto kit = map_keys.begin(); kit != map_keys.end(); ++kit) {
+        if (type != TYPE_MAP || !map_data) return false;
+        auto it = map_data->map_val.find(key);
+        if (it == map_data->map_val.end()) return false;
+        map_data->map_val.erase(it);
+        for (auto kit = map_data->map_keys.begin(); kit != map_data->map_keys.end(); ++kit) {
             if (*kit == key) {
-                map_keys.erase(kit);
+                map_data->map_keys.erase(kit);
                 break;
             }
         }
@@ -1444,9 +1462,9 @@ public:
     bool hata(const MemeValue &key) { return remove(key); }
 
     MemeValue get(const std::string &key, const MemeValue &def = MemeValue()) const {
-        if (type != TYPE_MAP) return def;
-        auto it = map_val.find(key);
-        if (it != map_val.end()) return it->second;
+        if (type != TYPE_MAP || !map_data) return def;
+        auto it = map_data->map_val.find(key);
+        if (it != map_data->map_val.end()) return it->second;
         return def;
     }
     MemeValue get(const MemeValue &key, const MemeValue &def = MemeValue()) const {
@@ -1818,16 +1836,16 @@ inline MemeValue make_map(std::initializer_list<std::pair<std::string, MemeValue
     return MemeValue(entries);
 }
 inline MemeValue make_map(const std::vector<std::pair<std::string, MemeValue>> &entries) {
-    std::unordered_map<std::string, MemeValue> m;
-    std::vector<std::string> keys;
+    auto mdata = std::make_shared<MemeMapData>();
     for (const auto &p : entries) {
-        if (m.find(p.first) == m.end()) {
-            keys.push_back(p.first);
+        if (mdata->map_val.find(p.first) == mdata->map_val.end()) {
+            mdata->map_keys.push_back(p.first);
         }
-        m[p.first] = p.second;
+        mdata->map_val[p.first] = p.second;
     }
-    MemeValue res(m);
-    res.map_keys = keys;
+    MemeValue res;
+    res.type = MemeValue::TYPE_MAP;
+    res.map_data = mdata;
     return res;
 }
 
@@ -2227,12 +2245,14 @@ inline std::string stringify(const MemeValue &val) {
     }
     case MemeValue::TYPE_MAP: {
         std::string out = "{";
-        for (size_t i = 0; i < val.map_keys.size(); ++i) {
-            if (i > 0) out += ", ";
-            const auto &k = val.map_keys[i];
-            out += "\"" + k + "\": ";
-            auto it = val.map_val.find(k);
-            out += (it != val.map_val.end()) ? stringify(it->second) : "null";
+        if (val.map_data) {
+            for (size_t i = 0; i < val.map_data->map_keys.size(); ++i) {
+                if (i > 0) out += ", ";
+                const auto &k = val.map_data->map_keys[i];
+                out += "\"" + k + "\": ";
+                auto it = val.map_data->map_val.find(k);
+                out += (it != val.map_data->map_val.end()) ? stringify(it->second) : "null";
+            }
         }
         out += "}";
         return out;
@@ -2442,18 +2462,18 @@ inline std::string stringify(const MemeValue &rowsVal, const MemeValue &headersV
 
     const MemeValue &first = rowsVal.list_val[0];
     if (first.type == MemeValue::TYPE_MAP) {
-        if (headers.empty()) headers = first.map_keys;
+        if (headers.empty() && first.map_data) headers = first.map_data->map_keys;
         for (size_t i = 0; i < headers.size(); ++i) {
             if (i > 0) ss << ",";
             ss << escapeCsvField(headers[i]);
         }
         ss << "\n";
         for (const auto &rowElem : rowsVal.list_val) {
-            if (rowElem.type == MemeValue::TYPE_MAP) {
+            if (rowElem.type == MemeValue::TYPE_MAP && rowElem.map_data) {
                 for (size_t i = 0; i < headers.size(); ++i) {
                     if (i > 0) ss << ",";
-                    auto it = rowElem.map_val.find(headers[i]);
-                    std::string cell = (it != rowElem.map_val.end()) ? it->second.to_string() : "";
+                    auto it = rowElem.map_data->map_val.find(headers[i]);
+                    std::string cell = (it != rowElem.map_data->map_val.end()) ? it->second.to_string() : "";
                     ss << escapeCsvField(cell);
                 }
                 ss << "\n";
