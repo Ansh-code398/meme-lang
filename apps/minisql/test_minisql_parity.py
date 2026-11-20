@@ -80,6 +80,9 @@ def main():
     # 2. Column-Store Engine
     verify_engine("Column-Store (ColumnTable)", "minisql_columnar.meme", "minisql_columnar.rs", "minisql_columnar.py")
 
+    # 3. Struct-Store Engine
+    verify_engine("Struct-Store (StructTable)", "minisql_struct.meme", "minisql_struct.rs", "minisql_struct.py")
+
     print("\n==================================================")
     print("🎉 ALL ENGINES & STORAGE FORMATS ACHIEVED 100% PARITY!")
     print("==================================================")

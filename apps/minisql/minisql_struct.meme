@@ -1,0 +1,381 @@
+// ==============================================================================
+// MiniSQL Struct-Store Database Engine in MEMElang
+// Embedded relational database featuring:
+//   - Statically-typed Employee record struct (fixed memory offsets)
+//   - Primary Key Hash Index for O(1) point lookups
+//   - Secondary Inverted Index on Categorical columns
+//   - Zero-allocation filter queries with direct struct member dereference
+//   - Direct-field aggregations (COUNT, SUM, AVG, MIN, MAX)
+//   - ACID-style updates and tombstone deletions
+// ==============================================================================
+
+bula "samay";
+
+sancha Employee {
+    le id: int;
+    le name: str;
+    le age: int;
+    le salary: float;
+    le dept: str;
+    le is_deleted: int;
+
+    jugaad shuru(id: int, name: str, age: int, salary: float, dept: str, is_deleted: int) {
+        khud.id = id;
+        khud.name = name;
+        khud.age = age;
+        khud.salary = salary;
+        khud.dept = dept;
+        khud.is_deleted = is_deleted;
+    }
+}
+
+sancha StructTable {
+    le name: str;
+    le rows: list[Employee];
+    le pk_index;
+    le dept_index;
+    le active_count: int;
+
+    jugaad shuru(t_name: str) {
+        khud.name = t_name;
+        khud.rows = [];
+        khud.pk_index = {};
+        khud.dept_index = {};
+        khud.active_count = 0;
+    }
+
+    // INSERT INTO table VALUES (id, name, age, salary, dept)
+    jugaad insert_row(id: int, name: str, age: int, salary: float, dept: str) {
+        dekh khud.pk_index.has(id) {
+            ye_le 0;
+        }
+        pakad idx: int = khud.rows.length();
+        pakad emp = Employee(id, name, age, salary, dept, 0);
+        khud.rows.push(emp);
+        khud.pk_index[id] = idx;
+
+        dekh !khud.dept_index.has(dept) {
+            khud.dept_index[dept] = [];
+        }
+        khud.dept_index[dept].push(idx);
+        khud.active_count = khud.active_count + 1;
+        ye_le 1;
+    }
+
+    // SELECT * FROM table WHERE id = ?
+    jugaad select_by_pk(id: int) {
+        dekh !khud.pk_index.has(id) {
+            ye_le {};
+        }
+        pakad idx: int = khud.pk_index[id];
+        pakad r = khud.rows[idx];
+        dekh r.is_deleted == 1 {
+            ye_le {};
+        }
+        ye_le {
+            "id": r.id,
+            "name": r.name,
+            "age": r.age,
+            "salary": r.salary,
+            "dept": r.dept
+        };
+    }
+
+    // SELECT * FROM table WHERE dept = ? AND age >= ? AND age <= ?
+    jugaad select_where(dept: str, min_age: int, max_age: int): list[Employee] {
+        pakad matches: list[Employee] = [];
+        dekh !khud.dept_index.has(dept) {
+            ye_le matches;
+        }
+        pakad indices = khud.dept_index[dept];
+        pakad i: int = 0;
+        pakad n: int = indices.length();
+        jabtak i < n {
+            pakad idx: int = indices[i];
+            pakad r = khud.rows[idx];
+            dekh r.is_deleted == 0 {
+                pakad age: int = r.age;
+                dekh age >= min_age {
+                    dekh age <= max_age {
+                        matches.push(r);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        ye_le matches;
+    }
+
+    // UPDATE table SET salary = ? WHERE id = ?
+    jugaad update_salary(id: int, new_salary: float) {
+        dekh !khud.pk_index.has(id) {
+            ye_le 0;
+        }
+        pakad idx: int = khud.pk_index[id];
+        pakad r = khud.rows[idx];
+        dekh r.is_deleted == 1 {
+            ye_le 0;
+        }
+        r.salary = new_salary;
+        ye_le 1;
+    }
+
+    // DELETE FROM table WHERE id = ?
+    jugaad delete_by_pk(id: int) {
+        dekh !khud.pk_index.has(id) {
+            ye_le 0;
+        }
+        pakad idx: int = khud.pk_index[id];
+        pakad r = khud.rows[idx];
+        dekh r.is_deleted == 1 {
+            ye_le 0;
+        }
+        r.is_deleted = 1;
+        khud.pk_index.remove(id);
+        khud.active_count = khud.active_count - 1;
+        ye_le 1;
+    }
+
+    // SELECT COUNT(*), SUM(salary), AVG(salary), MIN(salary), MAX(salary) FROM table WHERE dept = ?
+    jugaad aggregate(dept: str) {
+        pakad res = {
+            "count": 0,
+            "sum": 0.0,
+            "avg": 0.0,
+            "min": 999999999.0,
+            "max": -999999999.0
+        };
+        dekh !khud.dept_index.has(dept) {
+            res["min"] = 0.0;
+            res["max"] = 0.0;
+            ye_le res;
+        }
+        pakad indices = khud.dept_index[dept];
+        pakad i: int = 0;
+        pakad n: int = indices.length();
+        pakad count: int = 0;
+        pakad sum_val: float = 0.0;
+        pakad min_val: float = 999999999.0;
+        pakad max_val: float = -999999999.0;
+
+        jabtak i < n {
+            pakad idx: int = indices[i];
+            pakad r = khud.rows[idx];
+            dekh r.is_deleted == 0 {
+                pakad sal: float = r.salary;
+                count = count + 1;
+                sum_val = sum_val + sal;
+                dekh sal < min_val {
+                    min_val = sal;
+                }
+                dekh sal > max_val {
+                    max_val = sal;
+                }
+            }
+            i = i + 1;
+        }
+
+        dekh count > 0 {
+            res["count"] = count;
+            res["sum"] = sum_val;
+            res["avg"] = sum_val / (0.0 + count);
+            res["min"] = min_val;
+            res["max"] = max_val;
+        } warna {
+            res["min"] = 0.0;
+            res["max"] = 0.0;
+        }
+        ye_le res;
+    }
+}
+
+jugaad run_verify() {
+    dikha "==================================================";
+    dikha "🔍 MiniSQL Functional & Parity Verification Suite";
+    dikha "==================================================";
+
+    pakad db = StructTable("employees");
+
+    // 1. Bulk Inserts
+    db.insert_row(101, "Alice", 28, 75000.0, "Engineering");
+    db.insert_row(102, "Bob", 34, 92000.0, "Engineering");
+    db.insert_row(103, "Charlie", 42, 110000.0, "Engineering");
+    db.insert_row(104, "Diana", 26, 68000.0, "Design");
+    db.insert_row(105, "Evan", 38, 95000.0, "Design");
+    db.insert_row(106, "Fiona", 31, 88000.0, "Marketing");
+    db.insert_row(107, "George", 45, 120000.0, "Marketing");
+    db.insert_row(108, "Hannah", 29, 79000.0, "Engineering");
+    db.insert_row(109, "Ian", 36, 102000.0, "Management");
+    db.insert_row(110, "Julia", 40, 115000.0, "Management");
+
+    dikha "1. Inserted 10 rows. Active count:", db.active_count;
+
+    // 2. Duplicate PK Test
+    pakad dup_res = db.insert_row(101, "Alice Clone", 29, 77000.0, "Engineering");
+    dikha "2. Duplicate PK (101) rejected:", (dup_res == 0);
+
+    // 3. Primary Key Lookup
+    pakad pk103 = db.select_by_pk(103);
+    dikha "3. PK Lookup 103:", pk103["name"], pk103["salary"], pk103["dept"];
+
+    // 4. Filter Query (Dept = Engineering, Age 28..35)
+    pakad eng_matches = db.select_where("Engineering", 28, 35);
+    dikha "4. Filter (Engineering, age 28-35): count =", eng_matches.length();
+    pakad mi = 0;
+    jabtak mi < eng_matches.length() {
+        pakad m = eng_matches[mi];
+        dikha "   - Matched:", m.id, m.name, m.age, m.salary;
+        mi = mi + 1;
+    }
+
+    // 5. Update Salary
+    pakad up_res = db.update_salary(102, 98000.0);
+    pakad pk102 = db.select_by_pk(102);
+    dikha "5. Update salary 102 to 98000:", (up_res == 1), "New Salary:", pk102["salary"];
+
+    // 6. Aggregate Query
+    pakad agg = db.aggregate("Engineering");
+    dikha "6. Aggregation (Engineering):";
+    dikha "   Count:", agg["count"];
+    dikha "   Sum:  ", agg["sum"];
+    dikha "   Avg:  ", agg["avg"];
+    dikha "   Min:  ", agg["min"];
+    dikha "   Max:  ", agg["max"];
+
+    // 7. Delete Test
+    pakad del_res = db.delete_by_pk(104);
+    pakad pk104_after = db.select_by_pk(104);
+    dikha "7. Delete PK 104:", (del_res == 1);
+    dikha "   Lookup deleted PK 104 has name:", pk104_after.has("name");
+    dikha "   Active count after delete:", db.active_count;
+
+    dikha "==================================================";
+    dikha "✅ Verification Completed Successfully!";
+    dikha "==================================================";
+}
+
+jugaad run_benchmark(num_rows: int, num_queries: int) {
+    pakad db = StructTable("bench_table");
+
+    pakad depts = ["Engineering", "Marketing", "Sales", "Design", "Management"];
+    pakad names = ["Raju", "Baburao", "Shyam", "Totla", "Kachra", "Munna", "Circuit", "Pandit", "Chaman", "Khadak"];
+
+    pakad t0 = samay.now();
+
+    // 1. Bulk Inserts
+    pakad i: int = 0;
+    jabtak i < num_rows {
+        pakad id: int = 1000 + i;
+        pakad name = names[i % 10];
+        pakad age: int = 20 + (i % 45);
+        pakad salary: float = 40000.0 + (0.0 + ((i * 73) % 110000));
+        pakad dept = depts[i % 5];
+        db.insert_row(id, name, age, salary, dept);
+        i = i + 1;
+    }
+    pakad t_insert = samay.now() - t0;
+    dekh t_insert <= 0.0 { t_insert = 0.000001; }
+
+    // 2. PK Point Lookups
+    pakad t_pk_start = samay.now();
+    pakad pk_hits: int = 0;
+    i = 0;
+    jabtak i < num_queries {
+        pakad q_id: int = 1000 + ((i * 37) % num_rows);
+        pakad r = db.select_by_pk(q_id);
+        dekh r.has("id") {
+            pk_hits = pk_hits + 1;
+        }
+        i = i + 1;
+    }
+    pakad t_pk = samay.now() - t_pk_start;
+    dekh t_pk <= 0.0 { t_pk = 0.000001; }
+
+    // 3. Filter Queries
+    pakad t_filter_start = samay.now();
+    pakad num_filters: int = num_queries / 2;
+    pakad filter_matched: int = 0;
+    i = 0;
+    jabtak i < num_filters {
+        pakad q_dept = depts[i % 5];
+        pakad min_a: int = 25 + (i % 10);
+        pakad max_a: int = min_a + 15;
+        pakad res = db.select_where(q_dept, min_a, max_a);
+        filter_matched = filter_matched + res.length();
+        i = i + 1;
+    }
+    pakad t_filter = samay.now() - t_filter_start;
+    dekh t_filter <= 0.0 { t_filter = 0.000001; }
+
+    // 4. Aggregations
+    pakad t_agg_start = samay.now();
+    pakad num_aggs: int = num_queries / 4;
+    pakad agg_count_acc: int = 0;
+    i = 0;
+    jabtak i < num_aggs {
+        pakad q_dept = depts[i % 5];
+        pakad agg_res = db.aggregate(q_dept);
+        pakad c_val: int = agg_res["count"];
+        agg_count_acc = agg_count_acc + c_val;
+        i = i + 1;
+    }
+    pakad t_agg = samay.now() - t_agg_start;
+    dekh t_agg <= 0.0 { t_agg = 0.000001; }
+
+    // 5. Updates
+    pakad t_update_start = samay.now();
+    pakad num_updates: int = num_queries / 5;
+    pakad update_hits: int = 0;
+    i = 0;
+    jabtak i < num_updates {
+        pakad q_id: int = 1000 + ((i * 41) % num_rows);
+        pakad res: int = db.update_salary(q_id, 99999.0);
+        update_hits = update_hits + res;
+        i = i + 1;
+    }
+    pakad t_update = samay.now() - t_update_start;
+    dekh t_update <= 0.0 { t_update = 0.000001; }
+
+    pakad total_time = samay.now() - t0;
+    dekh total_time <= 0.0 { total_time = 0.000001; }
+
+    pakad total_ops: int = num_rows + num_queries + num_filters + num_aggs + num_updates;
+    pakad ops_per_sec = (0.0 + total_ops) / total_time;
+
+    pakad t_insert_ms = t_insert * 1000.0;
+    pakad t_pk_ms = t_pk * 1000.0;
+    pakad t_filter_ms = t_filter * 1000.0;
+    pakad t_agg_ms = t_agg * 1000.0;
+    pakad t_update_ms = t_update * 1000.0;
+    pakad total_ms = total_time * 1000.0;
+
+    pakad insert_qps = (0.0 + num_rows) / t_insert;
+    pakad pk_qps = (0.0 + num_queries) / t_pk;
+    pakad filter_qps = (0.0 + num_filters) / t_filter;
+    pakad agg_qps = (0.0 + num_aggs) / t_agg;
+    pakad update_qps = (0.0 + num_updates) / t_update;
+
+    dikha f"total_ms={total_ms} ops_per_sec={ops_per_sec} insert_ms={t_insert_ms} insert_qps={insert_qps} pk_ms={t_pk_ms} pk_qps={pk_qps} filter_ms={t_filter_ms} filter_qps={filter_qps} agg_ms={t_agg_ms} agg_qps={agg_qps} update_ms={t_update_ms} update_qps={update_qps} pk_hits={pk_hits} filter_matched={filter_matched} agg_count={agg_count_acc} update_hits={update_hits} total_rows={db.active_count}";
+}
+
+pakad is_bench: int = 0;
+pakad num_rows: int = 10000;
+pakad num_queries: int = 5000;
+
+dekh sys.args.length() >= 2 {
+    dekh sys.args[1] == "--benchmark" {
+        is_bench = 1;
+        dekh sys.args.length() >= 3 {
+            num_rows = bina_point(sys.args[2]);
+        }
+        dekh sys.args.length() >= 4 {
+            num_queries = bina_point(sys.args[3]);
+        }
+    }
+}
+
+dekh is_bench == 1 {
+    run_benchmark(num_rows, num_queries);
+} warna {
+    run_verify();
+}

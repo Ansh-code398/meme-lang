@@ -143,8 +143,28 @@ struct MemeThreadHandle;
 struct MemeMutex;
 class MemeValue;
 
+struct StringHash {
+    using is_transparent = void;
+    size_t operator()(std::string_view sv) const noexcept {
+        return std::hash<std::string_view>{}(sv);
+    }
+    size_t operator()(const std::string &s) const noexcept {
+        return std::hash<std::string_view>{}(s);
+    }
+    size_t operator()(const char *s) const noexcept {
+        return std::hash<std::string_view>{}(s ? s : "");
+    }
+};
+
+struct StringEqual {
+    using is_transparent = void;
+    bool operator()(std::string_view a, std::string_view b) const noexcept {
+        return a == b;
+    }
+};
+
 struct MemeMapData {
-    std::unordered_map<std::string, MemeValue> map_val;
+    std::unordered_map<std::string, MemeValue, StringHash, StringEqual> map_val;
     std::vector<std::string> map_keys;
 };
 
@@ -170,7 +190,12 @@ public:
     double f_val = 0.0;
     bool b_val = false;
     std::string s_val = "";
-    std::vector<MemeValue> list_val = {};
+    mutable std::shared_ptr<std::vector<MemeValue>> list_data = nullptr;
+    void ensure_list() const {
+        if (!list_data) {
+            list_data = std::make_shared<std::vector<MemeValue>>();
+        }
+    }
     mutable std::shared_ptr<MemeMapData> map_data = nullptr;
     void ensure_map() const {
         if (!map_data) {
@@ -230,7 +255,10 @@ public:
     MemeValue(bool v) : type(TYPE_BOOL), b_val(v) {}
     MemeValue(const char *s) : type(TYPE_STRING), s_val(s ? s : "") {}
     MemeValue(const std::string &s) : type(TYPE_STRING), s_val(s) {}
-    MemeValue(std::vector<MemeValue> l) : type(TYPE_LIST), list_val(std::move(l)) {}
+    MemeValue(std::vector<MemeValue> l)
+        : type(TYPE_LIST), list_data(std::make_shared<std::vector<MemeValue>>(std::move(l))) {}
+    MemeValue(std::shared_ptr<std::vector<MemeValue>> l)
+        : type(TYPE_LIST), list_data(std::move(l)) {}
     MemeValue(void *p) : type(TYPE_POINTER), ptr_val(p) {}
     MemeValue(std::shared_ptr<void> obj) : type(TYPE_OBJECT), obj_val(std::move(obj)) {}
     MemeValue(const std::vector<uint8_t> &b)
@@ -252,7 +280,7 @@ public:
           f_val(other.f_val),
           b_val(other.b_val),
           s_val(other.s_val),
-          list_val(other.list_val),
+          list_data(other.list_data),
           map_data(other.map_data),
           ptr_val(other.ptr_val),
           obj_val(other.obj_val),
@@ -271,7 +299,7 @@ public:
           f_val(other.f_val),
           b_val(other.b_val),
           s_val(std::move(other.s_val)),
-          list_val(std::move(other.list_val)),
+          list_data(std::move(other.list_data)),
           map_data(std::move(other.map_data)),
           ptr_val(other.ptr_val),
           obj_val(std::move(other.obj_val)),
@@ -322,7 +350,7 @@ public:
         f_val = other.f_val;
         b_val = other.b_val;
         s_val = other.s_val;
-        list_val = other.list_val;
+        list_data = other.list_data;
         map_data = other.map_data;
         ptr_val = other.ptr_val;
         obj_val = other.obj_val;
@@ -349,7 +377,7 @@ public:
         f_val = other.f_val;
         b_val = other.b_val;
         s_val = std::move(other.s_val);
-        list_val = std::move(other.list_val);
+        list_data = std::move(other.list_data);
         map_data = std::move(other.map_data);
         ptr_val = other.ptr_val;
         obj_val = std::move(other.obj_val);
@@ -363,7 +391,7 @@ public:
         ref_idx = 0;
         return *this;
     }
-    MemeValue(std::unordered_map<std::string, MemeValue> m)
+    MemeValue(std::unordered_map<std::string, MemeValue, StringHash, StringEqual> m)
         : type(TYPE_MAP), map_data(std::make_shared<MemeMapData>()) {
         map_data->map_val = std::move(m);
         for (const auto &pair : map_data->map_val) {
@@ -380,15 +408,17 @@ public:
         }
     }
     MemeValue(const std::vector<std::string> &vec) : type(TYPE_LIST) {
-        list_val.reserve(vec.size());
+        ensure_list();
+        list_data->reserve(vec.size());
         for (const auto &s : vec) {
-            list_val.push_back(MemeValue(s));
+            list_data->push_back(MemeValue(s));
         }
     }
     MemeValue(const MemeStringList &vec) : type(TYPE_LIST) {
-        list_val.reserve(vec.size());
+        ensure_list();
+        list_data->reserve(vec.size());
         for (const auto &s : vec) {
-            list_val.push_back(MemeValue(s));
+            list_data->push_back(MemeValue(s));
         }
     }
 
@@ -397,10 +427,16 @@ public:
     const MemeValue *operator->() const { return this; }
 
     // Range-for iterability
-    auto begin() { return list_val.begin(); }
-    auto end() { return list_val.end(); }
-    auto begin() const { return list_val.begin(); }
-    auto end() const { return list_val.end(); }
+    auto begin() { ensure_list(); return list_data->begin(); }
+    auto end() { ensure_list(); return list_data->end(); }
+    auto begin() const {
+        static const std::vector<MemeValue> empty_list;
+        return list_data ? list_data->begin() : empty_list.begin();
+    }
+    auto end() const {
+        static const std::vector<MemeValue> empty_list;
+        return list_data ? list_data->end() : empty_list.end();
+    }
 
     operator std::string() const {
         return to_string();
@@ -414,7 +450,7 @@ public:
         case TYPE_FLOAT: return f_val != 0.0;
         case TYPE_BOOL: return b_val;
         case TYPE_STRING: return !s_val.empty();
-        case TYPE_LIST: return !list_val.empty();
+        case TYPE_LIST: return list_data && !list_data->empty();
         case TYPE_MAP: return map_data && !map_data->map_val.empty();
         case TYPE_OPTION: return opt_res_flag;
         case TYPE_RESULT: return opt_res_flag;
@@ -475,9 +511,11 @@ public:
         case TYPE_STRING: return s_val;
         case TYPE_LIST: {
             std::string res = "[";
-            for (size_t idx = 0; idx < list_val.size(); ++idx) {
-                if (idx > 0) res += ", ";
-                res += list_val[idx].to_string();
+            if (list_data) {
+                for (size_t idx = 0; idx < list_data->size(); ++idx) {
+                    if (idx > 0) res += ", ";
+                    res += (*list_data)[idx].to_string();
+                }
             }
             res += "]";
             return res;
@@ -559,8 +597,9 @@ public:
             return MemeValue(as_double() + other.as_double());
         }
         if (type == TYPE_LIST && other.type == TYPE_LIST) {
-            auto combined = list_val;
-            combined.insert(combined.end(), other.list_val.begin(), other.list_val.end());
+            auto combined = std::make_shared<std::vector<MemeValue>>();
+            if (list_data) combined->insert(combined->end(), list_data->begin(), list_data->end());
+            if (other.list_data) combined->insert(combined->end(), other.list_data->begin(), other.list_data->end());
             return MemeValue(combined);
         }
         return MemeValue();
@@ -689,9 +728,12 @@ public:
             return inner_val == other.inner_val;
         }
         if (type == TYPE_LIST && other.type == TYPE_LIST) {
-            if (list_val.size() != other.list_val.size()) return false;
-            for (size_t i = 0; i < list_val.size(); ++i) {
-                if (list_val[i] != other.list_val[i]) return false;
+            if (list_data == other.list_data) return true;
+            size_t s1 = list_data ? list_data->size() : 0;
+            size_t s2 = other.list_data ? other.list_data->size() : 0;
+            if (s1 != s2) return false;
+            for (size_t i = 0; i < s1; ++i) {
+                if ((*list_data)[i] != (*other.list_data)[i]) return false;
             }
             return true;
         }
@@ -738,10 +780,11 @@ public:
         if (type != TYPE_LIST) {
             type = TYPE_LIST;
         }
-        if (index >= list_val.size()) {
-            list_val.resize(index + 1);
+        ensure_list();
+        if (index >= list_data->size()) {
+            list_data->resize(index + 1);
         }
-        return list_val[index];
+        return (*list_data)[index];
     }
 
     MemeValue &operator[](size_t index) const {
@@ -805,14 +848,15 @@ public:
         if (type != TYPE_LIST) {
             type = TYPE_LIST;
         }
+        ensure_list();
         int64_t origIdx = index;
-        int64_t sz = static_cast<int64_t>(list_val.size());
+        int64_t sz = static_cast<int64_t>(list_data->size());
         if (index < 0) index += sz;
-        if (index < 0 || static_cast<size_t>(index) >= list_val.size()) {
+        if (index < 0 || static_cast<size_t>(index) >= list_data->size()) {
             throw std::runtime_error("Aukaat ke bahar! Index " + std::to_string(origIdx) + 
                                      " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
         }
-        return list_val[static_cast<size_t>(index)];
+        return (*list_data)[static_cast<size_t>(index)];
     }
 
     MemeValue &operator[](long long index) const {
@@ -832,9 +876,11 @@ public:
             type = TYPE_MAP;
         }
         ensure_map();
-        if (map_data->map_val.find(key) == map_data->map_val.end()) {
-            map_data->map_keys.push_back(key);
+        auto it = map_data->map_val.find(key);
+        if (it != map_data->map_val.end()) {
+            return it->second;
         }
+        map_data->map_keys.push_back(key);
         return map_data->map_val[key];
     }
 
@@ -843,11 +889,22 @@ public:
     }
 
     MemeValue &operator[](const char *key) {
-        return (*this)[std::string(key ? key : "")];
+        if (type != TYPE_MAP) {
+            type = TYPE_MAP;
+        }
+        ensure_map();
+        const char *kstr = key ? key : "";
+        auto it = map_data->map_val.find(kstr);
+        if (it != map_data->map_val.end()) {
+            return it->second;
+        }
+        std::string s(kstr);
+        map_data->map_keys.push_back(s);
+        return map_data->map_val[s];
     }
 
     MemeValue &operator[](const char *key) const {
-        return (*this)[std::string(key ? key : "")];
+        return const_cast<MemeValue *>(this)->operator[](key);
     }
 
     MemeValue &operator[](const MemeValue &index) {
@@ -877,7 +934,8 @@ public:
         if (type != TYPE_LIST) {
             const_cast<MemeValue *>(this)->type = TYPE_LIST;
         }
-        const_cast<MemeValue *>(this)->list_val.push_back(val);
+        ensure_list();
+        list_data->push_back(val);
     }
     void push(int64_t val) const {
         if (type == TYPE_BYTES) {
@@ -900,7 +958,9 @@ public:
             if (bytes_val) bytes_val->clear();
             return;
         }
-        if (type == TYPE_LIST) const_cast<MemeValue *>(this)->list_val.clear();
+        if (type == TYPE_LIST) {
+            if (list_data) list_data->clear();
+        }
         else if (type == TYPE_MAP) {
             if (map_data) {
                 map_data->map_val.clear();
@@ -910,7 +970,7 @@ public:
     }
 
     size_t size() const {
-        if (type == TYPE_LIST) return list_val.size();
+        if (type == TYPE_LIST) return list_data ? list_data->size() : 0;
         if (type == TYPE_STRING) return s_val.size();
         if (type == TYPE_MAP) return map_data ? map_data->map_val.size() : 0;
         if (type == TYPE_BYTES) return bytes_val ? bytes_val->size() : 0;
@@ -1411,7 +1471,16 @@ public:
         if (type == TYPE_BYTES) return has(key.as_int());
         return has(key.to_string());
     }
-    bool has(const char *key) const { return has(std::string(key ? key : "")); }
+    bool has(const char *key) const {
+        if (!key) return false;
+        if (type == TYPE_MAP) {
+            return map_data && map_data->map_val.find(key) != map_data->map_val.end();
+        }
+        if (type == TYPE_STRING) {
+            return s_val.find(key) != std::string::npos;
+        }
+        return false;
+    }
     bool hai_kya(const std::string &key) const { return has(key); }
     bool hai_kya(const MemeValue &key) const { return has(key); }
     bool contains(const std::string &key) const { return has(key); }
@@ -1457,8 +1526,22 @@ public:
         }
         return true;
     }
+    bool remove(const char *key) {
+        if (!key || type != TYPE_MAP || !map_data) return false;
+        auto it = map_data->map_val.find(key);
+        if (it == map_data->map_val.end()) return false;
+        map_data->map_val.erase(it);
+        for (auto kit = map_data->map_keys.begin(); kit != map_data->map_keys.end(); ++kit) {
+            if (*kit == key) {
+                map_data->map_keys.erase(kit);
+                break;
+            }
+        }
+        return true;
+    }
     bool remove(const MemeValue &key) { return remove(key.to_string()); }
     bool hata(const std::string &key) { return remove(key); }
+    bool hata(const char *key) { return remove(key); }
     bool hata(const MemeValue &key) { return remove(key); }
 
     MemeValue get(const std::string &key, const MemeValue &def = MemeValue()) const {
@@ -1467,10 +1550,19 @@ public:
         if (it != map_data->map_val.end()) return it->second;
         return def;
     }
+    MemeValue get(const char *key, const MemeValue &def = MemeValue()) const {
+        if (!key || type != TYPE_MAP || !map_data) return def;
+        auto it = map_data->map_val.find(key);
+        if (it != map_data->map_val.end()) return it->second;
+        return def;
+    }
     MemeValue get(const MemeValue &key, const MemeValue &def = MemeValue()) const {
         return get(key.to_string(), def);
     }
     MemeValue la(const std::string &key, const MemeValue &def = MemeValue()) const {
+        return get(key, def);
+    }
+    MemeValue la(const char *key, const MemeValue &def = MemeValue()) const {
         return get(key, def);
     }
     MemeValue la(const MemeValue &key, const MemeValue &def = MemeValue()) const {
@@ -2236,9 +2328,11 @@ inline std::string stringify(const MemeValue &val) {
     }
     case MemeValue::TYPE_LIST: {
         std::string out = "[";
-        for (size_t i = 0; i < val.list_val.size(); ++i) {
-            if (i > 0) out += ", ";
-            out += stringify(val.list_val[i]);
+        if (val.list_data) {
+            for (size_t i = 0; i < val.list_data->size(); ++i) {
+                if (i > 0) out += ", ";
+                out += stringify((*val.list_data)[i]);
+            }
         }
         out += "]";
         return out;
@@ -2451,16 +2545,16 @@ inline MemeValue parse(const std::string &text, bool hasHeader = true) {
 }
 
 inline std::string stringify(const MemeValue &rowsVal, const MemeValue &headersVal = MemeValue()) {
-    if (rowsVal.type != MemeValue::TYPE_LIST) throw std::runtime_error("csv.stringify ko list chahiye!");
-    if (rowsVal.list_val.empty()) return "";
+    if (rowsVal.type != MemeValue::TYPE_LIST || !rowsVal.list_data) throw std::runtime_error("csv.stringify ko list chahiye!");
+    if (rowsVal.list_data->empty()) return "";
 
     std::ostringstream ss;
     std::vector<std::string> headers;
-    if (headersVal.type == MemeValue::TYPE_LIST) {
-        for (const auto &h : headersVal.list_val) headers.push_back(h.to_string());
+    if (headersVal.type == MemeValue::TYPE_LIST && headersVal.list_data) {
+        for (const auto &h : *headersVal.list_data) headers.push_back(h.to_string());
     }
 
-    const MemeValue &first = rowsVal.list_val[0];
+    const MemeValue &first = (*rowsVal.list_data)[0];
     if (first.type == MemeValue::TYPE_MAP) {
         if (headers.empty() && first.map_data) headers = first.map_data->map_keys;
         for (size_t i = 0; i < headers.size(); ++i) {
@@ -2468,7 +2562,7 @@ inline std::string stringify(const MemeValue &rowsVal, const MemeValue &headersV
             ss << escapeCsvField(headers[i]);
         }
         ss << "\n";
-        for (const auto &rowElem : rowsVal.list_val) {
+        for (const auto &rowElem : *rowsVal.list_data) {
             if (rowElem.type == MemeValue::TYPE_MAP && rowElem.map_data) {
                 for (size_t i = 0; i < headers.size(); ++i) {
                     if (i > 0) ss << ",";
@@ -2487,11 +2581,11 @@ inline std::string stringify(const MemeValue &rowsVal, const MemeValue &headersV
             }
             ss << "\n";
         }
-        for (const auto &rowElem : rowsVal.list_val) {
-            if (rowElem.type == MemeValue::TYPE_LIST) {
-                for (size_t i = 0; i < rowElem.list_val.size(); ++i) {
+        for (const auto &rowElem : *rowsVal.list_data) {
+            if (rowElem.type == MemeValue::TYPE_LIST && rowElem.list_data) {
+                for (size_t i = 0; i < rowElem.list_data->size(); ++i) {
                     if (i > 0) ss << ",";
-                    ss << escapeCsvField(rowElem.list_val[i].to_string());
+                    ss << escapeCsvField((*rowElem.list_data)[i].to_string());
                 }
                 ss << "\n";
             }
@@ -2609,9 +2703,11 @@ struct FileModule {
             f.write(reinterpret_cast<const char*>(data.bytes_val->data()), data.bytes_val->size());
         } else if (data.type == MemeValue::TYPE_LIST) {
             std::vector<uint8_t> buf;
-            buf.reserve(data.list_val.size());
-            for (const auto &elem : data.list_val) {
-                buf.push_back(static_cast<uint8_t>(elem.as_int() & 0xFF));
+            if (data.list_data) {
+                buf.reserve(data.list_data->size());
+                for (const auto &elem : *data.list_data) {
+                    buf.push_back(static_cast<uint8_t>(elem.as_int() & 0xFF));
+                }
             }
             if (!buf.empty()) {
                 f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
@@ -3839,7 +3935,8 @@ struct MemeBytesConstructor {
             return (*this)(val.i_val);
         }
         if (val.type == MemeValue::TYPE_LIST) {
-            return (*this)(val.list_val);
+            if (!val.list_data) return MemeValue(std::vector<uint8_t>{});
+            return (*this)(*val.list_data);
         }
         if (val.type == MemeValue::TYPE_STRING) {
             return (*this)(val.s_val);

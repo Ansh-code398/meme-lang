@@ -101,6 +101,7 @@ private:
         "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
         "env", "paryavaran", "dotenv", "json", "csv", "dhaga", "thread"
     };
+    std::unordered_set<std::string> currentClassTypedVectorFields;
 
     struct FinallyContext {
         std::string tryRetVar;
@@ -189,8 +190,11 @@ public:
         for (const auto &stmt : program) {
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
                 knownClasses.insert(c->name);
+                for (const auto &cf : c->fields) {
+                    knownClassFields.insert(cf.name);
+                }
                 for (const auto &m : c->methods) {
-                    if (m->name == "shuru" || m->name == "init" || m->name == "constructor") {
+                    if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
                         if (auto *b = dynamic_cast<const BlockStmt *>(m->body.get())) {
                             for (const auto &s : b->statements) {
                                 if (auto *es = dynamic_cast<const ExprStmt *>(s.get())) {
@@ -473,7 +477,16 @@ public:
                     method == "remove" || method == "get" ||
                     method == "chaabi" || method == "maal" || method == "hata" || method == "la" ||
                     method == "has" || method == "contains" || method == "hai_kya" || method == "hai") {
-                    return objStr + "." + method + "(" + args + ")";
+                    std::string mapArgs;
+                    for (size_t i = 0; i < e->args.size(); ++i) {
+                        if (i > 0) mapArgs += ", ";
+                        if (auto *se = dynamic_cast<const StringExpr *>(e->args[i].get())) {
+                            mapArgs += "\"" + escapeString(se->value) + "\"";
+                        } else {
+                            mapArgs += generateExpr(e->args[i].get());
+                        }
+                    }
+                    return objStr + "." + method + "(" + mapArgs + ")";
                 }
                 // Mutex and thread methods
                 if (method == "lock" || method == "unlock" || method == "pakad" || method == "chhod" ||
@@ -537,24 +550,35 @@ public:
             if (knownClassFields.count(prop)) {
                 return objStr + "->" + prop;
             }
-            return "meme_index(" + objStr + ", std::string(\"" + e->name + "\"))";
+            return "meme_index(" + objStr + ", \"" + e->name + "\")";
         }
         if (auto *e = dynamic_cast<const SetExpr *>(expr)) {
             std::string objStr = generateExpr(e->object.get());
             std::string prop = sanitizeIdentifier(e->name);
             std::string valStr = generateExpr(e->value.get());
+            if (auto *arr = dynamic_cast<const ArrayLiteralExpr *>(e->value.get())) {
+                if (arr->elements.empty() && objStr == "this" && currentClassTypedVectorFields.count(prop)) {
+                    valStr = "decltype(this->" + prop + "){}";
+                }
+            }
             if (objStr == "this") {
                 return "(this->" + prop + " = " + valStr + ")";
             }
             if (knownClassFields.count(prop)) {
                 return "(" + objStr + "->" + prop + " = " + valStr + ")";
             }
-            return "(meme_index(" + objStr + ", std::string(\"" + e->name + "\")) = " + valStr + ")";
+            return "(meme_index(" + objStr + ", \"" + e->name + "\") = " + valStr + ")";
         }
         if (auto *e = dynamic_cast<const IndexExpr *>(expr)) {
+            if (auto *se = dynamic_cast<const StringExpr *>(e->index.get())) {
+                return "meme_index(" + generateExpr(e->target.get()) + ", \"" + escapeString(se->value) + "\")";
+            }
             return "meme_index(" + generateExpr(e->target.get()) + ", " + generateExpr(e->index.get()) + ")";
         }
         if (auto *e = dynamic_cast<const IndexAssignExpr *>(expr)) {
+            if (auto *se = dynamic_cast<const StringExpr *>(e->index.get())) {
+                return "(meme_index(" + generateExpr(e->target.get()) + ", \"" + escapeString(se->value) + "\") = " + generateExpr(e->value.get()) + ")";
+            }
             return "(meme_index(" + generateExpr(e->target.get()) + ", " + generateExpr(e->index.get()) + ") = " + generateExpr(e->value.get()) + ")";
         }
         if (auto *e = dynamic_cast<const ArrayLiteralExpr *>(expr)) {
@@ -746,18 +770,30 @@ public:
             if (v->typeAnnotation) {
                 std::string t = v->typeAnnotation->toString();
                 if (t == "int" || t == "int64" || t == "ank") typeStr = "int64_t";
-                else if (t == "float" || t == "float64" || t == "point_wala") typeStr = "double";
-                else if (t == "bool" || t == "sahi_galat") typeStr = "bool";
+                else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") typeStr = "double";
+                else if (t == "bool" || t == "sach" || t == "sahi_galat") typeStr = "bool";
                 else if (t == "str" || t == "string" || t == "bol") typeStr = "std::string";
                 else if (knownClasses.find(t) != knownClasses.end()) typeStr = "std::shared_ptr<" + t + ">";
+                else if (v->typeAnnotation->kind == TypeKind::LIST && v->typeAnnotation->elementType) {
+                    std::string elemT = v->typeAnnotation->elementType->toString();
+                    if (knownClasses.find(elemT) != knownClasses.end()) {
+                        typeStr = "std::vector<std::shared_ptr<" + elemT + ">>";
+                    }
+                }
             } else if (v->initializer && dynamic_cast<const NullExpr *>(v->initializer.get())) {
                 typeStr = "MemeValue"; // Avoid deducing std::nullptr_t
             }
 
             if (v->initializer) {
+                if (auto *arr = dynamic_cast<const ArrayLiteralExpr *>(v->initializer.get())) {
+                    if (arr->elements.empty() && typeStr != "auto") {
+                        out << indent() << typeStr << " " << varName << " = {};\n";
+                        return;
+                    }
+                }
                 out << indent() << typeStr << " " << varName << " = " << generateExpr(v->initializer.get()) << ";\n";
             } else {
-                out << indent() << "MemeValue " << varName << ";\n";
+                out << indent() << (typeStr != "auto" ? typeStr : "MemeValue") << " " << varName << ";\n";
             }
             return;
         }
@@ -1291,6 +1327,12 @@ public:
     }
 
     void generateClass(const ClassDeclStmt *c) {
+        currentClassTypedVectorFields.clear();
+        for (const auto &cf : c->fields) {
+            if (cf.typeAnnotation && cf.typeAnnotation->kind == TypeKind::LIST) {
+                currentClassTypedVectorFields.insert(cf.name);
+            }
+        }
         std::string className = c->name;
         if (!c->typeParams.empty()) {
             globalDecls << "template<";
@@ -1347,12 +1389,19 @@ public:
                 }
                 if (isTP) {
                     fType = tName;
-                } else if (tName == "ank" || tName == "int") fType = "int64_t";
-                else if (tName == "point" || tName == "float") fType = "double";
-                else if (tName == "bol" || tName == "str") fType = "std::string";
+                } else if (tName == "ank" || tName == "int" || tName == "int64") fType = "int64_t";
+                else if (tName == "point" || tName == "float" || tName == "float64") fType = "double";
+                else if (tName == "bol" || tName == "str" || tName == "string") fType = "std::string";
                 else if (tName == "sach" || tName == "bool") fType = "bool";
+                else if (knownClasses.find(tName) != knownClasses.end()) fType = "std::shared_ptr<" + tName + ">";
+                else if (cf.typeAnnotation->kind == TypeKind::LIST && cf.typeAnnotation->elementType) {
+                    std::string elemT = cf.typeAnnotation->elementType->toString();
+                    if (knownClasses.find(elemT) != knownClasses.end()) {
+                        fType = "std::vector<std::shared_ptr<" + elemT + ">>";
+                    }
+                }
             }
-            globalDecls << "    " << fType << " " << sanitizeIdentifier(cf.name) << ";\n";
+            globalDecls << "    " << fType << " " << sanitizeIdentifier(cf.name) << " = {};\n";
             emittedFields.insert(cf.name);
         }
         for (const auto &f : fields) {
@@ -1365,14 +1414,30 @@ public:
         }
 
         bool hasZeroArgCtor = false;
+        bool hasAnyCtor = false;
         for (const auto &m : c->methods) {
-            if ((m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") && m->paramList.empty()) {
-                hasZeroArgCtor = true;
-                break;
+            if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
+                hasAnyCtor = true;
+                if (m->paramList.empty()) {
+                    hasZeroArgCtor = true;
+                }
             }
         }
         if (!hasZeroArgCtor) {
             globalDecls << "\n    " << className << "() = default;\n";
+        }
+        if (!hasAnyCtor && !c->fields.empty()) {
+            globalDecls << "    " << className << "(";
+            for (size_t i = 0; i < c->fields.size(); ++i) {
+                if (i > 0) globalDecls << ", ";
+                globalDecls << "auto " << sanitizeIdentifier(c->fields[i].name) << "_in";
+            }
+            globalDecls << ") : ";
+            for (size_t i = 0; i < c->fields.size(); ++i) {
+                if (i > 0) globalDecls << ", ";
+                globalDecls << sanitizeIdentifier(c->fields[i].name) << "(" << sanitizeIdentifier(c->fields[i].name) << "_in)";
+            }
+            globalDecls << " {}\n";
         }
 
         // Constructor & Methods
@@ -1431,10 +1496,16 @@ public:
                     }
                     if (isTP) methodRetType = t;
                     else if (t == "int" || t == "int64" || t == "ank") methodRetType = "int64_t";
-                    else if (t == "float" || t == "float64" || t == "point_wala") methodRetType = "double";
-                    else if (t == "bool" || t == "sahi_galat") methodRetType = "bool";
+                    else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") methodRetType = "double";
+                    else if (t == "bool" || t == "sach" || t == "sahi_galat") methodRetType = "bool";
                     else if (t == "str" || t == "string" || t == "bol") methodRetType = "std::string";
                     else if (knownClasses.find(t) != knownClasses.end()) methodRetType = "std::shared_ptr<" + t + ">";
+                    else if (m->returnTypeAnnotation->kind == TypeKind::LIST && m->returnTypeAnnotation->elementType) {
+                        std::string elemT = m->returnTypeAnnotation->elementType->toString();
+                        if (knownClasses.find(elemT) != knownClasses.end()) {
+                            methodRetType = "std::vector<std::shared_ptr<" + elemT + ">>";
+                        }
+                    }
                 } else if (hasGetExprInReturn(m->body.get()) || usesPropagate || hasFinallyWithReturn(m->body.get())) {
                     methodRetType = "MemeValue";
                 }
@@ -1445,8 +1516,15 @@ public:
                     std::string pType = "MemeValue";
                     if (m->paramList[i].typeAnnotation) {
                         std::string t = m->paramList[i].typeAnnotation->toString();
-                        for (const auto &tp : c->typeParams) {
-                            if (tp == t) { pType = t; break; }
+                        if (t == "int" || t == "int64" || t == "ank") pType = "int64_t";
+                        else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") pType = "double";
+                        else if (t == "bool" || t == "sach" || t == "sahi_galat") pType = "bool";
+                        else if (t == "str" || t == "string" || t == "bol") pType = "std::string";
+                        else if (knownClasses.find(t) != knownClasses.end()) pType = "std::shared_ptr<" + t + ">";
+                        else {
+                            for (const auto &tp : c->typeParams) {
+                                if (tp == t) { pType = t; break; }
+                            }
                         }
                     }
                     globalDecls << pType << " " << sanitizeIdentifier(m->paramList[i].name);
@@ -1483,6 +1561,7 @@ public:
         }
 
         globalDecls << "};\n\n";
+        currentClassTypedVectorFields.clear();
     }
 
     std::string getParamTypeString(const FuncParam &param, const std::vector<std::string> &typeParams) {
@@ -1493,9 +1572,9 @@ public:
                 pType = "const std::shared_ptr<" + t + "> &";
             } else if (t == "int" || t == "int64" || t == "ank") {
                 pType = "int64_t ";
-            } else if (t == "float" || t == "float64" || t == "point_wala") {
+            } else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") {
                 pType = "double ";
-            } else if (t == "bool" || t == "sahi_galat") {
+            } else if (t == "bool" || t == "sach" || t == "sahi_galat") {
                 pType = "bool ";
             } else if (t == "str" || t == "string" || t == "bol") {
                 pType = "const std::string &";
@@ -1519,10 +1598,16 @@ public:
         } else if (f->returnTypeAnnotation) {
             std::string t = f->returnTypeAnnotation->toString();
             if (t == "int" || t == "int64" || t == "ank") returnType = "int64_t";
-            else if (t == "float" || t == "float64" || t == "point_wala") returnType = "double";
-            else if (t == "bool" || t == "sahi_galat") returnType = "bool";
+            else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") returnType = "double";
+            else if (t == "bool" || t == "sach" || t == "sahi_galat") returnType = "bool";
             else if (t == "str" || t == "string" || t == "bol") returnType = "std::string";
             else if (knownClasses.find(t) != knownClasses.end()) returnType = "std::shared_ptr<" + t + ">";
+            else if (f->returnTypeAnnotation->kind == TypeKind::LIST && f->returnTypeAnnotation->elementType) {
+                std::string elemT = f->returnTypeAnnotation->elementType->toString();
+                if (knownClasses.find(elemT) != knownClasses.end()) {
+                    returnType = "std::vector<std::shared_ptr<" + elemT + ">>";
+                }
+            }
         } else if (hasGetExprInReturn(f->body.get()) || usesPropagate || hasFinallyWithReturn(f->body.get())) {
             returnType = "MemeValue";
         }
@@ -1772,10 +1857,16 @@ public:
                 } else if (f->returnTypeAnnotation) {
                     std::string t = f->returnTypeAnnotation->toString();
                     if (t == "int" || t == "int64" || t == "ank") retType = "int64_t";
-                    else if (t == "float" || t == "float64" || t == "point_wala") retType = "double";
-                    else if (t == "bool" || t == "sahi_galat") retType = "bool";
+                    else if (t == "float" || t == "float64" || t == "point" || t == "point_wala") retType = "double";
+                    else if (t == "bool" || t == "sach" || t == "sahi_galat") retType = "bool";
                     else if (t == "str" || t == "string" || t == "bol") retType = "std::string";
                     else if (knownClasses.find(t) != knownClasses.end()) retType = "std::shared_ptr<" + t + ">";
+                    else if (f->returnTypeAnnotation->kind == TypeKind::LIST && f->returnTypeAnnotation->elementType) {
+                        std::string elemT = f->returnTypeAnnotation->elementType->toString();
+                        if (knownClasses.find(elemT) != knownClasses.end()) {
+                            retType = "std::vector<std::shared_ptr<" + elemT + ">>";
+                        }
+                    }
                 }
                 std::string paramTypes;
                 for (size_t i = 0; i < f->paramList.size(); ++i) {
