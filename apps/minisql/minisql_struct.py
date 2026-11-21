@@ -22,6 +22,15 @@ class Employee:
         self.dept = dept
         self.is_deleted = is_deleted
 
+class AggResult:
+    __slots__ = ("count", "sum", "avg", "min", "max")
+    def __init__(self, count: int, sum_val: float, avg_val: float, min_val: float, max_val: float):
+        self.count = count
+        self.sum = sum_val
+        self.avg = avg_val
+        self.min = min_val
+        self.max = max_val
+
 class StructTable:
     def __init__(self, name: str):
         self.name = name
@@ -43,20 +52,14 @@ class StructTable:
         self.active_count += 1
         return True
 
-    def select_by_pk(self, id: int) -> dict:
+    def select_by_pk(self, id: int):
         if id not in self.pk_index:
-            return {}
+            return None
         idx = self.pk_index[id]
         r = self.rows[idx]
         if r.is_deleted == 1:
-            return {}
-        return {
-            "id": r.id,
-            "name": r.name,
-            "age": r.age,
-            "salary": r.salary,
-            "dept": r.dept
-        }
+            return None
+        return r
 
     def select_where(self, dept: str, min_age: int, max_age: int) -> list:
         matches = []
@@ -91,18 +94,9 @@ class StructTable:
         self.active_count -= 1
         return True
 
-    def aggregate(self, dept: str) -> dict:
-        res = {
-            "count": 0,
-            "sum": 0.0,
-            "avg": 0.0,
-            "min": 999999999.0,
-            "max": -999999999.0
-        }
+    def aggregate(self, dept: str) -> AggResult:
         if dept not in self.dept_index:
-            res["min"] = 0.0
-            res["max"] = 0.0
-            return res
+            return AggResult(0, 0.0, 0.0, 0.0, 0.0)
 
         count = 0
         sum_val = 0.0
@@ -121,15 +115,9 @@ class StructTable:
                     max_val = sal
 
         if count > 0:
-            res["count"] = count
-            res["sum"] = sum_val
-            res["avg"] = sum_val / float(count)
-            res["min"] = min_val
-            res["max"] = max_val
+            return AggResult(count, sum_val, sum_val / float(count), min_val, max_val)
         else:
-            res["min"] = 0.0
-            res["max"] = 0.0
-        return res
+            return AggResult(0, 0.0, 0.0, 0.0, 0.0)
 
 def run_verify():
     print("==================================================")
@@ -158,8 +146,8 @@ def run_verify():
 
     # 3. Primary Key Lookup
     pk103 = db.select_by_pk(103)
-    sal103 = int(pk103["salary"]) if pk103["salary"].is_integer() else pk103["salary"]
-    print(f"3. PK Lookup 103: {pk103['name']} {sal103} {pk103['dept']}")
+    sal103 = int(pk103.salary) if pk103.salary.is_integer() else pk103.salary
+    print(f"3. PK Lookup 103: {pk103.name} {sal103} {pk103.dept}")
 
     # 4. Filter Query (Dept = Engineering, Age 28..35)
     eng_matches = db.select_where("Engineering", 28, 35)
@@ -171,23 +159,23 @@ def run_verify():
     # 5. Update Salary
     up_res = db.update_salary(102, 98000.0)
     pk102 = db.select_by_pk(102)
-    sal102 = int(pk102["salary"]) if pk102["salary"].is_integer() else pk102["salary"]
+    sal102 = int(pk102.salary) if pk102.salary.is_integer() else pk102.salary
     print(f"5. Update salary 102 to 98000: {up_res} New Salary: {sal102}")
 
     # 6. Aggregate Query
     agg = db.aggregate("Engineering")
     print("6. Aggregation (Engineering):")
-    print(f"   Count: {agg['count']}")
-    print(f"   Sum:   {int(agg['sum']) if agg['sum'].is_integer() else agg['sum']}")
-    print(f"   Avg:   {int(agg['avg']) if agg['avg'].is_integer() else agg['avg']}")
-    print(f"   Min:   {int(agg['min']) if agg['min'].is_integer() else agg['min']}")
-    print(f"   Max:   {int(agg['max']) if agg['max'].is_integer() else agg['max']}")
+    print(f"   Count: {agg.count}")
+    print(f"   Sum:   {int(agg.sum) if agg.sum.is_integer() else agg.sum}")
+    print(f"   Avg:   {int(agg.avg) if agg.avg.is_integer() else agg.avg}")
+    print(f"   Min:   {int(agg.min) if agg.min.is_integer() else agg.min}")
+    print(f"   Max:   {int(agg.max) if agg.max.is_integer() else agg.max}")
 
     # 7. Delete Test
     del_res = db.delete_by_pk(104)
     pk104_after = db.select_by_pk(104)
     print(f"7. Delete PK 104: {del_res}")
-    print(f"   Lookup deleted PK 104 has name: {'name' in pk104_after}")
+    print(f"   Lookup deleted PK 104 has name: {pk104_after is not None}")
     print(f"   Active count after delete: {db.active_count}")
 
     print("==================================================")
@@ -218,7 +206,7 @@ def run_benchmark(num_rows: int, num_queries: int):
     for i in range(num_queries):
         q_id = 1000 + ((i * 37) % num_rows)
         r = db.select_by_pk(q_id)
-        if "id" in r:
+        if r is not None:
             pk_hits += 1
     t_pk = max(time.perf_counter() - t_pk_start, 1e-9)
 
@@ -227,10 +215,9 @@ def run_benchmark(num_rows: int, num_queries: int):
     num_filters = num_queries // 2
     filter_matched = 0
     for i in range(num_filters):
-        q_dept = depts[i % 5]
         min_a = 25 + (i % 10)
         max_a = min_a + 15
-        res = db.select_where(q_dept, min_a, max_a)
+        res = db.select_where(depts[i % 5], min_a, max_a)
         filter_matched += len(res)
     t_filter = max(time.perf_counter() - t_filter_start, 1e-9)
 
@@ -239,9 +226,8 @@ def run_benchmark(num_rows: int, num_queries: int):
     num_aggs = num_queries // 4
     agg_count_acc = 0
     for i in range(num_aggs):
-        q_dept = depts[i % 5]
-        agg_res = db.aggregate(q_dept)
-        agg_count_acc += agg_res["count"]
+        agg_res = db.aggregate(depts[i % 5])
+        agg_count_acc += agg_res.count
     t_agg = max(time.perf_counter() - t_agg_start, 1e-9)
 
     # 5. Updates

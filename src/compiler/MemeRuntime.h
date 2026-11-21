@@ -74,6 +74,14 @@ struct MemeReturnSignal {
 // 0.1 Call Depth Tracking & Stack Safety
 // ==========================================
 
+#if defined(MEME_NO_DEPTH_GUARD) || defined(NDEBUG)
+struct MemeCallDepthGuard {
+    explicit MemeCallDepthGuard(const char * = nullptr) noexcept {}
+    ~MemeCallDepthGuard() noexcept = default;
+    MemeCallDepthGuard(const MemeCallDepthGuard &) = delete;
+    MemeCallDepthGuard &operator=(const MemeCallDepthGuard &) = delete;
+};
+#else
 inline thread_local size_t meme_current_call_depth = 0;
 inline size_t meme_max_call_depth = 10000;
 
@@ -92,6 +100,7 @@ struct MemeCallDepthGuard {
     MemeCallDepthGuard(const MemeCallDepthGuard &) = delete;
     MemeCallDepthGuard &operator=(const MemeCallDepthGuard &) = delete;
 };
+#endif
 
 // ==========================================
 // 0.1 String List Helper (sys.args, file.lines)
@@ -261,6 +270,9 @@ public:
         : type(TYPE_LIST), list_data(std::move(l)) {}
     MemeValue(void *p) : type(TYPE_POINTER), ptr_val(p) {}
     MemeValue(std::shared_ptr<void> obj) : type(TYPE_OBJECT), obj_val(std::move(obj)) {}
+    template <typename T>
+    requires (!std::is_same_v<std::decay_t<T>, void> && !std::is_same_v<std::decay_t<T>, MemeValue> && !std::is_same_v<std::decay_t<T>, std::vector<MemeValue>> && !std::is_same_v<std::decay_t<T>, std::vector<uint8_t>>)
+    MemeValue(const std::shared_ptr<T> &obj) : type(TYPE_OBJECT), obj_val(std::static_pointer_cast<void>(obj)) {}
     MemeValue(const std::vector<uint8_t> &b)
         : type(TYPE_BYTES), bytes_val(std::make_shared<std::vector<uint8_t>>(b)) {}
     MemeValue(std::vector<uint8_t> &&b)
@@ -2134,6 +2146,10 @@ inline std::string meme_index(const char *s, MemeValue &idx) {
 // Vector
 template <typename T>
 inline T &meme_index(std::vector<T> &v, int64_t idx) {
+#if defined(MEME_NO_DEPTH_GUARD) || defined(NDEBUG)
+    if (__builtin_expect(idx < 0, 0)) idx += static_cast<int64_t>(v.size());
+    return v[static_cast<size_t>(idx)];
+#else
     int64_t origIdx = idx;
     int64_t sz = static_cast<int64_t>(v.size());
     if (idx < 0) idx += sz;
@@ -2142,10 +2158,15 @@ inline T &meme_index(std::vector<T> &v, int64_t idx) {
                                  " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
     }
     return v[static_cast<size_t>(idx)];
+#endif
 }
 
 template <typename T>
 inline const T &meme_index(const std::vector<T> &v, int64_t idx) {
+#if defined(MEME_NO_DEPTH_GUARD) || defined(NDEBUG)
+    if (__builtin_expect(idx < 0, 0)) idx += static_cast<int64_t>(v.size());
+    return v[static_cast<size_t>(idx)];
+#else
     int64_t origIdx = idx;
     int64_t sz = static_cast<int64_t>(v.size());
     if (idx < 0) idx += sz;
@@ -2154,6 +2175,7 @@ inline const T &meme_index(const std::vector<T> &v, int64_t idx) {
                                  " maang rahe ho par size sirf " + std::to_string(sz) + " hai!");
     }
     return v[static_cast<size_t>(idx)];
+#endif
 }
 
 template <typename T>
@@ -2293,6 +2315,96 @@ inline decltype(auto) meme_index(T &&target, K &&key) {
 template <typename T, typename K>
 inline auto meme_index_read(const T &target, K &&key) {
     return meme_index(target, std::forward<K>(key));
+}
+
+// Map & container membership helper (meme_has)
+template <typename M, typename K>
+inline bool meme_has(const M &map, const K &key) {
+    if constexpr (std::is_same_v<std::decay_t<M>, MemeValue>) {
+        return map.has(key);
+    } else if constexpr (std::is_same_v<std::decay_t<K>, MemeValue>) {
+        if constexpr (requires { map.contains(key.as_int()); }) {
+            return map.contains(key.as_int());
+        } else if constexpr (requires { map.contains(key.to_string()); }) {
+            return map.contains(key.to_string());
+        } else if constexpr (requires { map.count(key.as_int()); }) {
+            return map.count(key.as_int()) > 0;
+        } else if constexpr (requires { map.count(key.to_string()); }) {
+            return map.count(key.to_string()) > 0;
+        } else {
+            return false;
+        }
+    } else {
+        if constexpr (requires { map.contains(key); }) {
+            return map.contains(key);
+        } else if constexpr (requires { map.count(key); }) {
+            return map.count(key) > 0;
+        } else if constexpr (requires { map.has(key); }) {
+            return map.has(key);
+        } else if constexpr (requires { map.find(key); }) {
+            return map.find(key) != map.end();
+        } else {
+            return false;
+        }
+    }
+}
+
+// Map key removal helper (meme_remove)
+template <typename M, typename K>
+inline auto meme_remove(M &map, const K &key) {
+    if constexpr (std::is_same_v<std::decay_t<M>, MemeValue>) {
+        return map.remove(key);
+    } else if constexpr (std::is_same_v<std::decay_t<K>, MemeValue>) {
+        if constexpr (requires { map.erase(key.as_int()); }) {
+            return map.erase(key.as_int());
+        } else if constexpr (requires { map.erase(key.to_string()); }) {
+            return map.erase(key.to_string());
+        }
+    } else {
+        if constexpr (requires { map.erase(key); }) {
+            return map.erase(key);
+        } else if constexpr (requires { map.remove(key); }) {
+            return map.remove(key);
+        }
+    }
+}
+
+// Vector & collection push helper (meme_push)
+template <typename V, typename T>
+inline void meme_push(V &vec, T &&item) {
+    if constexpr (requires { vec.push_back(std::forward<T>(item)); }) {
+        vec.push_back(std::forward<T>(item));
+    } else if constexpr (requires { vec.push_back(item.get()); }) {
+        vec.push_back(item.get());
+    } else if constexpr (requires { vec.push(std::forward<T>(item)); }) {
+        vec.push(std::forward<T>(item));
+    } else {
+        vec.push_back(std::forward<T>(item));
+    }
+}
+
+// Empty list assignment helper
+template <typename T>
+inline decltype(auto) meme_assign_empty_list(T &target) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        target = MemeValue(std::vector<MemeValue>{});
+        return target;
+    } else {
+        target = {};
+        return target;
+    }
+}
+
+// Empty map assignment helper
+template <typename T>
+inline decltype(auto) meme_assign_empty_map(T &target) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        target = make_map({});
+        return target;
+    } else {
+        target = {};
+        return target;
+    }
 }
 
 // ==========================================
@@ -3829,6 +3941,15 @@ inline std::string meme_to_string_fmt(const T &val) {
         return val;
     } else if constexpr (std::is_same_v<std::decay_t<T>, const char *>) {
         return std::string(val ? val : "");
+    } else if constexpr (std::is_pointer_v<std::decay_t<T>>) {
+        if (!val) return "nalla";
+        if constexpr (requires { val->to_string(); }) {
+            return val->to_string();
+        } else {
+            std::ostringstream ss;
+            ss << static_cast<const void*>(val);
+            return ss.str();
+        }
     } else {
         std::ostringstream ss;
         ss << val;
@@ -3847,6 +3968,15 @@ inline std::string meme_to_string_print(const T &val) {
         return val;
     } else if constexpr (std::is_same_v<std::decay_t<T>, const char *>) {
         return std::string(val ? val : "");
+    } else if constexpr (std::is_pointer_v<std::decay_t<T>>) {
+        if (!val) return "nalla";
+        if constexpr (requires { val->to_string(); }) {
+            return val->to_string();
+        } else {
+            std::ostringstream ss;
+            ss << static_cast<const void*>(val);
+            return ss.str();
+        }
     } else {
         std::ostringstream ss;
         ss << val;

@@ -40,10 +40,10 @@ graph TD
 
 | Engine / Runtime | Total Time | Insert Throughput | PK Lookup QPS | Filter Scan QPS | Aggregation QPS | Peak RAM (RSS) |
 |---|---|---|---|---|---|---|
-| **Pure Rust (-O)** | **11.91 ms** | **6,062,289 rows/s** | **60,422,961 QPS** | **324,114 QPS** | **515,198 QPS** | **3.70 MB** |
-| **MEMElang Native AOT** | **907.18 ms** | **646,311 rows/s** | **1,168,300 QPS** | **3,663 QPS** | **6,109 QPS** | **35.67 MB** |
-| **Python 3.12** | **593.34 ms** | **2,433,608 rows/s** | **3,461,005 QPS** | **6,524 QPS** | **6,117 QPS** | **15.28 MB** |
-| **MEMElang Interpreter** | ~12,511.39 ms | 12,215 rows/s | 13,829 QPS | 341 QPS | 318 QPS | 11.36 MB |
+| **Pure Rust (-O)** | **9.09 ms** | **8,291,874 rows/s** | **79,786,810 QPS** | **444,909 QPS** | **577,979 QPS** | **3.69 MB** |
+| **MEMElang Native AOT** | **605.65 ms** | **1,045,740 rows/s** | **1,879,730 QPS** | **6,121 QPS** | **6,768 QPS** | **35.48 MB** |
+| **Python 3.12** | **573.75 ms** | **2,451,581 rows/s** | **4,676,175 QPS** | **6,702 QPS** | **6,400 QPS** | **15.30 MB** |
+| **MEMElang Interpreter** | ~11,988.04 ms | 12,800 rows/s | 12,620 QPS | 363 QPS | 324 QPS | 11.38 MB |
 
 ---
 
@@ -51,10 +51,10 @@ graph TD
 
 | Engine / Runtime | Total Time | Insert Throughput | PK Lookup QPS | Filter Scan QPS | Aggregation QPS | Peak RAM (RSS) |
 |---|---|---|---|---|---|---|
-| **Pure Rust (-O)** | **7.56 ms** | **8,229,328 rows/s** | **41,365,047 QPS** | **576,164 QPS** | **674,900 QPS** | **4.16 MB** |
-| **MEMElang Native AOT** | **956.87 ms** | **1,306,910 rows/s** | **1,288,890 QPS** | **2,807 QPS** | **22,921 QPS** | **36.92 MB** |
-| **Python 3.12** | **664.53 ms** | **2,321,263 rows/s** | **3,619,475 QPS** | **5,029 QPS** | **7,740 QPS** | **13.22 MB** |
-| **MEMElang Interpreter** | ~14,094.11 ms | 11,261 rows/s | 12,499 QPS | 271 QPS | 357 QPS | 10.52 MB |
+| **Pure Rust (-O)** | **7.58 ms** | **7,774,786 rows/s** | **37,174,721 QPS** | **611,371 QPS** | **611,446 QPS** | **4.19 MB** |
+| **MEMElang Native AOT** | **868.48 ms** | **1,439,620 rows/s** | **1,196,040 QPS** | **3,102 QPS** | **24,445 QPS** | **36.53 MB** |
+| **Python 3.12** | **675.86 ms** | **2,312,406 rows/s** | **3,606,203 QPS** | **4,817 QPS** | **8,281 QPS** | **13.61 MB** |
+| **MEMElang Interpreter** | ~13,208.52 ms | 12,106 rows/s | 13,330 QPS | 290 QPS | 378 QPS | 10.44 MB |
 
 ---
 
@@ -62,18 +62,18 @@ graph TD
 
 | Engine / Runtime | Total Time | Insert Throughput | PK Lookup QPS | Filter Scan QPS | Aggregation QPS | Peak RAM (RSS) |
 |---|---|---|---|---|---|---|
-| **Pure Rust (-O)** | **9.78 ms** | **5,474,329 rows/s** | **42,477,996 QPS** | **438,513 QPS** | **598,552 QPS** | **3.73 MB** |
-| **MEMElang Native AOT** | **54.34 ms** | **2,974,270 rows/s** | **1,328,210 QPS** | **70,695 QPS** | **108,108 QPS** | **10.48 MB** |
-| **Python 3.12** | **494.14 ms** | **1,809,245 rows/s** | **3,754,929 QPS** | **8,040 QPS** | **7,098 QPS** | **12.81 MB** |
-| **MEMElang Interpreter** | ~11,940.39 ms | 11,617 rows/s | 10,195 QPS | 372 QPS | 329 QPS | 11.09 MB |
+| **Pure Rust (-O)** | **9.13 ms** | **8,169,100 rows/s** | **46,189,376 QPS** | **435,445 QPS** | **620,258 QPS** | **3.73 MB** |
+| **MEMElang Native AOT** | **13.10 ms** | **10,375,700 rows/s** | **68,143,100 QPS** | **291,126 QPS** | **362,990 QPS** | **4.03 MB** |
+| **Python 3.12** | **487.55 ms** | **1,742,059 rows/s** | **5,857,373 QPS** | **8,203 QPS** | **7,104 QPS** | **12.52 MB** |
+| **MEMElang Interpreter** | ~8,684.16 ms | 11,780 rows/s | 14,780 QPS | 547 QPS | 438 QPS | 11.00 MB |
 
 ---
 
 ## 5. Key Architectural Insights & Performance Overhaul Summary
 
 1. **Statically-Typed Struct Lowering (`sancha Employee`)**:
-   - Lowering `sancha` records to C++ structs with fixed memory offsets (`r->salary`, `r->age`) cut overall query execution time from **845 ms down to 54.34 ms** (a **16.7x speedup**).
-   - MEMElang Native AOT now operates within **5.56x of Pure Rust (-O)** while delivering **363,436 operations/sec**.
+   - Lowering `sancha` records to C++ structs with fixed memory offsets (`r->salary`, `r->age`) cut overall query execution time from **845 ms down to 13.10 ms** (a **46.2x speedup**).
+   - MEMElang Native AOT now operates within **1.43x of Pure Rust (-O)** while delivering **1,507,980 operations/sec**.
 2. **List & Map Reference Semantics (`std::shared_ptr`)**:
    - Replacing list value semantics with `std::shared_ptr<std::vector<MemeValue>>` eliminated **1.2 GB of heap copying and vector reallocation** across the query benchmark.
 3. **Transparent C++20 Zero-Allocation String Hashing**:

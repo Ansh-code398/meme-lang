@@ -29,11 +29,27 @@ sancha Employee {
     }
 }
 
+sancha AggResult {
+    le count: int;
+    le sum: float;
+    le avg: float;
+    le min: float;
+    le max: float;
+
+    jugaad shuru(count: int, sum: float, avg: float, min: float, max: float) {
+        khud.count = count;
+        khud.sum = sum;
+        khud.avg = avg;
+        khud.min = min;
+        khud.max = max;
+    }
+}
+
 sancha StructTable {
     le name: str;
     le rows: list[Employee];
-    le pk_index;
-    le dept_index;
+    le pk_index: map[int, int];
+    le dept_index: map[str, list[int]];
     le active_count: int;
 
     jugaad shuru(t_name: str) {
@@ -63,45 +79,33 @@ sancha StructTable {
     }
 
     // SELECT * FROM table WHERE id = ?
-    jugaad select_by_pk(id: int) {
+    jugaad select_by_pk(id: int): Employee {
         dekh !khud.pk_index.has(id) {
-            ye_le {};
+            ye_le nalla;
         }
         pakad idx: int = khud.pk_index[id];
         pakad r = khud.rows[idx];
         dekh r.is_deleted == 1 {
-            ye_le {};
+            ye_le nalla;
         }
-        ye_le {
-            "id": r.id,
-            "name": r.name,
-            "age": r.age,
-            "salary": r.salary,
-            "dept": r.dept
-        };
+        ye_le r;
     }
 
     // SELECT * FROM table WHERE dept = ? AND age >= ? AND age <= ?
-    jugaad select_where(dept: str, min_age: int, max_age: int): list[Employee] {
-        pakad matches: list[Employee] = [];
+    jugaad select_where(dept: str, min_age: int, max_age: int): list[patta[Employee]] {
+        pakad matches: list[patta[Employee]] = [];
         dekh !khud.dept_index.has(dept) {
             ye_le matches;
         }
         pakad indices = khud.dept_index[dept];
-        pakad i: int = 0;
-        pakad n: int = indices.length();
-        jabtak i < n {
-            pakad idx: int = indices[i];
+        ghuma idx mein indices {
             pakad r = khud.rows[idx];
             dekh r.is_deleted == 0 {
                 pakad age: int = r.age;
-                dekh age >= min_age {
-                    dekh age <= max_age {
-                        matches.push(r);
-                    }
+                dekh age >= min_age && age <= max_age {
+                    matches.push(r);
                 }
             }
-            i = i + 1;
         }
         ye_le matches;
     }
@@ -137,29 +141,17 @@ sancha StructTable {
     }
 
     // SELECT COUNT(*), SUM(salary), AVG(salary), MIN(salary), MAX(salary) FROM table WHERE dept = ?
-    jugaad aggregate(dept: str) {
-        pakad res = {
-            "count": 0,
-            "sum": 0.0,
-            "avg": 0.0,
-            "min": 999999999.0,
-            "max": -999999999.0
-        };
+    jugaad aggregate(dept: str): AggResult {
         dekh !khud.dept_index.has(dept) {
-            res["min"] = 0.0;
-            res["max"] = 0.0;
-            ye_le res;
+            ye_le AggResult(0, 0.0, 0.0, 0.0, 0.0);
         }
         pakad indices = khud.dept_index[dept];
-        pakad i: int = 0;
-        pakad n: int = indices.length();
         pakad count: int = 0;
         pakad sum_val: float = 0.0;
         pakad min_val: float = 999999999.0;
         pakad max_val: float = -999999999.0;
 
-        jabtak i < n {
-            pakad idx: int = indices[i];
+        ghuma idx mein indices {
             pakad r = khud.rows[idx];
             dekh r.is_deleted == 0 {
                 pakad sal: float = r.salary;
@@ -172,20 +164,13 @@ sancha StructTable {
                     max_val = sal;
                 }
             }
-            i = i + 1;
         }
 
         dekh count > 0 {
-            res["count"] = count;
-            res["sum"] = sum_val;
-            res["avg"] = sum_val / (0.0 + count);
-            res["min"] = min_val;
-            res["max"] = max_val;
+            ye_le AggResult(count, sum_val, sum_val / (0.0 + count), min_val, max_val);
         } warna {
-            res["min"] = 0.0;
-            res["max"] = 0.0;
+            ye_le AggResult(0, 0.0, 0.0, 0.0, 0.0);
         }
-        ye_le res;
     }
 }
 
@@ -216,7 +201,7 @@ jugaad run_verify() {
 
     // 3. Primary Key Lookup
     pakad pk103 = db.select_by_pk(103);
-    dikha "3. PK Lookup 103:", pk103["name"], pk103["salary"], pk103["dept"];
+    dikha "3. PK Lookup 103:", pk103.name, pk103.salary, pk103.dept;
 
     // 4. Filter Query (Dept = Engineering, Age 28..35)
     pakad eng_matches = db.select_where("Engineering", 28, 35);
@@ -231,22 +216,22 @@ jugaad run_verify() {
     // 5. Update Salary
     pakad up_res = db.update_salary(102, 98000.0);
     pakad pk102 = db.select_by_pk(102);
-    dikha "5. Update salary 102 to 98000:", (up_res == 1), "New Salary:", pk102["salary"];
+    dikha "5. Update salary 102 to 98000:", (up_res == 1), "New Salary:", pk102.salary;
 
     // 6. Aggregate Query
     pakad agg = db.aggregate("Engineering");
     dikha "6. Aggregation (Engineering):";
-    dikha "   Count:", agg["count"];
-    dikha "   Sum:  ", agg["sum"];
-    dikha "   Avg:  ", agg["avg"];
-    dikha "   Min:  ", agg["min"];
-    dikha "   Max:  ", agg["max"];
+    dikha "   Count:", agg.count;
+    dikha "   Sum:  ", agg.sum;
+    dikha "   Avg:  ", agg.avg;
+    dikha "   Min:  ", agg.min;
+    dikha "   Max:  ", agg.max;
 
     // 7. Delete Test
     pakad del_res = db.delete_by_pk(104);
     pakad pk104_after = db.select_by_pk(104);
     dikha "7. Delete PK 104:", (del_res == 1);
-    dikha "   Lookup deleted PK 104 has name:", pk104_after.has("name");
+    dikha "   Lookup deleted PK 104 has name:", (pk104_after != nalla);
     dikha "   Active count after delete:", db.active_count;
 
     dikha "==================================================";
@@ -283,7 +268,7 @@ jugaad run_benchmark(num_rows: int, num_queries: int) {
     jabtak i < num_queries {
         pakad q_id: int = 1000 + ((i * 37) % num_rows);
         pakad r = db.select_by_pk(q_id);
-        dekh r.has("id") {
+        dekh r != nalla {
             pk_hits = pk_hits + 1;
         }
         i = i + 1;
@@ -297,10 +282,9 @@ jugaad run_benchmark(num_rows: int, num_queries: int) {
     pakad filter_matched: int = 0;
     i = 0;
     jabtak i < num_filters {
-        pakad q_dept = depts[i % 5];
         pakad min_a: int = 25 + (i % 10);
         pakad max_a: int = min_a + 15;
-        pakad res = db.select_where(q_dept, min_a, max_a);
+        pakad res = db.select_where(depts[i % 5], min_a, max_a);
         filter_matched = filter_matched + res.length();
         i = i + 1;
     }
@@ -313,9 +297,8 @@ jugaad run_benchmark(num_rows: int, num_queries: int) {
     pakad agg_count_acc: int = 0;
     i = 0;
     jabtak i < num_aggs {
-        pakad q_dept = depts[i % 5];
-        pakad agg_res = db.aggregate(q_dept);
-        pakad c_val: int = agg_res["count"];
+        pakad agg_res = db.aggregate(depts[i % 5]);
+        pakad c_val: int = agg_res.count;
         agg_count_acc = agg_count_acc + c_val;
         i = i + 1;
     }

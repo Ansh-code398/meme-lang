@@ -376,6 +376,16 @@ public:
                    this->elementType->isAssignableTo(*target.elementType);
         }
 
+        // Borrowing a value or class instance into a non-mutable pointer: T -> patta[T]
+        if (target.kind == TypeKind::POINTER && !target.isMut)
+        {
+            if (!target.elementType || target.elementType->isAny()) return true;
+            if (this->equals(*target.elementType) || this->isAssignableTo(*target.elementType))
+            {
+                return true;
+            }
+        }
+
         // If kinds match:
         if (this->kind == target.kind)
         {
