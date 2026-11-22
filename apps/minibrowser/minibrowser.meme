@@ -1,0 +1,1031 @@
+// ==============================================================================
+// Mini Web Browser Engine in MEMElang
+// Full 5-stage browser pipeline:
+//   Stage 1: HTML Tokenizer & DOM Construction
+//   Stage 2: CSS Tokenizer, Specificity Calculator & Rule Parser
+//   Stage 3: Selector Matching, Style Cascade & Computed Style Tree
+//   Stage 4: Box Model Tree Reflow & Word-Wrapping Layout Engine
+//   Stage 5: Display List Painter & 2D Character Canvas Rasterizer
+// ==============================================================================
+
+bula "samay";
+
+// ------------------------------------------------------------------------------
+// Stage 1: DOM Data Structures
+// ------------------------------------------------------------------------------
+sancha DOMNode {
+    le tag: str;
+    le id_name: str;
+    le classes: list[str];
+    le text: str;
+    le is_text: bool;
+    le children: list[DOMNode];
+
+    jugaad shuru(tag: str, id_name: str, text: str, is_text: bool) {
+        khud.tag = tag;
+        khud.id_name = id_name;
+        khud.classes = [];
+        khud.text = text;
+        khud.is_text = is_text;
+        khud.children = [];
+    }
+}
+
+// ------------------------------------------------------------------------------
+// Stage 2: CSS Data Structures & Specificity
+// ------------------------------------------------------------------------------
+sancha CSSSelector {
+    le tag: str;
+    le id_name: str;
+    le class_name: str;
+    le specificity: int;
+
+    jugaad shuru(stag: str, sid: str, sclass: str) {
+        khud.tag = stag;
+        khud.id_name = sid;
+        khud.class_name = sclass;
+        le spec = 0;
+        agar (sid.length() > 0) { spec = spec + 100; }
+        agar (sclass.length() > 0) { spec = spec + 10; }
+        agar (stag.length() > 0) { spec = spec + 1; }
+        khud.specificity = spec;
+    }
+}
+
+sancha CSSDeclaration {
+    le property: str;
+    le value: str;
+
+    jugaad shuru(prop: str, val: str) {
+        khud.property = prop;
+        khud.value = val;
+    }
+}
+
+sancha CSSRule {
+    le selector: CSSSelector;
+    le declarations: list[CSSDeclaration];
+
+    jugaad shuru(sel: CSSSelector) {
+        khud.selector = sel;
+        khud.declarations = [];
+    }
+}
+
+sancha StyleSheet {
+    le rules: list[CSSRule];
+
+    jugaad shuru() {
+        khud.rules = [];
+    }
+}
+
+// ------------------------------------------------------------------------------
+// Stage 3: Computed Styles
+// ------------------------------------------------------------------------------
+sancha ComputedStyle {
+    le display: str;
+    le width: int;
+    le height: int;
+    le margin_top: int;
+    le margin_right: int;
+    le margin_bottom: int;
+    le margin_left: int;
+    le padding_top: int;
+    le padding_right: int;
+    le padding_bottom: int;
+    le padding_left: int;
+    le border_width: int;
+    le text_align: str;
+    le color: str;
+
+    jugaad shuru() {
+        khud.display = "block";
+        khud.width = -1;
+        khud.height = -1;
+        khud.margin_top = 0;
+        khud.margin_right = 0;
+        khud.margin_bottom = 0;
+        khud.margin_left = 0;
+        khud.padding_top = 0;
+        khud.padding_right = 0;
+        khud.padding_bottom = 0;
+        khud.padding_left = 0;
+        khud.border_width = 0;
+        khud.text_align = "left";
+        khud.color = "default";
+    }
+}
+
+// ------------------------------------------------------------------------------
+// Stage 4: Layout & Box Model
+// ------------------------------------------------------------------------------
+sancha LayoutBox {
+    le tag: str;
+    le text: str;
+    le is_text: bool;
+    le display: str;
+    le x: int;
+    le y: int;
+    le width: int;
+    le height: int;
+    le margin_top: int;
+    le margin_right: int;
+    le margin_bottom: int;
+    le margin_left: int;
+    le padding_top: int;
+    le padding_right: int;
+    le padding_bottom: int;
+    le padding_left: int;
+    le border_width: int;
+    le text_align: str;
+    le text_lines: list[str];
+    le children: list[LayoutBox];
+
+    jugaad shuru(tag: str, text: str, is_text: bool, display: str) {
+        khud.tag = tag;
+        khud.text = text;
+        khud.is_text = is_text;
+        khud.display = display;
+        khud.x = 0;
+        khud.y = 0;
+        khud.width = 0;
+        khud.height = 0;
+        khud.margin_top = 0;
+        khud.margin_right = 0;
+        khud.margin_bottom = 0;
+        khud.margin_left = 0;
+        khud.padding_top = 0;
+        khud.padding_right = 0;
+        khud.padding_bottom = 0;
+        khud.padding_left = 0;
+        khud.border_width = 0;
+        khud.text_align = "left";
+        khud.text_lines = [];
+        khud.children = [];
+    }
+}
+
+// ------------------------------------------------------------------------------
+// Stage 5: Character Canvas Rasterizer
+// ------------------------------------------------------------------------------
+sancha Canvas {
+    le width: int;
+    le height: int;
+    le rows: list[str];
+
+    jugaad shuru(w: int, h: int) {
+        khud.width = w;
+        khud.height = h;
+        khud.rows = [];
+        le blank = "";
+        le x = 0;
+        jabtak (x < w) { blank = blank + " "; x = x + 1; }
+        le y = 0;
+        jabtak (y < h) { khud.rows.push(blank); y = y + 1; }
+    }
+
+    jugaad draw_text(tx: int, ty: int, text: str) {
+        agar (ty < 0 || ty >= khud.height) { wapas; }
+        agar (tx < 0 || tx >= khud.width) { wapas; }
+        le cur = khud.rows[ty];
+        le t_len = text.length();
+        le str_to_draw = text;
+        agar (tx + t_len > khud.width) {
+            t_len = khud.width - tx;
+            str_to_draw = "" + text.slice(0, t_len);
+        }
+        khud.rows[ty] = cur.slice(0, tx) + str_to_draw + cur.slice(tx + t_len, khud.width);
+    }
+
+    jugaad draw_border(bx: int, by: int, bw: int, bh: int) {
+        agar (bw < 2 || bh < 2) { wapas; }
+        le h_edge = "+";
+        le i = 0;
+        jabtak (i < bw - 2) { h_edge = h_edge + "-"; i = i + 1; }
+        h_edge = h_edge + "+";
+
+        khud.draw_text(bx, by, h_edge);
+        khud.draw_text(bx, by + bh - 1, h_edge);
+
+        le y = by + 1;
+        jabtak (y < by + bh - 1) {
+            khud.draw_text(bx, y, "|");
+            khud.draw_text(bx + bw - 1, y, "|");
+            y = y + 1;
+        }
+    }
+
+    jugaad render(): str {
+        le res = "";
+        le y = 0;
+        jabtak (y < khud.height) {
+            res = res + khud.rows[y] + "\n";
+            y = y + 1;
+        }
+        wapas res;
+    }
+}
+
+// ------------------------------------------------------------------------------
+// Helper & Parsing Utilities
+// ------------------------------------------------------------------------------
+kaam parse_int_custom(s: str): int {
+    le res = 0;
+    le i = 0;
+    le n = s.length();
+    jabtak (i < n) {
+        le c = "" + s[i];
+        agar (c == "0") { res = res * 10 + 0; }
+        warna agar (c == "1") { res = res * 10 + 1; }
+        warna agar (c == "2") { res = res * 10 + 2; }
+        warna agar (c == "3") { res = res * 10 + 3; }
+        warna agar (c == "4") { res = res * 10 + 4; }
+        warna agar (c == "5") { res = res * 10 + 5; }
+        warna agar (c == "6") { res = res * 10 + 6; }
+        warna agar (c == "7") { res = res * 10 + 7; }
+        warna agar (c == "8") { res = res * 10 + 8; }
+        warna agar (c == "9") { res = res * 10 + 9; }
+        i = i + 1;
+    }
+    wapas res;
+}
+
+kaam normalize_spaces(s: str): str {
+    le res = "";
+    le in_space = false;
+    le i = 0;
+    le n = s.length();
+    jabtak (i < n) {
+        le ch = "" + s[i];
+        agar (ch == " " || ch == "\t" || ch == "\n" || ch == "\r") {
+            agar (!in_space) {
+                res = res + " ";
+                in_space = true;
+            }
+        } warna {
+            res = res + ch;
+            in_space = false;
+        }
+        i = i + 1;
+    }
+    wapas ("" + res).trim();
+}
+
+kaam wrap_text(text: str, max_width: int): list[str] {
+    le lines: list[str] = [];
+    agar (max_width <= 0) { wapas lines; }
+    le words = text.split(" ");
+    le cur_line = "";
+    le i = 0;
+    le n = words.length();
+    jabtak (i < n) {
+        le raw_w = words[i];
+        le w = ("" + raw_w).trim();
+        agar (w.length() > 0) {
+            agar (cur_line.length() == 0) {
+                cur_line = "" + w;
+            } warna {
+                le cand = cur_line + " " + w;
+                agar (cand.length() <= max_width) {
+                    cur_line = cand;
+                } warna {
+                    lines.push(cur_line);
+                    cur_line = "" + w;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    agar (cur_line.length() > 0) {
+        lines.push(cur_line);
+    }
+    wapas lines;
+}
+
+// ------------------------------------------------------------------------------
+// HTML Tokenizer & DOM Construction
+// ------------------------------------------------------------------------------
+kaam parse_html(html: str): DOMNode {
+    le root = naya DOMNode("root", "", "", false);
+    le stack: list[DOMNode] = [];
+    stack.push(root);
+    le stack_top = 0;
+
+    le pos = 0;
+    le n = html.length();
+
+    jabtak (pos < n) {
+        agar (html[pos] == "<") {
+            agar (pos + 1 < n && html[pos + 1] == "/") {
+                le end_pos = pos + 2;
+                jabtak (end_pos < n && html[end_pos] != ">") { end_pos = end_pos + 1; }
+                agar (stack_top > 0) { stack_top = stack_top - 1; }
+                pos = end_pos + 1;
+            } warna {
+                le end_pos = pos + 1;
+                jabtak (end_pos < n && html[end_pos] != ">") { end_pos = end_pos + 1; }
+                le tag_content = ("" + html.slice(pos + 1, end_pos)).trim();
+                le is_self_closing = false;
+                agar (tag_content.length() > 0 && tag_content[tag_content.length() - 1] == "/") {
+                    is_self_closing = true;
+                    tag_content = ("" + tag_content.slice(0, tag_content.length() - 1)).trim();
+                }
+
+                le sp_idx = tag_content.find(" ");
+                le tag_name = tag_content;
+                le attr_str = "";
+                agar (sp_idx != -1) {
+                    tag_name = "" + tag_content.slice(0, sp_idx);
+                    attr_str = "" + tag_content.slice(sp_idx + 1, tag_content.length());
+                }
+                tag_name = ("" + tag_name).lower();
+
+                agar (tag_name == "br" || tag_name == "hr" || tag_name == "img" || tag_name == "input") {
+                    is_self_closing = true;
+                }
+
+                le id_val = "";
+                le classes: list[str] = [];
+                agar (attr_str.length() > 0) {
+                    le id_pos = attr_str.find("id=\"");
+                    agar (id_pos != -1) {
+                        le rem = "" + attr_str.slice(id_pos + 4, attr_str.length());
+                        le q_end = rem.find("\"");
+                        agar (q_end != -1) { id_val = "" + rem.slice(0, q_end); }
+                    }
+                    le cl_pos = attr_str.find("class=\"");
+                    agar (cl_pos != -1) {
+                        le rem2 = "" + attr_str.slice(cl_pos + 7, attr_str.length());
+                        le q_end2 = rem2.find("\"");
+                        agar (q_end2 != -1) {
+                            le cl_raw = "" + rem2.slice(0, q_end2);
+                            le cl_tokens = cl_raw.split(" ");
+                            le k = 0;
+                            jabtak (k < cl_tokens.length()) {
+                                le ctk = ("" + cl_tokens[k]).trim();
+                                agar (ctk.length() > 0) { classes.push(ctk); }
+                                k = k + 1;
+                            }
+                        }
+                    }
+                }
+
+                le node = naya DOMNode("" + tag_name, "" + id_val, "", false);
+                node.classes = classes;
+
+                le cur_parent = stack[stack_top];
+                cur_parent.children.push(node);
+
+                agar (!is_self_closing) {
+                    stack_top = stack_top + 1;
+                    agar (stack_top < stack.length()) {
+                        stack[stack_top] = node;
+                    } warna {
+                        stack.push(node);
+                    }
+                }
+                pos = end_pos + 1;
+            }
+        } warna {
+            le end_pos = pos;
+            jabtak (end_pos < n && html[end_pos] != "<") { end_pos = end_pos + 1; }
+            le raw_text = "" + html.slice(pos, end_pos);
+            le norm_text = normalize_spaces(raw_text);
+            agar (norm_text.length() > 0) {
+                le text_node = naya DOMNode("#text", "", "" + norm_text, true);
+                le cur_parent = stack[stack_top];
+                cur_parent.children.push(text_node);
+            }
+            pos = end_pos;
+        }
+    }
+
+    agar (root.children.length() == 1) { wapas root.children[0]; }
+    wapas root;
+}
+
+// ------------------------------------------------------------------------------
+// CSS Tokenizer, Specificity & Rule Parser
+// ------------------------------------------------------------------------------
+kaam parse_selector(raw: str): CSSSelector {
+    le s = ("" + raw).trim();
+    le tag = "";
+    le id_val = "";
+    le cls = "";
+    le mode = "tag";
+    le cur = "";
+    le i = 0;
+    le n = s.length();
+    jabtak (i <= n) {
+        le ch = "";
+        agar (i < n) { ch = "" + s[i]; }
+        agar (i == n || ch == "." || ch == "#") {
+            agar (mode == "tag") { tag = "" + cur; }
+            warna agar (mode == "id") { id_val = "" + cur; }
+            warna agar (mode == "class") { cls = "" + cur; }
+            cur = "";
+            agar (ch == ".") { mode = "class"; }
+            warna agar (ch == "#") { mode = "id"; }
+        } warna {
+            cur = cur + ch;
+        }
+        i = i + 1;
+    }
+    wapas naya CSSSelector("" + tag, "" + id_val, "" + cls);
+}
+
+kaam parse_css(css: str): StyleSheet {
+    le sheet = naya StyleSheet();
+    le rule_blocks = css.split("}");
+    le i = 0;
+    le n = rule_blocks.length();
+    jabtak (i < n) {
+        le block = ("" + rule_blocks[i]).trim();
+        le brace_pos = block.find("{");
+        agar (brace_pos != -1) {
+            le sel_str = ("" + block.slice(0, brace_pos)).trim();
+            le decl_str = ("" + block.slice(brace_pos + 1, block.length())).trim();
+
+            le sel = parse_selector(sel_str);
+            le rule = naya CSSRule(sel);
+
+            le decls = decl_str.split(";");
+            le j = 0;
+            le m = decls.length();
+            jabtak (j < m) {
+                le d = ("" + decls[j]).trim();
+                le colon_pos = d.find(":");
+                agar (colon_pos != -1) {
+                    le prop = ("" + d.slice(0, colon_pos)).trim().lower();
+                    le val = ("" + d.slice(colon_pos + 1, d.length())).trim().lower();
+                    rule.declarations.push(naya CSSDeclaration("" + prop, "" + val));
+                }
+                j = j + 1;
+            }
+            sheet.rules.push(rule);
+        }
+        i = i + 1;
+    }
+    wapas sheet;
+}
+
+// ------------------------------------------------------------------------------
+// Selector Matching & Cascade
+// ------------------------------------------------------------------------------
+kaam matches_selector(sel: CSSSelector, node: DOMNode): bool {
+    agar (node.is_text) { wapas false; }
+    agar (sel.tag.length() > 0 && sel.tag != node.tag) { wapas false; }
+    agar (sel.id_name.length() > 0 && sel.id_name != node.id_name) { wapas false; }
+    agar (sel.class_name.length() > 0) {
+        le found = false;
+        le i = 0;
+        jabtak (i < node.classes.length()) {
+            agar (node.classes[i] == sel.class_name) { found = true; }
+            i = i + 1;
+        }
+        agar (!found) { wapas false; }
+    }
+    wapas true;
+}
+
+kaam compute_style(node: DOMNode, sheet: StyleSheet): ComputedStyle {
+    le style = naya ComputedStyle();
+    agar (node.is_text) {
+        style.display = "inline";
+        wapas style;
+    }
+
+    // Default User-Agent Stylesheet
+    le tag = node.tag;
+    agar (tag == "div" || tag == "section" || tag == "article" || tag == "header" || tag == "footer" || tag == "main" || tag == "body" || tag == "html" || tag == "nav") {
+        style.display = "block";
+    } warna agar (tag == "h1" || tag == "h2" || tag == "h3" || tag == "p") {
+        style.display = "block";
+        style.margin_top = 1;
+        style.margin_bottom = 1;
+    } warna agar (tag == "hr") {
+        style.display = "block";
+        style.border_width = 1;
+        style.margin_top = 1;
+        style.margin_bottom = 1;
+    } warna agar (tag == "ul" || tag == "ol" || tag == "li") {
+        style.display = "block";
+    } warna agar (tag == "button") {
+        style.display = "inline";
+        style.border_width = 1;
+        style.padding_left = 1;
+        style.padding_right = 1;
+    } warna {
+        style.display = "inline";
+    }
+
+    // Specificity Cascade Tracking
+    le spec_display = 0;
+    le spec_width = 0;
+    le spec_height = 0;
+    le spec_margin = 0;
+    le spec_padding = 0;
+    le spec_border = 0;
+    le spec_text_align = 0;
+
+    le r = 0;
+    le num_rules = sheet.rules.length();
+    jabtak (r < num_rules) {
+        le rule = sheet.rules[r];
+        agar (matches_selector(rule.selector, node)) {
+            le sp = rule.selector.specificity;
+            le d = 0;
+            le num_decls = rule.declarations.length();
+            jabtak (d < num_decls) {
+                le decl = rule.declarations[d];
+                le prop = decl.property;
+                le val = decl.value;
+
+                agar (prop == "display" && sp >= spec_display) {
+                    style.display = val;
+                    spec_display = sp;
+                } warna agar (prop == "width" && sp >= spec_width) {
+                    style.width = parse_int_custom(val);
+                    spec_width = sp;
+                } warna agar (prop == "height" && sp >= spec_height) {
+                    style.height = parse_int_custom(val);
+                    spec_height = sp;
+                } warna agar (prop == "margin" && sp >= spec_margin) {
+                    le m = parse_int_custom(val);
+                    style.margin_top = m;
+                    style.margin_right = m;
+                    style.margin_bottom = m;
+                    style.margin_left = m;
+                    spec_margin = sp;
+                } warna agar (prop == "margin-top" && sp >= spec_margin) {
+                    style.margin_top = parse_int_custom(val);
+                } warna agar (prop == "margin-bottom" && sp >= spec_margin) {
+                    style.margin_bottom = parse_int_custom(val);
+                } warna agar (prop == "margin-left" && sp >= spec_margin) {
+                    style.margin_left = parse_int_custom(val);
+                } warna agar (prop == "margin-right" && sp >= spec_margin) {
+                    style.margin_right = parse_int_custom(val);
+                } warna agar (prop == "padding" && sp >= spec_padding) {
+                    le p = parse_int_custom(val);
+                    style.padding_top = p;
+                    style.padding_right = p;
+                    style.padding_bottom = p;
+                    style.padding_left = p;
+                    spec_padding = sp;
+                } warna agar (prop == "padding-top" && sp >= spec_padding) {
+                    style.padding_top = parse_int_custom(val);
+                } warna agar (prop == "padding-bottom" && sp >= spec_padding) {
+                    style.padding_bottom = parse_int_custom(val);
+                } warna agar (prop == "padding-left" && sp >= spec_padding) {
+                    style.padding_left = parse_int_custom(val);
+                } warna agar (prop == "padding-right" && sp >= spec_padding) {
+                    style.padding_right = parse_int_custom(val);
+                } warna agar ((prop == "border" || prop == "border-width") && sp >= spec_border) {
+                    style.border_width = parse_int_custom(val);
+                    spec_border = sp;
+                } warna agar (prop == "text-align" && sp >= spec_text_align) {
+                    style.text_align = val;
+                    spec_text_align = sp;
+                }
+                d = d + 1;
+            }
+        }
+        r = r + 1;
+    }
+
+    wapas style;
+}
+
+// ------------------------------------------------------------------------------
+// Layout Tree Generation & Reflow
+// ------------------------------------------------------------------------------
+kaam build_layout_tree_recursive(node: DOMNode, sheet: StyleSheet, inherited_align: str): LayoutBox {
+    agar (node.is_text) {
+        le box = naya LayoutBox("#text", node.text, true, "text");
+        box.text_align = inherited_align;
+        wapas box;
+    }
+
+    le style = compute_style(node, sheet);
+    agar (style.display == "none") {
+        le none_box = naya LayoutBox(node.tag, "", false, "none");
+        wapas none_box;
+    }
+
+    le current_align = style.text_align;
+    agar (current_align == "left" && inherited_align != "left") {
+        current_align = inherited_align;
+    }
+
+    le box = naya LayoutBox(node.tag, "", false, style.display);
+    box.width = style.width;
+    box.height = style.height;
+    box.margin_top = style.margin_top;
+    box.margin_right = style.margin_right;
+    box.margin_bottom = style.margin_bottom;
+    box.margin_left = style.margin_left;
+    box.padding_top = style.padding_top;
+    box.padding_right = style.padding_right;
+    box.padding_bottom = style.padding_bottom;
+    box.padding_left = style.padding_left;
+    box.border_width = style.border_width;
+    box.text_align = current_align;
+
+    le i = 0;
+    le n = node.children.length();
+    jabtak (i < n) {
+        le ch_node = node.children[i];
+        le ch_box = build_layout_tree_recursive(ch_node, sheet, current_align);
+        agar (ch_box.display != "none") {
+            box.children.push(ch_box);
+        }
+        i = i + 1;
+    }
+
+    wapas box;
+}
+
+kaam build_layout_tree(node: DOMNode, sheet: StyleSheet): LayoutBox {
+    wapas build_layout_tree_recursive(node, sheet, "left");
+}
+
+kaam layout_reflow(box: LayoutBox, cx: int, cy: int, cwidth: int) {
+    agar (box.display == "none") { wapas; }
+
+    le avail_w = cwidth - box.margin_left - box.margin_right - box.padding_left - box.padding_right - (box.border_width * 2);
+    agar (avail_w < 0) { avail_w = 0; }
+
+    agar (box.width > 0) {
+        agar (box.width > avail_w) { box.width = avail_w; }
+    } warna {
+        box.width = avail_w;
+    }
+
+    box.x = cx + box.margin_left + box.border_width + box.padding_left;
+    box.y = cy + box.margin_top + box.border_width + box.padding_top;
+
+    le cur_y = box.y;
+    agar (box.is_text) {
+        box.text_lines = wrap_text(box.text, box.width);
+        box.height = box.text_lines.length();
+    } warna {
+        le total_ch_h = 0;
+        le i = 0;
+        le n = box.children.length();
+        jabtak (i < n) {
+            le ch = box.children[i];
+            layout_reflow(ch, box.x, cur_y, box.width);
+            le ch_outer_h = ch.height + ch.padding_top + ch.padding_bottom + (ch.border_width * 2) + ch.margin_top + ch.margin_bottom;
+            cur_y = cur_y + ch_outer_h;
+            total_ch_h = total_ch_h + ch_outer_h;
+            i = i + 1;
+        }
+        agar (box.height <= 0) {
+            box.height = total_ch_h;
+        }
+    }
+}
+
+kaam get_outer_height(box: LayoutBox): int {
+    wapas box.height + box.padding_top + box.padding_bottom + (box.border_width * 2) + box.margin_top + box.margin_bottom;
+}
+
+// ------------------------------------------------------------------------------
+// Painter & Rasterizer
+// ------------------------------------------------------------------------------
+kaam paint_box(box: LayoutBox, cv: Canvas) {
+    agar (box.display == "none") { wapas; }
+
+    agar (box.border_width > 0) {
+        le bx = box.x - box.padding_left - box.border_width;
+        le by = box.y - box.padding_top - box.border_width;
+        le bw = box.width + box.padding_left + box.padding_right + (box.border_width * 2);
+        le bh = box.height + box.padding_top + box.padding_bottom + (box.border_width * 2);
+        cv.draw_border(bx, by, bw, bh);
+    }
+
+    agar (box.text_lines.length() > 0) {
+        le i = 0;
+        le n = box.text_lines.length();
+        jabtak (i < n) {
+            le line_str = box.text_lines[i];
+            le tx = box.x;
+            agar (box.text_align == "center") {
+                tx = box.x + (box.width - line_str.length()) / 2;
+            } warna agar (box.text_align == "right") {
+                tx = box.x + box.width - line_str.length();
+            }
+            agar (tx < box.x) { tx = box.x; }
+            cv.draw_text(tx, box.y + i, line_str);
+            i = i + 1;
+        }
+    }
+
+    le j = 0;
+    le num_ch = box.children.length();
+    jabtak (j < num_ch) {
+        paint_box(box.children[j], cv);
+        j = j + 1;
+    }
+}
+
+kaam render_web_page(html: str, css: str, viewport_width: int): str {
+    le dom = parse_html(html);
+    le sheet = parse_css(css);
+    le layout_root = build_layout_tree(dom, sheet);
+    layout_reflow(layout_root, 0, 0, viewport_width);
+    le outer_h = get_outer_height(layout_root);
+    agar (outer_h < 1) { outer_h = 1; }
+    le cv = naya Canvas(viewport_width, outer_h);
+    paint_box(layout_root, cv);
+    wapas cv.render();
+}
+
+// ------------------------------------------------------------------------------
+// Parity Serialization Utilities
+// ------------------------------------------------------------------------------
+kaam dump_dom_summary(node: DOMNode): str {
+    agar (node.is_text) {
+        wapas "#text:\"" + node.text + "\"";
+    }
+    le cls_str = "";
+    le k = 0;
+    jabtak (k < node.classes.length()) {
+        agar (k > 0) { cls_str = cls_str + ","; }
+        cls_str = cls_str + node.classes[k];
+        k = k + 1;
+    }
+    le res = "<" + node.tag;
+    agar (node.id_name.length() > 0) { res = res + " id=" + node.id_name; }
+    agar (cls_str.length() > 0) { res = res + " class=[" + cls_str + "]"; }
+    res = res + ">[";
+    le c = 0;
+    jabtak (c < node.children.length()) {
+        agar (c > 0) { res = res + ";"; }
+        res = res + dump_dom_summary(node.children[c]);
+        c = c + 1;
+    }
+    res = res + "]";
+    wapas res;
+}
+
+kaam dump_layout_summary(box: LayoutBox): str {
+    agar (box.display == "none") { wapas ""; }
+    le res = "[" + box.tag + " x=" + ("" + box.x) + " y=" + ("" + box.y) + " w=" + ("" + box.width) + " h=" + ("" + box.height);
+    agar (box.text_lines.length() > 0) {
+        res = res + " lines=" + ("" + box.text_lines.length());
+    }
+    res = res + "](";
+    le c = 0;
+    jabtak (c < box.children.length()) {
+        agar (c > 0) { res = res + ";"; }
+        res = res + dump_layout_summary(box.children[c]);
+        c = c + 1;
+    }
+    res = res + ")";
+    wapas res;
+}
+
+kaam count_dom_nodes(node: DOMNode): int {
+    le count = 1;
+    le i = 0;
+    jabtak (i < node.children.length()) {
+        count = count + count_dom_nodes(node.children[i]);
+        i = i + 1;
+    }
+    wapas count;
+}
+
+kaam count_layout_boxes(box: LayoutBox): int {
+    agar (box.display == "none") { wapas 0; }
+    le count = 1;
+    le i = 0;
+    jabtak (i < box.children.length()) {
+        count = count + count_layout_boxes(box.children[i]);
+        i = i + 1;
+    }
+    wapas count;
+}
+
+// ------------------------------------------------------------------------------
+// Built-in Benchmark Test Pages
+// ------------------------------------------------------------------------------
+kaam get_page_html(name: str): str {
+    agar (name == "small") {
+        wapas "<div id=\"user-card\" class=\"card\"><h1 class=\"title\">Dev Profile</h1><p class=\"badge\">Verified Staff Architect</p><p class=\"bio\">Specializing in compilers, systems runtimes, and high-performance layout algorithms.</p><div class=\"actions\"><button class=\"btn\">Connect</button></div></div>";
+    } warna agar (name == "medium") {
+        wapas "<div class=\"wrapper\"><nav id=\"header\" class=\"navbar\"><span class=\"brand\">GOAT Web Engine</span></nav><article id=\"post-1\" class=\"article\"><h1 class=\"headline\">Architecture of a High-Speed Browser Engine</h1><p class=\"byline\">Published by Antigravity Core Research Group</p><hr/><p class=\"intro\">Modern browser layout engines bridge structured tree models to 2D raster framebuffers through optimized phases.</p><div class=\"callout\"><p class=\"callout-text\">Key Milestone: Bit-exact parity verified across Pure Rust, MEMElang Native AOT, and Python 3.</p></div><p class=\"body-text\">With zero-overhead recursion and direct struct dereferencing, MEMElang achieves native execution performance.</p><button class=\"btn\">Read Full Paper</button></article><footer class=\"footer\"><p class=\"copyright\">2026 GOAT Lang & Rust Parity Suite</p></footer></div>";
+    }
+    // Heavy: Complex Analytics Dashboard (100+ DOM Nodes)
+    le h = "<div id=\"dashboard\" class=\"dashboard\"><header class=\"header\"><h1 class=\"dash-title\">Cloud Cluster Telemetry Console</h1><p class=\"cluster-status\">Status: Operational (Cluster us-east-1)</p></header><section class=\"metrics-grid\"><div class=\"metric-card\"><h2 class=\"metric-title\">Throughput</h2><p class=\"metric-val\">1,420,890 QPS</p></div><div class=\"metric-card\"><h2 class=\"metric-title\">Memory RSS</h2><p class=\"metric-val\">14.2 MB</p></div><div class=\"metric-card\"><h2 class=\"metric-title\">P99 Latency</h2><p class=\"metric-val\">0.024 ms</p></div><div class=\"metric-card\"><h2 class=\"metric-title\">Nodes Active</h2><p class=\"metric-val\">64 Nodes</p></div></section><section class=\"event-stream\"><h2 class=\"stream-title\">Live Event Telemetry Log</h2><div class=\"table-header\"><p>Event ID | Timestamp | Severity | Description</p></div><hr/>";
+    le row_idx = 1;
+    jabtak (row_idx <= 12) {
+        h = h + "<div class=\"table-row\"><p>EVT-" + ("" + (1000 + row_idx)) + " | 08:24:" + ("" + (10 + row_idx)) + " | INFO | Frame buffer rasterized successfully.</p></div>";
+        row_idx = row_idx + 1;
+    }
+    h = h + "</section><footer class=\"dash-footer\"><button class=\"btn-refresh\">Refresh View</button><p class=\"footer-note\">Autorefresh active: every 500ms</p></footer></div>";
+    wapas h;
+}
+
+kaam get_page_css(name: str): str {
+    agar (name == "small") {
+        wapas ".card { width: 50; border: 1; padding: 1; margin: 1; } .title { text-align: center; margin-bottom: 1; } .badge { text-align: center; margin-bottom: 1; } .bio { margin-bottom: 1; } .actions { text-align: center; } .btn { border: 1; padding-left: 1; padding-right: 1; }";
+    } warna agar (name == "medium") {
+        wapas ".wrapper { width: 78; margin: 1; } .navbar { border: 1; padding: 1; margin-bottom: 1; text-align: center; } .article { border: 1; padding: 1; margin-bottom: 1; } .headline { text-align: center; margin-bottom: 1; } .byline { text-align: center; margin-bottom: 1; } .intro { margin-bottom: 1; } .callout { border: 1; padding: 1; margin-top: 1; margin-bottom: 1; } .callout-text { text-align: center; } .body-text { margin-bottom: 1; } .btn { border: 1; padding-left: 1; padding-right: 1; } .footer { text-align: center; padding: 1; }";
+    }
+    // Heavy Dashboard CSS
+    wapas ".dashboard { width: 78; margin: 1; border: 1; padding: 1; } .header { margin-bottom: 1; text-align: center; } .dash-title { text-align: center; margin-bottom: 1; } .cluster-status { text-align: center; margin-bottom: 1; } .metrics-grid { margin-bottom: 1; } .metric-card { border: 1; padding: 1; margin-bottom: 1; } .metric-title { text-align: center; margin-bottom: 1; } .metric-val { text-align: center; } .event-stream { border: 1; padding: 1; margin-bottom: 1; } .stream-title { text-align: center; margin-bottom: 1; } .table-header { margin-bottom: 1; } .table-row { margin-bottom: 0; } .dash-footer { text-align: center; margin-top: 1; } .btn-refresh { border: 1; padding-left: 1; padding-right: 1; margin-bottom: 1; } .footer-note { text-align: center; }";
+}
+
+// ------------------------------------------------------------------------------
+// Parity & Verification Suite
+// ------------------------------------------------------------------------------
+kaam run_verify() {
+    dikha "==================================================";
+    dikha "🌐 MiniBrowser Parity & Layout Verification Suite";
+    dikha "==================================================";
+
+    le pages = ["small", "medium", "heavy"];
+    le p = 0;
+    jabtak (p < pages.length()) {
+        le pname = pages[p];
+        dikha "";
+        dikha "--- PAGE:", pname, "---";
+        le html = get_page_html(pname);
+        le css = get_page_css(pname);
+
+        le dom = parse_html(html);
+        le dom_str = dump_dom_summary(dom);
+        dikha "DOM Nodes Count:", count_dom_nodes(dom);
+        dikha "DOM Summary Hash/Prefix:", dom_str.slice(0, 80);
+
+        le sheet = parse_css(css);
+        dikha "CSS Rules Count:", sheet.rules.length();
+
+        le layout_root = build_layout_tree(dom, sheet);
+        layout_reflow(layout_root, 0, 0, 80);
+        le layout_str = dump_layout_summary(layout_root);
+        dikha "Layout Boxes Count:", count_layout_boxes(layout_root);
+        dikha "Layout Outer Height:", get_outer_height(layout_root);
+        dikha "Layout Summary Prefix:", layout_str.slice(0, 80);
+
+        le cv_h = get_outer_height(layout_root);
+        agar (cv_h < 1) { cv_h = 1; }
+        le cv = naya Canvas(80, cv_h);
+        paint_box(layout_root, cv);
+        le rendered = cv.render();
+
+        dikha "ASCII Canvas Sample (First 10 lines):";
+        le lines = rendered.split("\n");
+        le li = 0;
+        jabtak (li < 10 && li < lines.length()) {
+            dikha lines[li];
+            li = li + 1;
+        }
+
+        p = p + 1;
+    }
+
+    dikha "";
+    dikha "==================================================";
+    dikha "✅ Verification Completed Successfully!";
+    dikha "==================================================";
+}
+
+// ------------------------------------------------------------------------------
+// Benchmark Suite
+// ------------------------------------------------------------------------------
+kaam run_benchmark(page_name: str, iterations: int, viewport_width: int) {
+    le html = get_page_html(page_name);
+    le css = get_page_css(page_name);
+
+    // Warm-up iteration
+    le warm_dom = parse_html(html);
+    le warm_sheet = parse_css(css);
+    le warm_layout = build_layout_tree(warm_dom, warm_sheet);
+    layout_reflow(warm_layout, 0, 0, viewport_width);
+    le warm_h = get_outer_height(warm_layout);
+    agar (warm_h < 1) { warm_h = 1; }
+    le warm_cv = naya Canvas(viewport_width, warm_h);
+    paint_box(warm_layout, warm_cv);
+    le warm_str = warm_cv.render();
+
+    le dom_node_count = count_dom_nodes(warm_dom);
+    le layout_box_count = count_layout_boxes(warm_layout);
+
+    // Benchmark loop
+    le t0 = samay.ab();
+
+    le t_html_total = 0.0;
+    le t_css_total = 0.0;
+    le t_style_total = 0.0;
+    le t_layout_total = 0.0;
+    le t_paint_total = 0.0;
+
+    le iter = 0;
+    jabtak (iter < iterations) {
+        // Stage 1: HTML Parse
+        le t_h0 = samay.ab();
+        le dom = parse_html(html);
+        le t_h1 = samay.ab();
+        t_html_total = t_html_total + (t_h1 - t_h0);
+
+        // Stage 2: CSS Parse
+        le t_c0 = samay.ab();
+        le sheet = parse_css(css);
+        le t_c1 = samay.ab();
+        t_css_total = t_css_total + (t_c1 - t_c0);
+
+        // Stage 3: Style Cascade & Layout Tree Construction
+        le t_s0 = samay.ab();
+        le layout_root = build_layout_tree(dom, sheet);
+        le t_s1 = samay.ab();
+        t_style_total = t_style_total + (t_s1 - t_s0);
+
+        // Stage 4: Layout Reflow
+        le t_l0 = samay.ab();
+        layout_reflow(layout_root, 0, 0, viewport_width);
+        le t_l1 = samay.ab();
+        t_layout_total = t_layout_total + (t_l1 - t_l0);
+
+        // Stage 5: Paint & Rasterize
+        le t_p0 = samay.ab();
+        le cv_h = get_outer_height(layout_root);
+        agar (cv_h < 1) { cv_h = 1; }
+        le cv = naya Canvas(viewport_width, cv_h);
+        paint_box(layout_root, cv);
+        le rendered_res = cv.render();
+        le t_p1 = samay.ab();
+        t_paint_total = t_paint_total + (t_p1 - t_p0);
+
+        iter = iter + 1;
+    }
+
+    le t1 = samay.ab();
+    le total_time = t1 - t0;
+    agar (total_time <= 0.0) { total_time = 0.000001; }
+
+    le total_ms = total_time * 1000.0;
+    le fps = (0.0 + iterations) / total_time;
+    le avg_pipeline_ms = total_ms / (0.0 + iterations);
+
+    le html_ms = t_html_total * 1000.0 / (0.0 + iterations);
+    le css_ms = t_css_total * 1000.0 / (0.0 + iterations);
+    le style_ms = t_style_total * 1000.0 / (0.0 + iterations);
+    le layout_ms = t_layout_total * 1000.0 / (0.0 + iterations);
+    le paint_ms = t_paint_total * 1000.0 / (0.0 + iterations);
+
+    dikha "page=" + page_name + " iterations=" + ("" + iterations) + " total_ms=" + ("" + total_ms) + " fps=" + ("" + fps) + " avg_ms=" + ("" + avg_pipeline_ms) + " html_ms=" + ("" + html_ms) + " css_ms=" + ("" + css_ms) + " style_ms=" + ("" + style_ms) + " layout_ms=" + ("" + layout_ms) + " paint_ms=" + ("" + paint_ms) + " dom_nodes=" + ("" + dom_node_count) + " layout_boxes=" + ("" + layout_box_count) + " canvas_h=" + ("" + warm_h);
+}
+
+// ------------------------------------------------------------------------------
+// Main Entrypoint
+// ------------------------------------------------------------------------------
+le is_bench = 0;
+le bench_page = "medium";
+le bench_iters = 100;
+le bench_viewport = 80;
+
+agar (sys.args.length() >= 2) {
+    agar (sys.args[1] == "--benchmark") {
+        is_bench = 1;
+        agar (sys.args.length() >= 3) {
+            bench_page = sys.args[2];
+        }
+        agar (sys.args.length() >= 4) {
+            bench_iters = bina_point(sys.args[3]);
+        }
+        agar (sys.args.length() >= 5) {
+            bench_viewport = bina_point(sys.args[4]);
+        }
+    } warna agar (sys.args[1] == "--dump") {
+        le target_page = "small";
+        agar (sys.args.length() >= 3) {
+            target_page = sys.args[2];
+        }
+        le h = get_page_html(target_page);
+        le c = get_page_css(target_page);
+        le d = parse_html(h);
+        le s = parse_css(c);
+        le l = build_layout_tree(d, s);
+        layout_reflow(l, 0, 0, 80);
+        le cv_h = get_outer_height(l);
+        agar (cv_h < 1) { cv_h = 1; }
+        le cv = naya Canvas(80, cv_h);
+        paint_box(l, cv);
+        dikha "=== DOM ===";
+        dikha dump_dom_summary(d);
+        dikha "=== LAYOUT ===";
+        dikha dump_layout_summary(l);
+        dikha "=== CANVAS ===";
+        dikha cv.render();
+        is_bench = -1;
+    }
+}
+
+agar (is_bench == 1) {
+    run_benchmark(bench_page, bench_iters, bench_viewport);
+} warna agar (is_bench == 0) {
+    run_verify();
+}

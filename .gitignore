@@ -16,6 +16,7 @@ benchmarks/ai/*_bin.cpp
 benchmarks/ai/*.dylib
 apps/minisql/*_bin*
 apps/minisql/minisql_rust
+apps/minibrowser/*_bin*
 .agents/
 __pycache__/
 meme_stage*
