@@ -99,7 +99,8 @@ private:
     std::unordered_set<std::string> knownClassFields;
     std::unordered_set<std::string> knownModuleAliases = {
         "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
-        "env", "paryavaran", "dotenv", "json", "csv", "dhaga", "thread"
+        "env", "paryavaran", "dotenv", "json", "csv", "dhaga", "thread",
+        "net", "socket", "m_socket"
     };
     std::unordered_set<std::string> currentClassTypedFields;
     std::unordered_map<std::string, std::shared_ptr<Type>> currentClassFieldTypes;
@@ -282,7 +283,7 @@ private:
             "static_cast", "struct", "switch", "synchronized", "template", "this",
             "thread_local", "throw", "true", "try", "typedef", "typeid", "typename",
             "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "while",
-            "xor", "xor_eq"
+            "xor", "xor_eq", "socket"
         };
 
         if (cppKeywords.find(name) != cppKeywords.end()) {
@@ -470,7 +471,7 @@ public:
             return sanitizeIdentifier(e->name);
         }
         if (auto *e = dynamic_cast<const AssignExpr *>(expr)) {
-            return "(" + sanitizeIdentifier(e->name) + " = " + generateExpr(e->value.get()) + ")";
+            return "meme_assign(" + sanitizeIdentifier(e->name) + ", " + generateExpr(e->value.get()) + ")";
         }
         if (auto *e = dynamic_cast<const UnaryExpr *>(expr)) {
             std::string opStr;
@@ -627,6 +628,9 @@ public:
                     method == "unwrap" || method == "unwrap_err" || method == "unwrap_or") {
                     return objStr + "." + method + "(" + args + ")";
                 }
+                if (method == "pop") {
+                    return "meme_pop(" + objStr + (args.empty() ? "" : (", " + args)) + ")";
+                }
                 // Map methods
                 if (method == "keys" || method == "values" ||
                     method == "chaabi" || method == "maal" || method == "la" || method == "get") {
@@ -649,6 +653,12 @@ public:
                     method == "chal_raha" || method == "is_alive") {
                     return objStr + "." + method + "(" + args + ")";
                 }
+                // Socket methods
+                if (method == "send" || method == "recv" || method == "close" ||
+                    method == "is_valid" || method == "is_closed" || method == "accept" ||
+                    method == "set_nonblocking" || method == "set_timeout") {
+                    return objStr + "." + method + "(" + args + ")";
+                }
                 // Byte buffer methods
                 if (method == "read_u8" || method == "write_u8" ||
                     method == "read_u16_be" || method == "read_u16_le" ||
@@ -667,11 +677,17 @@ public:
                     return objStr + "." + method + "(" + args + ")";
                 }
                 // String and container membership methods: wrap with MemeValue(...)
+                static const std::unordered_set<std::string> strToStringMethods = {
+                    "replace", "trim", "to_upper", "to_lower", "pad_left", "pad_right",
+                    "substring", "badal", "saaf", "upper", "lower", "chilla", "dheere_bol"
+                };
+                if (strToStringMethods.count(method)) {
+                    return "MemeValue(" + objStr + ")." + method + "(" + args + ").to_string()";
+                }
                 static const std::unordered_set<std::string> strMethods = {
-                    "charAt", "chars", "slice", "starts_with", "startsWith", "ends_with", "endsWith",
-                    "find", "split", "replace", "trim", "to_upper", "to_lower",
-                    "akshar", "akshar_list", "kaat", "shuru_hota", "khatam_hota", "dhund", "tod",
-                    "badal", "saaf", "upper", "lower", "chilla", "dheere_bol", "substring", "indexOf"
+                    "slice", "kaat", "charAt", "chars", "starts_with", "startsWith", "ends_with", "endsWith",
+                    "find", "split", "akshar", "akshar_list", "shuru_hota", "khatam_hota", "dhund", "tod",
+                    "indexOf", "to_int", "toInt", "to_float", "toFloat"
                 };
                 if (strMethods.count(method)) {
                     return "MemeValue(" + objStr + ")." + method + "(" + args + ")";
@@ -699,6 +715,21 @@ public:
             }
             if (prop == "size" || prop == "length" || prop == "lambai") {
                 return "static_cast<int64_t>(" + objStr + ".size())";
+            }
+            if (prop == "is_valid") {
+                return objStr + ".is_valid()";
+            }
+            if (prop == "is_closed") {
+                return objStr + ".is_closed()";
+            }
+            if (prop == "fd") {
+                return objStr + ".get_fd()";
+            }
+            if (prop == "peer_ip") {
+                return objStr + ".get_peer_ip()";
+            }
+            if (prop == "peer_port") {
+                return objStr + ".get_peer_port()";
             }
             if (knownClassFields.count(prop)) {
                 return objStr + "->" + prop;
@@ -863,6 +894,33 @@ public:
             return ss.str();
         }
 
+        if (auto *le = dynamic_cast<const LambdaExpr *>(expr)) {
+            if (!le->declaration) return "MemeValue()";
+            const auto *f = le->declaration.get();
+            std::ostringstream ss;
+            ss << "[=](";
+            for (size_t i = 0; i < f->paramList.size(); ++i) {
+                if (i > 0) ss << ", ";
+                ss << "auto " << sanitizeIdentifier(f->paramList[i].name);
+            }
+            ss << ") mutable -> MemeValue {\n";
+            int origLevel = indentLevel;
+            indentLevel++;
+            if (f->body) {
+                std::ostringstream bss;
+                generateStmt(f->body.get(), bss);
+                ss << bss.str();
+                if (!hasReturnStmt(f->body.get())) {
+                    ss << indent() << "return MemeValue();\n";
+                }
+            } else {
+                ss << indent() << "return MemeValue();\n";
+            }
+            indentLevel = origLevel;
+            ss << indent() << "}";
+            return ss.str();
+        }
+
         return "MemeValue()";
     }
 
@@ -966,7 +1024,11 @@ public:
                         return;
                     }
                 }
-                out << indent() << typeStr << " " << varName << " = " << generateExpr(v->initializer.get()) << ";\n";
+                if (typeStr != "auto" && typeStr != "MemeValue") {
+                    out << indent() << typeStr << " " << varName << " = meme_cast<" << typeStr << ">(" << generateExpr(v->initializer.get()) << ");\n";
+                } else {
+                    out << indent() << typeStr << " " << varName << " = " << generateExpr(v->initializer.get()) << ";\n";
+                }
             } else {
                 out << indent() << (typeStr != "auto" ? typeStr : "MemeValue") << " " << varName << ";\n";
             }
@@ -1908,6 +1970,9 @@ public:
         out << mainBody.str();
         out << "\n    } catch (const MemeReturnSignal &_sig) {\n";
         out << "        return 0;\n";
+        out << "    } catch (const MemeValue &_mv) {\n";
+        out << "        std::cerr << \"\\n❌ Gadbad ho gayi:\\n\" << _mv.to_string() << \"\\n\\n\";\n";
+        out << "        return 1;\n";
         out << "    } catch (const std::exception &_e) {\n";
         out << "        std::cerr << \"\\n❌ Gadbad ho gayi:\\n\" << _e.what() << \"\\n\\n\";\n";
         out << "        return 1;\n";
@@ -2053,6 +2118,10 @@ public:
                 } else if (imp->path == "csv") {
                     if (alias != "csv") {
                         globalDecls << "inline CsvModule &" << alias << " = csv;\n";
+                    }
+                } else if (imp->path == "net" || imp->path == "socket") {
+                    if (alias != "net" && alias != "m_socket" && alias != "socket") {
+                        globalDecls << "inline NetModule &" << alias << " = net;\n";
                     }
                 } else {
                     processModuleImport(imp->path, alias);

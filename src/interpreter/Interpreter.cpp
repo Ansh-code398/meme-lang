@@ -34,6 +34,8 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <netdb.h>
 #endif
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -4314,6 +4316,315 @@ static std::shared_ptr<MemeMap> createJaalModule()
         return executeFetchAsync(interp, url, Value(opts));
     };
     m->set("upload", Value(std::make_shared<NativeMethodCallable>("upload", 2, 3, uploadFn)));
+
+    return m;
+}
+
+struct MemeSocketHandle {
+    int fd = -1;
+    bool isClosed = false;
+    std::string peerIp;
+    int peerPort = 0;
+
+    MemeSocketHandle(int f = -1, const std::string &ip = "", int port = 0)
+        : fd(f), isClosed(f < 0), peerIp(ip), peerPort(port) {}
+
+    ~MemeSocketHandle() {
+        close();
+    }
+
+    void close() {
+        if (fd >= 0 && !isClosed) {
+            ::close(fd);
+            fd = -1;
+            isClosed = true;
+        }
+    }
+};
+
+struct MemeServerSocketHandle {
+    int fd = -1;
+    int port = 0;
+    bool isClosed = false;
+
+    MemeServerSocketHandle(int f = -1, int p = 0)
+        : fd(f), port(p), isClosed(f < 0) {}
+
+    ~MemeServerSocketHandle() {
+        close();
+    }
+
+    void close() {
+        if (fd >= 0 && !isClosed) {
+            ::close(fd);
+            fd = -1;
+            isClosed = true;
+        }
+    }
+};
+
+static std::shared_ptr<MemeMap> createSocketMap(std::shared_ptr<MemeSocketHandle> sock)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("__is_socket__", Value(true));
+    m->set("fd", Value(static_cast<long long>(sock->fd)));
+    m->set("peer_ip", Value(sock->peerIp));
+    m->set("peer_port", Value(static_cast<long long>(sock->peerPort)));
+
+    m->set("send", Value(std::make_shared<NativeMethodCallable>("send", 1, [sock](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (sock->isClosed || sock->fd < 0) {
+            return Value(-1LL);
+        }
+        std::string data = args[0].deref().toString();
+        ssize_t n = ::send(sock->fd, data.data(), data.size(), 0);
+        return Value(static_cast<long long>(n));
+    })));
+
+    m->set("recv", Value(std::make_shared<NativeMethodCallable>("recv", 0, 2, [sock](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (sock->isClosed || sock->fd < 0) {
+            return Value(std::string(""));
+        }
+        long long maxBytes = 4096;
+        if (!args.empty()) maxBytes = toLongLong(args[0]);
+        if (maxBytes <= 0) maxBytes = 4096;
+        if (maxBytes > 1024 * 1024) maxBytes = 1024 * 1024;
+
+        if (args.size() > 1) {
+            long long timeoutMs = toLongLong(args[1]);
+            if (timeoutMs >= 0) {
+                struct pollfd pfd;
+                pfd.fd = sock->fd;
+                pfd.events = POLLIN;
+                pfd.revents = 0;
+                int pret = poll(&pfd, 1, static_cast<int>(timeoutMs));
+                if (pret <= 0 || !(pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+                    return Value(std::string(""));
+                }
+            }
+        }
+
+        std::vector<char> buf(static_cast<size_t>(maxBytes));
+        ssize_t n = ::recv(sock->fd, buf.data(), buf.size(), 0);
+        if (n <= 0) {
+            if (n == 0) sock->close();
+            return Value(std::string(""));
+        }
+        return Value(std::string(buf.data(), static_cast<size_t>(n)));
+    })));
+
+    m->set("close", Value(std::make_shared<NativeMethodCallable>("close", 0, [sock](Interpreter &, const std::vector<Value> &) -> Value {
+        sock->close();
+        return Value(true);
+    })));
+
+    m->set("is_valid", Value(std::make_shared<NativeMethodCallable>("is_valid", 0, [sock](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(!sock->isClosed && sock->fd >= 0);
+    })));
+
+    m->set("is_closed", Value(std::make_shared<NativeMethodCallable>("is_closed", 0, [sock](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(sock->isClosed || sock->fd < 0);
+    })));
+
+    m->set("set_timeout", Value(std::make_shared<NativeMethodCallable>("set_timeout", 1, [sock](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (sock->isClosed || sock->fd < 0) return Value(false);
+        long long ms = toLongLong(args[0]);
+        struct timeval tv;
+        tv.tv_sec = ms / 1000;
+        tv.tv_usec = (ms % 1000) * 1000;
+        setsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+        setsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+        return Value(true);
+    })));
+
+    m->set("set_nonblocking", Value(std::make_shared<NativeMethodCallable>("set_nonblocking", 1, [sock](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (sock->isClosed || sock->fd < 0) return Value(false);
+        bool nb = args[0].deref().isTruthy();
+        int flags = fcntl(sock->fd, F_GETFL, 0);
+        if (flags >= 0) {
+            if (nb) flags |= O_NONBLOCK;
+            else flags &= ~O_NONBLOCK;
+            fcntl(sock->fd, F_SETFL, flags);
+        }
+        return Value(true);
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createServerSocketMap(std::shared_ptr<MemeServerSocketHandle> srv)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("__is_server_socket__", Value(true));
+    m->set("fd", Value(static_cast<long long>(srv->fd)));
+    m->set("port", Value(static_cast<long long>(srv->port)));
+
+    m->set("accept", Value(std::make_shared<NativeMethodCallable>("accept", 0, 1, [srv](Interpreter &, const std::vector<Value> &args) -> Value {
+        if (srv->isClosed || srv->fd < 0) {
+            return Value(std::monostate{});
+        }
+        if (!args.empty()) {
+            long long timeoutMs = toLongLong(args[0]);
+            if (timeoutMs >= 0) {
+                struct pollfd pfd;
+                pfd.fd = srv->fd;
+                pfd.events = POLLIN;
+                pfd.revents = 0;
+                int pret = poll(&pfd, 1, static_cast<int>(timeoutMs));
+                if (pret <= 0 || !(pfd.revents & POLLIN)) {
+                    return Value(std::monostate{});
+                }
+            }
+        }
+        sockaddr_in csin;
+        socklen_t clen = sizeof(csin);
+        int cfd = ::accept(srv->fd, (sockaddr*)&csin, &clen);
+        if (cfd < 0) {
+            return Value(std::monostate{});
+        }
+        int flag = 1;
+        setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        char ipStr[INET_ADDRSTRLEN] = "127.0.0.1";
+        inet_ntop(AF_INET, &csin.sin_addr, ipStr, sizeof(ipStr));
+        int cport = ntohs(csin.sin_port);
+
+        auto clientHandle = std::make_shared<MemeSocketHandle>(cfd, std::string(ipStr), cport);
+        return Value(createSocketMap(clientHandle));
+    })));
+
+    m->set("close", Value(std::make_shared<NativeMethodCallable>("close", 0, [srv](Interpreter &, const std::vector<Value> &) -> Value {
+        srv->close();
+        return Value(true);
+    })));
+
+    m->set("is_valid", Value(std::make_shared<NativeMethodCallable>("is_valid", 0, [srv](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(!srv->isClosed && srv->fd >= 0);
+    })));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createNetModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    // net.listen(port, host = "0.0.0.0")
+    m->set("listen", Value(std::make_shared<NativeMethodCallable>("listen", 1, 3, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        long long port = 8080;
+        std::string host = "0.0.0.0";
+        if (args[0].deref().isNumeric()) {
+            port = toLongLong(args[0]);
+            if (args.size() > 1 && args[1].deref().isString()) {
+                host = args[1].deref().toString();
+            }
+        } else if (args[0].deref().isString()) {
+            host = args[0].deref().toString();
+            if (args.size() > 1 && args[1].deref().isNumeric()) {
+                port = toLongLong(args[1]);
+            }
+        }
+
+        int sfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (sfd < 0) {
+            throw std::runtime_error("TCP Server socket nahi ban paya!");
+        }
+        int opt = 1;
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+        int flag = 1;
+        setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        sockaddr_in sin;
+        std::memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(static_cast<uint16_t>(port));
+        if (host.empty() || host == "0.0.0.0") sin.sin_addr.s_addr = INADDR_ANY;
+        else inet_pton(AF_INET, host.c_str(), &sin.sin_addr);
+
+        if (::bind(sfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
+            ::close(sfd);
+            throw std::runtime_error("Port " + std::to_string(port) + " par bind nahi kar paaye!");
+        }
+
+        socklen_t slen = sizeof(sin);
+        getsockname(sfd, (sockaddr*)&sin, &slen);
+        int assignedPort = ntohs(sin.sin_port);
+
+        if (::listen(sfd, 128) != 0) {
+            ::close(sfd);
+            throw std::runtime_error("Listen fail ho gaya port " + std::to_string(assignedPort) + " par!");
+        }
+
+        auto srvHandle = std::make_shared<MemeServerSocketHandle>(sfd, assignedPort);
+        return Value(createServerSocketMap(srvHandle));
+    })));
+
+    // net.connect(host, port, timeout_ms = 5000)
+    m->set("connect", Value(std::make_shared<NativeMethodCallable>("connect", 2, 3, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string host = args[0].deref().toString();
+        long long port = toLongLong(args[1]);
+        long long timeoutMs = (args.size() > 2) ? toLongLong(args[2]) : 5000;
+
+        int cfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (cfd < 0) {
+            throw std::runtime_error("Client socket nahi ban paya!");
+        }
+
+        int flag = 1;
+        setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        sockaddr_in sin;
+        std::memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(static_cast<uint16_t>(port));
+        if (inet_pton(AF_INET, host.c_str(), &sin.sin_addr) <= 0) {
+            struct hostent *he = gethostbyname(host.c_str());
+            if (!he) {
+                ::close(cfd);
+                throw std::runtime_error("Host resolve nahi hua: " + host);
+            }
+            std::memcpy(&sin.sin_addr, he->h_addr_list[0], he->h_length);
+        }
+
+        if (timeoutMs > 0) {
+            int flags = fcntl(cfd, F_GETFL, 0);
+            fcntl(cfd, F_SETFL, flags | O_NONBLOCK);
+            int res = ::connect(cfd, (sockaddr*)&sin, sizeof(sin));
+            if (res < 0 && errno == EINPROGRESS) {
+                struct pollfd pfd;
+                pfd.fd = cfd;
+                pfd.events = POLLOUT;
+                pfd.revents = 0;
+                int pret = poll(&pfd, 1, static_cast<int>(timeoutMs));
+                if (pret <= 0) {
+                    ::close(cfd);
+                    throw std::runtime_error("Connection timeout ho gaya: " + host + ":" + std::to_string(port));
+                }
+                int err = 0;
+                socklen_t elen = sizeof(err);
+                getsockopt(cfd, SOL_SOCKET, SO_ERROR, &err, &elen);
+                if (err != 0) {
+                    ::close(cfd);
+                    throw std::runtime_error("Connection reject ho gaya: " + host + ":" + std::to_string(port));
+                }
+            } else if (res < 0) {
+                ::close(cfd);
+                throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
+            }
+            fcntl(cfd, F_SETFL, flags);
+        } else {
+            if (::connect(cfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
+                ::close(cfd);
+                throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
+            }
+        }
+
+        auto sockHandle = std::make_shared<MemeSocketHandle>(cfd, host, static_cast<int>(port));
+        return Value(createSocketMap(sockHandle));
+    })));
 
     return m;
 }
@@ -9424,7 +9735,7 @@ static Value getStringMethod(const std::string &str, const std::string &name)
             return Value(res);
         }));
     }
-    if (name == "aage_bhar" || name == "pad_start" || name == "padStart")
+    if (name == "aage_bhar" || name == "pad_start" || name == "padStart" || name == "pad_left" || name == "padLeft")
     {
         return Value(std::make_shared<NativeMethodCallable>(name, 1, 2, [str](Interpreter &, const std::vector<Value> &args) {
             long long targetLen = toLongLong(args[0]);
@@ -9438,7 +9749,7 @@ static Value getStringMethod(const std::string &str, const std::string &name)
             return Value(res);
         }));
     }
-    if (name == "piche_bhar" || name == "pad_end" || name == "padEnd")
+    if (name == "piche_bhar" || name == "pad_end" || name == "padEnd" || name == "pad_right" || name == "padRight")
     {
         return Value(std::make_shared<NativeMethodCallable>(name, 1, 2, [str](Interpreter &, const std::vector<Value> &args) {
             long long targetLen = toLongLong(args[0]);
@@ -9450,6 +9761,24 @@ static Value getStringMethod(const std::string &str, const std::string &name)
                 res = res + padChar;
             }
             return Value(res);
+        }));
+    }
+    if (name == "to_string" || name == "toString")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [str](Interpreter &, const std::vector<Value> &) {
+            return Value(str);
+        }));
+    }
+    if (name == "to_int" || name == "toInt" || name == "as_int")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [str](Interpreter &, const std::vector<Value> &) {
+            try { return Value(std::stoll(str)); } catch (...) { return Value(0LL); }
+        }));
+    }
+    if (name == "to_float" || name == "toFloat" || name == "as_float")
+    {
+        return Value(std::make_shared<NativeMethodCallable>(name, 0, [str](Interpreter &, const std::vector<Value> &) {
+            try { return Value(std::stod(str)); } catch (...) { return Value(0.0); }
         }));
     }
     if (name == "number_hai" || name == "is_digit" || name == "isDigit")
@@ -11079,6 +11408,12 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     importedModules["jaal"] = jaalMod;
     importedModules["http"] = jaalMod;
     importedModules["HTTP"] = jaalMod;
+
+    auto netMod = Value(createNetModule());
+    globals->define("net", netMod);
+    globals->define("socket", netMod);
+    importedModules["net"] = netMod;
+    importedModules["socket"] = netMod;
 
     auto fetchFunc = Value(std::make_shared<NativeMethodCallable>("fetch", 1, 2, [](Interpreter &interp, const std::vector<Value> &args) -> Value {
         std::string url = args[0].deref().toString();

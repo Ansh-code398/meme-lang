@@ -35,6 +35,17 @@ extern char **environ;
 #define meme_environ _environ
 #endif
 
+#if !defined(_WIN32)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <netdb.h>
+#endif
+
 // ==========================================
 // 0. RAII ScopeGuard & Signals
 // ==========================================
@@ -150,6 +161,8 @@ inline std::ostream &operator<<(std::ostream &os, const MemeStringList &l) {
 
 struct MemeThreadHandle;
 struct MemeMutex;
+struct MemeSocket;
+struct MemeServerSocket;
 class MemeValue;
 
 struct StringHash {
@@ -217,6 +230,8 @@ public:
     mutable std::shared_ptr<MemeValue> inner_val = nullptr;
     std::shared_ptr<MemeMutex> mtx_val = nullptr;
     std::shared_ptr<MemeThreadHandle> th_val = nullptr;
+    std::shared_ptr<MemeSocket> sock_val = nullptr;
+    std::shared_ptr<MemeServerSocket> srv_sock_val = nullptr;
     mutable std::shared_ptr<std::vector<uint8_t>> bytes_val = nullptr;
     mutable std::shared_ptr<std::vector<uint8_t>> ref_buf = nullptr;
     size_t ref_idx = 0;
@@ -225,7 +240,31 @@ public:
 
     MemeValue(const MemeMutex &mtx);
     MemeValue(const MemeThreadHandle &th);
+    MemeValue(const MemeSocket &sock);
+    MemeValue(const MemeServerSocket &srv);
     MemeValue(MemeValue (*fn)()) : type(TYPE_OBJECT), fn0_val(fn) {}
+
+    int64_t send(const MemeValue &data) const;
+    int64_t send(const std::string &data) const;
+    MemeValue recv(int64_t max_bytes = 4096, int64_t timeout_ms = -1) const;
+    MemeValue recv(const MemeValue &mb) const;
+    MemeValue recv(const MemeValue &mb, const MemeValue &to) const;
+    MemeValue accept(int64_t timeout_ms = -1) const;
+    MemeValue accept(const MemeValue &to) const;
+    bool close() const;
+    bool is_valid() const;
+    bool is_closed() const;
+    void set_nonblocking(bool nb) const;
+    void set_nonblocking(const MemeValue &nb) const;
+    void set_timeout(int64_t ms) const;
+    void set_timeout(const MemeValue &ms) const;
+
+    MemeValue pop(int64_t idx = -1) const;
+    MemeValue pop(const MemeValue &idx) const;
+
+    int64_t get_fd() const;
+    std::string get_peer_ip() const;
+    int64_t get_peer_port() const;
 
     void lock() const;
     void unlock() const;
@@ -300,10 +339,12 @@ public:
           inner_val(other.inner_val),
           mtx_val(other.mtx_val),
           th_val(other.th_val),
+          sock_val(other.sock_val),
+          srv_sock_val(other.srv_sock_val),
           bytes_val(other.bytes_val),
-          fn0_val(other.fn0_val),
           ref_buf(nullptr),
-          ref_idx(0) {}
+          ref_idx(0),
+          fn0_val(other.fn0_val) {}
 
     MemeValue(MemeValue &&other) noexcept
         : type(other.type),
@@ -319,10 +360,12 @@ public:
           inner_val(std::move(other.inner_val)),
           mtx_val(std::move(other.mtx_val)),
           th_val(std::move(other.th_val)),
+          sock_val(std::move(other.sock_val)),
+          srv_sock_val(std::move(other.srv_sock_val)),
           bytes_val(std::move(other.bytes_val)),
-          fn0_val(std::move(other.fn0_val)),
           ref_buf(std::move(other.ref_buf)),
-          ref_idx(other.ref_idx) {}
+          ref_idx(other.ref_idx),
+          fn0_val(std::move(other.fn0_val)) {}
 
     MemeValue &operator=(int64_t v) {
         if (ref_buf && ref_idx < ref_buf->size()) {
@@ -370,6 +413,8 @@ public:
         inner_val = other.inner_val;
         mtx_val = other.mtx_val;
         th_val = other.th_val;
+        sock_val = other.sock_val;
+        srv_sock_val = other.srv_sock_val;
         bytes_val = other.bytes_val;
         fn0_val = other.fn0_val;
         ref_buf = nullptr;
@@ -397,6 +442,8 @@ public:
         inner_val = std::move(other.inner_val);
         mtx_val = std::move(other.mtx_val);
         th_val = std::move(other.th_val);
+        sock_val = std::move(other.sock_val);
+        srv_sock_val = std::move(other.srv_sock_val);
         bytes_val = std::move(other.bytes_val);
         fn0_val = std::move(other.fn0_val);
         ref_buf = nullptr;
@@ -467,7 +514,7 @@ public:
         case TYPE_OPTION: return opt_res_flag;
         case TYPE_RESULT: return opt_res_flag;
         case TYPE_POINTER: return ptr_val != nullptr;
-        case TYPE_OBJECT: return obj_val != nullptr || mtx_val != nullptr || th_val != nullptr;
+        case TYPE_OBJECT: return obj_val != nullptr || mtx_val != nullptr || th_val != nullptr || sock_val != nullptr || srv_sock_val != nullptr;
         case TYPE_BYTES: return bytes_val && !bytes_val->empty();
         }
         return false;
@@ -561,6 +608,8 @@ public:
                                 : ("Err(" + (inner_val ? inner_val->to_string() : "nalla") + ")");
         case TYPE_POINTER: return "<patta " + std::to_string(reinterpret_cast<uintptr_t>(ptr_val)) + ">";
         case TYPE_OBJECT: {
+            if (sock_val) return "<socket>";
+            if (srv_sock_val) return "<server_socket>";
             if (mtx_val) return "<tala/mutex>";
             if (th_val) return "<dhaga>";
             if (fn0_val) return "<function>";
@@ -755,6 +804,8 @@ public:
             return *bytes_val == *other.bytes_val;
         }
         if (type == TYPE_OBJECT && other.type == TYPE_OBJECT) {
+            if (sock_val && other.sock_val) return sock_val == other.sock_val;
+            if (srv_sock_val && other.srv_sock_val) return srv_sock_val == other.srv_sock_val;
             if (mtx_val && other.mtx_val) return mtx_val == other.mtx_val;
             if (th_val && other.th_val) return th_val == other.th_val;
             return obj_val == other.obj_val;
@@ -883,41 +934,10 @@ public:
         return (*this)[static_cast<long long>(index)];
     }
 
-    MemeValue &operator[](const std::string &key) {
-        if (type != TYPE_MAP) {
-            type = TYPE_MAP;
-        }
-        ensure_map();
-        auto it = map_data->map_val.find(key);
-        if (it != map_data->map_val.end()) {
-            return it->second;
-        }
-        map_data->map_keys.push_back(key);
-        return map_data->map_val[key];
-    }
-
-    MemeValue &operator[](const std::string &key) const {
-        return const_cast<MemeValue *>(this)->operator[](key);
-    }
-
-    MemeValue &operator[](const char *key) {
-        if (type != TYPE_MAP) {
-            type = TYPE_MAP;
-        }
-        ensure_map();
-        const char *kstr = key ? key : "";
-        auto it = map_data->map_val.find(kstr);
-        if (it != map_data->map_val.end()) {
-            return it->second;
-        }
-        std::string s(kstr);
-        map_data->map_keys.push_back(s);
-        return map_data->map_val[s];
-    }
-
-    MemeValue &operator[](const char *key) const {
-        return const_cast<MemeValue *>(this)->operator[](key);
-    }
+    MemeValue &operator[](const std::string &key);
+    MemeValue &operator[](const std::string &key) const;
+    MemeValue &operator[](const char *key);
+    MemeValue &operator[](const char *key) const;
 
     MemeValue &operator[](const MemeValue &index) {
         if (type == TYPE_MAP || index.type == TYPE_STRING) {
@@ -1760,6 +1780,61 @@ public:
     MemeValue lower() const { return to_lower(); }
     MemeValue dheere_bol() const { return to_lower(); }
 
+    int64_t to_int() const {
+        if (type == TYPE_INT) return i_val;
+        if (type == TYPE_FLOAT) return static_cast<int64_t>(f_val);
+        if (type == TYPE_BOOL) return b_val ? 1 : 0;
+        if (type == TYPE_STRING) {
+            try { return std::stoll(s_val); } catch (...) { return 0LL; }
+        }
+        return 0LL;
+    }
+    int64_t toInt() const { return to_int(); }
+
+    double to_float() const {
+        if (type == TYPE_FLOAT) return f_val;
+        if (type == TYPE_INT) return static_cast<double>(i_val);
+        if (type == TYPE_BOOL) return b_val ? 1.0 : 0.0;
+        if (type == TYPE_STRING) {
+            try { return std::stod(s_val); } catch (...) { return 0.0; }
+        }
+        return 0.0;
+    }
+    double toFloat() const { return to_float(); }
+
+    MemeValue pad_left(int64_t target_len, const std::string &pad_char = " ") const {
+        std::string s = to_string();
+        if (static_cast<int64_t>(s.size()) >= target_len) return MemeValue(s);
+        std::string p = pad_char.empty() ? " " : pad_char;
+        std::string res;
+        while (static_cast<int64_t>(res.size() + s.size()) < target_len) {
+            res += p;
+        }
+        if (static_cast<int64_t>(res.size() + s.size()) > target_len) {
+            res = res.substr(0, target_len - s.size());
+        }
+        res += s;
+        return MemeValue(res);
+    }
+    MemeValue pad_left(const MemeValue &len) const { return pad_left(len.to_int()); }
+    MemeValue pad_left(const MemeValue &len, const MemeValue &pad) const { return pad_left(len.to_int(), pad.to_string()); }
+
+    MemeValue pad_right(int64_t target_len, const std::string &pad_char = " ") const {
+        std::string s = to_string();
+        if (static_cast<int64_t>(s.size()) >= target_len) return MemeValue(s);
+        std::string p = pad_char.empty() ? " " : pad_char;
+        std::string res = s;
+        while (static_cast<int64_t>(res.size()) < target_len) {
+            res += p;
+        }
+        if (static_cast<int64_t>(res.size()) > target_len) {
+            res = res.substr(0, target_len);
+        }
+        return MemeValue(res);
+    }
+    MemeValue pad_right(const MemeValue &len) const { return pad_right(len.to_int()); }
+    MemeValue pad_right(const MemeValue &len, const MemeValue &pad) const { return pad_right(len.to_int(), pad.to_string()); }
+
     // Option / Result methods
     bool is_some() const { return type == TYPE_OPTION && opt_res_flag; }
     bool is_none() const { return type == TYPE_OPTION && !opt_res_flag; }
@@ -2032,6 +2107,15 @@ inline std::string operator+(const std::string &a, const MemeValue &b) { return 
 inline std::string operator+(const MemeValue &a, const std::string &b) { return a.to_string() + b; }
 inline std::string operator+(const char *a, const MemeValue &b) { return std::string(a ? a : "") + b.to_string(); }
 inline std::string operator+(const MemeValue &a, const char *b) { return a.to_string() + std::string(b ? b : ""); }
+
+inline std::string operator+(const std::string &a, int64_t b) { return a + std::to_string(b); }
+inline std::string operator+(int64_t a, const std::string &b) { return std::to_string(a) + b; }
+inline std::string operator+(const std::string &a, int b) { return a + std::to_string(b); }
+inline std::string operator+(int a, const std::string &b) { return std::to_string(a) + b; }
+inline std::string operator+(const std::string &a, double b) { return a + std::to_string(b); }
+inline std::string operator+(double a, const std::string &b) { return std::to_string(a) + b; }
+inline std::string operator+(const std::string &a, bool b) { return a + (b ? "sahi" : "galat"); }
+inline std::string operator+(bool a, const std::string &b) { return (a ? "sahi" : "galat") + b; }
 inline MemeValue operator-(int64_t a, const MemeValue &b) { return MemeValue(a) - b; }
 inline MemeValue operator-(double a, const MemeValue &b) { return MemeValue(a) - b; }
 inline MemeValue operator*(int64_t a, const MemeValue &b) { return MemeValue(a) * b; }
@@ -2066,6 +2150,38 @@ inline bool is_truthy(const T &val) {
         return val != 0;
     } else {
         return static_cast<bool>(val);
+    }
+}
+
+template <typename Target, typename Source>
+inline Target meme_cast(Source &&src) {
+    if constexpr (std::is_same_v<std::decay_t<Target>, std::decay_t<Source>>) {
+        return std::forward<Source>(src);
+    } else if constexpr (std::is_same_v<std::decay_t<Target>, std::string> && std::is_same_v<std::decay_t<Source>, MemeValue>) {
+        return src.to_string();
+    } else if constexpr (std::is_integral_v<Target> && std::is_same_v<std::decay_t<Source>, MemeValue>) {
+        return static_cast<Target>(src.as_int());
+    } else if constexpr (std::is_floating_point_v<Target> && std::is_same_v<std::decay_t<Source>, MemeValue>) {
+        return static_cast<Target>(src.as_double());
+    } else {
+        return static_cast<Target>(std::forward<Source>(src));
+    }
+}
+
+template <typename T, typename U>
+inline T &meme_assign(T &lhs, U &&rhs) {
+    if constexpr (std::is_same_v<T, std::string> && std::is_same_v<std::decay_t<U>, MemeValue>) {
+        lhs = rhs.to_string();
+        return lhs;
+    } else if constexpr (std::is_integral_v<T> && std::is_same_v<std::decay_t<U>, MemeValue>) {
+        lhs = static_cast<T>(rhs.as_int());
+        return lhs;
+    } else if constexpr (std::is_floating_point_v<T> && std::is_same_v<std::decay_t<U>, MemeValue>) {
+        lhs = static_cast<T>(rhs.as_double());
+        return lhs;
+    } else {
+        lhs = std::forward<U>(rhs);
+        return lhs;
     }
 }
 
@@ -3045,16 +3161,17 @@ inline SystummModule systumm;
 // ==========================================
 
 struct MemeThreadHandle {
-    std::shared_ptr<std::jthread> th;
+    std::shared_ptr<std::thread> th;
     std::shared_ptr<MemeValue> result = std::make_shared<MemeValue>();
     std::shared_ptr<std::atomic<bool>> done = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<bool>> joined = std::make_shared<std::atomic<bool>>(false);
     std::string threadId;
 
     MemeThreadHandle *operator->() { return this; }
     const MemeThreadHandle *operator->() const { return this; }
 
     MemeValue join() {
-        if (th && th->joinable()) {
+        if (th && th->joinable() && !joined->exchange(true)) {
             th->join();
         }
         return *result;
@@ -3062,6 +3179,12 @@ struct MemeThreadHandle {
     MemeValue rok() { return join(); }
     MemeValue jod() { return join(); }
     MemeValue wait() { return join(); }
+
+    void detach() {
+        if (th && th->joinable() && !joined->exchange(true)) {
+            th->detach();
+        }
+    }
 
     bool is_done() const {
         return done->load();
@@ -3123,26 +3246,40 @@ struct DhagaModule {
         auto resPtr = h.result;
         auto donePtr = h.done;
 
-        h.th = std::make_shared<std::jthread>([fn, resPtr, donePtr, ...fArgs = std::forward<Args>(args)]() mutable {
-            try {
-                if constexpr (std::is_invocable_v<Callable, Args...>) {
-                    if constexpr (std::is_same_v<std::invoke_result_t<Callable, Args...>, void>) {
-                        fn(fArgs...);
-                        *resPtr = MemeValue();
-                    } else {
-                        *resPtr = MemeValue(fn(fArgs...));
+        h.th = std::shared_ptr<std::thread>(
+            new std::thread([fn, resPtr, donePtr, ...fArgs = std::forward<Args>(args)]() mutable {
+                try {
+                    if constexpr (std::is_invocable_v<Callable, Args...>) {
+                        if constexpr (std::is_same_v<std::invoke_result_t<Callable, Args...>, void>) {
+                            fn(fArgs...);
+                            *resPtr = MemeValue();
+                        } else {
+                            *resPtr = MemeValue(fn(fArgs...));
+                        }
+                    } else if constexpr (std::is_invocable_v<Callable>) {
+                        if constexpr (std::is_same_v<std::invoke_result_t<Callable>, void>) {
+                            fn();
+                            *resPtr = MemeValue();
+                        } else {
+                            *resPtr = MemeValue(fn());
+                        }
                     }
-                } else if constexpr (std::is_invocable_v<Callable>) {
-                    if constexpr (std::is_same_v<std::invoke_result_t<Callable>, void>) {
-                        fn();
-                        *resPtr = MemeValue();
-                    } else {
-                        *resPtr = MemeValue(fn());
-                    }
+                } catch (const std::exception &e) {
+                    std::cerr << "[DHAGA EXCEPTION] " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[DHAGA UNKNOWN EXCEPTION]" << std::endl;
                 }
-            } catch (...) {}
-            donePtr->store(true);
-        });
+                donePtr->store(true);
+            }),
+            [](std::thread *t) {
+                if (t) {
+                    if (t->joinable()) {
+                        try { t->detach(); } catch (...) {}
+                    }
+                    delete t;
+                }
+            }
+        );
 
         return h;
     }
@@ -3178,6 +3315,487 @@ struct DhagaModule {
 
 inline DhagaModule dhaga;
 inline DhagaModule thread;
+
+// ==========================================
+// Socket Primitives & Net Module
+// ==========================================
+
+struct MemeSocket {
+    std::shared_ptr<int> fd_ptr;
+    std::string peer_ip;
+    int peer_port = 0;
+    mutable bool is_closed = false;
+
+    MemeSocket() = default;
+    MemeSocket(int fd, std::string ip, int port)
+        : fd_ptr(std::shared_ptr<int>(new int(fd), [](int *p) {
+            if (p) {
+                if (*p >= 0) ::close(*p);
+                delete p;
+            }
+        })), peer_ip(std::move(ip)), peer_port(port), is_closed(fd < 0) {}
+
+    int get_fd() const { return (fd_ptr && !is_closed) ? *fd_ptr : -1; }
+
+    int64_t send(const std::string &data) const {
+        int fd = get_fd();
+        if (fd < 0) return -1LL;
+        ssize_t n = ::send(fd, data.data(), data.size(), 0);
+        return static_cast<int64_t>(n);
+    }
+    int64_t send(const MemeValue &val) const;
+
+    std::string recv(int64_t max_bytes = 4096, int64_t timeout_ms = -1) const {
+        int fd = get_fd();
+        if (fd < 0 || max_bytes <= 0) return "";
+        if (timeout_ms >= 0) {
+            struct pollfd pfd;
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+            int ret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
+            if (ret <= 0) return "";
+            if (pfd.revents & (POLLHUP | POLLERR)) {
+                is_closed = true;
+                return "";
+            }
+            if (!(pfd.revents & POLLIN)) {
+                return "";
+            }
+        }
+        std::vector<char> buf(static_cast<size_t>(max_bytes));
+        ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
+        if (n <= 0) {
+            if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+                is_closed = true;
+            }
+            return "";
+        }
+        return std::string(buf.data(), static_cast<size_t>(n));
+    }
+    std::string recv(const MemeValue &mb) const;
+    std::string recv(const MemeValue &mb, const MemeValue &to) const;
+
+    bool close() const {
+        if (!is_closed && fd_ptr && *fd_ptr >= 0) {
+            ::close(*fd_ptr);
+            *fd_ptr = -1;
+            is_closed = true;
+            return true;
+        }
+        is_closed = true;
+        return false;
+    }
+
+    bool is_valid() const {
+        return !is_closed && get_fd() >= 0;
+    }
+
+    bool is_closed_fn() const {
+        return is_closed || get_fd() < 0;
+    }
+
+    void set_nonblocking(bool nb) {
+        int fd = get_fd();
+        if (fd < 0) return;
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags < 0) return;
+        if (nb) flags |= O_NONBLOCK;
+        else flags &= ~O_NONBLOCK;
+        fcntl(fd, F_SETFL, flags);
+    }
+
+    void set_timeout(int64_t ms) {
+        int fd = get_fd();
+        if (fd < 0) return;
+        struct timeval tv;
+        tv.tv_sec = ms / 1000;
+        tv.tv_usec = (ms % 1000) * 1000;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    }
+};
+
+struct MemeServerSocket {
+    std::shared_ptr<int> fd_ptr;
+    int port = 0;
+    mutable bool is_closed = false;
+
+    MemeServerSocket() = default;
+    MemeServerSocket(int fd, int p)
+        : fd_ptr(std::shared_ptr<int>(new int(fd), [](int *ptr) {
+            if (ptr) {
+                if (*ptr >= 0) ::close(*ptr);
+                delete ptr;
+            }
+        })), port(p), is_closed(fd < 0) {}
+
+    int get_fd() const { return (fd_ptr && !is_closed) ? *fd_ptr : -1; }
+
+    MemeValue accept(int64_t timeout_ms = -1) const;
+    MemeValue accept(const MemeValue &to) const;
+
+    bool close() const {
+        if (!is_closed && fd_ptr && *fd_ptr >= 0) {
+            ::close(*fd_ptr);
+            *fd_ptr = -1;
+            is_closed = true;
+            return true;
+        }
+        is_closed = true;
+        return false;
+    }
+
+    bool is_valid() const {
+        return !is_closed && get_fd() >= 0;
+    }
+
+    bool is_closed_fn() const {
+        return is_closed || get_fd() < 0;
+    }
+};
+
+inline MemeValue::MemeValue(const MemeSocket &sock) : type(TYPE_OBJECT), sock_val(std::make_shared<MemeSocket>(sock)) {}
+inline MemeValue::MemeValue(const MemeServerSocket &srv) : type(TYPE_OBJECT), srv_sock_val(std::make_shared<MemeServerSocket>(srv)) {}
+
+inline int64_t MemeValue::send(const MemeValue &data) const {
+    if (sock_val) return sock_val->send(data.to_string());
+    return -1LL;
+}
+inline int64_t MemeValue::send(const std::string &data) const {
+    if (sock_val) return sock_val->send(data);
+    return -1LL;
+}
+inline MemeValue MemeValue::recv(int64_t max_bytes, int64_t timeout_ms) const {
+    if (sock_val) return MemeValue(sock_val->recv(max_bytes, timeout_ms));
+    return MemeValue("");
+}
+inline MemeValue MemeValue::recv(const MemeValue &mb) const {
+    if (sock_val) return MemeValue(sock_val->recv(mb.to_int(), -1));
+    return MemeValue("");
+}
+inline MemeValue MemeValue::recv(const MemeValue &mb, const MemeValue &to) const {
+    if (sock_val) return MemeValue(sock_val->recv(mb.to_int(), to.to_int()));
+    return MemeValue("");
+}
+inline MemeValue MemeValue::accept(int64_t timeout_ms) const {
+    if (srv_sock_val) return srv_sock_val->accept(timeout_ms);
+    return MemeValue();
+}
+inline MemeValue MemeValue::accept(const MemeValue &to) const {
+    if (srv_sock_val) return srv_sock_val->accept(to.to_int());
+    return MemeValue();
+}
+inline bool MemeValue::close() const {
+    if (sock_val) return sock_val->close();
+    if (srv_sock_val) return srv_sock_val->close();
+    return false;
+}
+
+template <typename T>
+inline T meme_pop(std::vector<T> &vec, int64_t idx = -1) {
+    if (vec.empty()) return T();
+    if (idx < 0) idx += static_cast<int64_t>(vec.size());
+    if (idx < 0 || static_cast<size_t>(idx) >= vec.size()) {
+        idx = static_cast<int64_t>(vec.size()) - 1;
+    }
+    T item = std::move(vec[static_cast<size_t>(idx)]);
+    vec.erase(vec.begin() + static_cast<size_t>(idx));
+    return item;
+}
+
+template <typename T>
+inline T meme_pop(std::vector<T> *vec, int64_t idx = -1) {
+    if (!vec) return T();
+    return meme_pop(*vec, idx);
+}
+
+template <typename T>
+inline T meme_pop(std::shared_ptr<std::vector<T>> &vecPtr, int64_t idx = -1) {
+    if (!vecPtr) return T();
+    return meme_pop(*vecPtr, idx);
+}
+
+template <typename T>
+inline T meme_pop(const std::shared_ptr<std::vector<T>> &vecPtr, int64_t idx = -1) {
+    if (!vecPtr) return T();
+    return meme_pop(*vecPtr, idx);
+}
+
+inline MemeValue MemeValue::pop(int64_t idx) const {
+    if (type == TYPE_LIST && list_data && !list_data->empty()) {
+        return meme_pop(*list_data, idx);
+    }
+    return MemeValue();
+}
+inline MemeValue MemeValue::pop(const MemeValue &idx) const {
+    return pop(idx.to_int());
+}
+
+inline MemeValue meme_pop(MemeValue &val, int64_t idx = -1) {
+    return val.pop(idx);
+}
+
+inline MemeValue meme_pop(const MemeValue &val, int64_t idx = -1) {
+    return val.pop(idx);
+}
+inline bool MemeValue::is_valid() const {
+    if (sock_val) return sock_val->is_valid();
+    if (srv_sock_val) return srv_sock_val->is_valid();
+    return type != TYPE_NALLA;
+}
+inline bool MemeValue::is_closed() const {
+    if (sock_val) return sock_val->is_closed_fn();
+    if (srv_sock_val) return srv_sock_val->is_closed_fn();
+    return true;
+}
+inline void MemeValue::set_nonblocking(bool nb) const {
+    if (sock_val) sock_val->set_nonblocking(nb);
+}
+inline void MemeValue::set_nonblocking(const MemeValue &nb) const {
+    if (sock_val) sock_val->set_nonblocking(nb.is_truthy());
+}
+inline void MemeValue::set_timeout(int64_t ms) const {
+    if (sock_val) sock_val->set_timeout(ms);
+}
+inline void MemeValue::set_timeout(const MemeValue &ms) const {
+    if (sock_val) sock_val->set_timeout(ms.to_int());
+}
+inline int64_t MemeValue::get_fd() const {
+    if (sock_val) return sock_val->get_fd();
+    if (srv_sock_val) return srv_sock_val->get_fd();
+    return -1LL;
+}
+inline std::string MemeValue::get_peer_ip() const {
+    if (sock_val) return sock_val->peer_ip;
+    return "";
+}
+inline int64_t MemeValue::get_peer_port() const {
+    if (sock_val) return sock_val->peer_port;
+    if (srv_sock_val) return srv_sock_val->port;
+    return 0LL;
+}
+
+inline int64_t MemeSocket::send(const MemeValue &val) const {
+    return send(val.to_string());
+}
+inline std::string MemeSocket::recv(const MemeValue &mb) const {
+    return recv(mb.to_int(), -1);
+}
+inline std::string MemeSocket::recv(const MemeValue &mb, const MemeValue &to) const {
+    return recv(mb.to_int(), to.to_int());
+}
+inline MemeValue MemeServerSocket::accept(const MemeValue &to) const {
+    return accept(to.to_int());
+}
+
+inline MemeValue MemeServerSocket::accept(int64_t timeout_ms) const {
+    int sfd = get_fd();
+    if (sfd < 0) return MemeValue();
+    if (timeout_ms >= 0) {
+        struct pollfd pfd;
+        pfd.fd = sfd;
+        pfd.events = POLLIN;
+        int ret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
+        if (ret <= 0 || !(pfd.revents & POLLIN)) {
+            return MemeValue();
+        }
+    }
+    sockaddr_in csin;
+    socklen_t clen = sizeof(csin);
+    int cfd = ::accept(sfd, (sockaddr*)&csin, &clen);
+    if (cfd < 0) {
+        return MemeValue();
+    }
+    int flag = 1;
+    setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+    char ipStr[INET_ADDRSTRLEN] = "127.0.0.1";
+    inet_ntop(AF_INET, &csin.sin_addr, ipStr, sizeof(ipStr));
+    int cport = ntohs(csin.sin_port);
+
+    return MemeValue(MemeSocket(cfd, std::string(ipStr), cport));
+}
+
+struct NetModule {
+    NetModule *operator->() { return this; }
+    const NetModule *operator->() const { return this; }
+
+    MemeValue listen(const std::string &host, int64_t port, int64_t backlog = 128) {
+        int sfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (sfd < 0) {
+            throw std::runtime_error("Socket create fail ho gaya!");
+        }
+        int opt = 1;
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+        setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+        sockaddr_in sin;
+        std::memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(static_cast<uint16_t>(port));
+        if (host.empty() || host == "0.0.0.0" || host == "localhost") {
+            sin.sin_addr.s_addr = (host == "localhost") ? inet_addr("127.0.0.1") : INADDR_ANY;
+        } else {
+            inet_pton(AF_INET, host.c_str(), &sin.sin_addr);
+        }
+
+        if (::bind(sfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
+            ::close(sfd);
+            throw std::runtime_error("Port " + std::to_string(port) + " bind fail ho gaya!");
+        }
+        if (::listen(sfd, static_cast<int>(backlog)) != 0) {
+            ::close(sfd);
+            throw std::runtime_error("Port " + std::to_string(port) + " listen fail ho gaya!");
+        }
+
+        return MemeValue(MemeServerSocket(sfd, static_cast<int>(port)));
+    }
+    MemeValue listen(int64_t port, const std::string &host = "0.0.0.0", int64_t backlog = 128) {
+        return listen(host, port, backlog);
+    }
+    MemeValue listen(const MemeValue &a, const MemeValue &b) {
+        if (a.type == MemeValue::TYPE_INT || a.type == MemeValue::TYPE_FLOAT) {
+            return listen(b.to_string(), a.to_int(), 128);
+        }
+        return listen(a.to_string(), b.to_int(), 128);
+    }
+    MemeValue listen(const MemeValue &a) {
+        if (a.type == MemeValue::TYPE_INT || a.type == MemeValue::TYPE_FLOAT) {
+            return listen("0.0.0.0", a.to_int(), 128);
+        }
+        return listen(a.to_string(), 8080, 128);
+    }
+    MemeValue listen(const MemeValue &a, const MemeValue &b, const MemeValue &c) {
+        if (a.type == MemeValue::TYPE_INT || a.type == MemeValue::TYPE_FLOAT) {
+            return listen(b.to_string(), a.to_int(), c.to_int());
+        }
+        return listen(a.to_string(), b.to_int(), c.to_int());
+    }
+
+    MemeValue connect(const std::string &host, int64_t port, int64_t timeout_ms = 5000) {
+        int cfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (cfd < 0) {
+            throw std::runtime_error("Client socket create fail ho gaya!");
+        }
+        int flag = 1;
+        setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        sockaddr_in sin;
+        std::memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(static_cast<uint16_t>(port));
+
+        std::string targetHost = (host == "localhost") ? "127.0.0.1" : host;
+        if (inet_pton(AF_INET, targetHost.c_str(), &sin.sin_addr) <= 0) {
+            struct hostent *he = gethostbyname(targetHost.c_str());
+            if (!he || !he->h_addr_list[0]) {
+                ::close(cfd);
+                throw std::runtime_error("Host resolve fail: " + host);
+            }
+            std::memcpy(&sin.sin_addr, he->h_addr_list[0], he->h_length);
+        }
+
+        if (timeout_ms > 0) {
+            int flags = fcntl(cfd, F_GETFL, 0);
+            fcntl(cfd, F_SETFL, flags | O_NONBLOCK);
+            int res = ::connect(cfd, (sockaddr*)&sin, sizeof(sin));
+            if (res < 0 && errno == EINPROGRESS) {
+                struct pollfd pfd;
+                pfd.fd = cfd;
+                pfd.events = POLLOUT;
+                int pret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
+                if (pret <= 0) {
+                    ::close(cfd);
+                    throw std::runtime_error("Connect timeout ho gaya: " + host + ":" + std::to_string(port));
+                }
+                int err = 0;
+                socklen_t elen = sizeof(err);
+                getsockopt(cfd, SOL_SOCKET, SO_ERROR, &err, &elen);
+                if (err != 0) {
+                    ::close(cfd);
+                    throw std::runtime_error("Connection reject ho gaya: " + host + ":" + std::to_string(port));
+                }
+            } else if (res < 0) {
+                ::close(cfd);
+                throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
+            }
+            fcntl(cfd, F_SETFL, flags);
+        } else {
+            if (::connect(cfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
+                ::close(cfd);
+                throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
+            }
+        }
+
+        return MemeValue(MemeSocket(cfd, targetHost, static_cast<int>(port)));
+    }
+    MemeValue connect(const MemeValue &h, const MemeValue &p) {
+        return connect(h.to_string(), p.to_int(), 5000);
+    }
+    MemeValue connect(const MemeValue &h, const MemeValue &p, const MemeValue &t) {
+        return connect(h.to_string(), p.to_int(), t.to_int());
+    }
+};
+
+inline NetModule net;
+inline NetModule m_socket;
+
+inline MemeValue &MemeValue::operator[](const std::string &key) {
+    if (sock_val) {
+        inner_val = std::make_shared<MemeValue>();
+        if (key == "fd") {
+            inner_val->type = TYPE_INT;
+            inner_val->i_val = sock_val->get_fd();
+        } else if (key == "peer_ip") {
+            inner_val->type = TYPE_STRING;
+            inner_val->s_val = sock_val->peer_ip;
+        } else if (key == "peer_port") {
+            inner_val->type = TYPE_INT;
+            inner_val->i_val = sock_val->peer_port;
+        } else if (key == "is_closed") {
+            inner_val->type = TYPE_BOOL;
+            inner_val->b_val = sock_val->is_closed_fn();
+        }
+        return *inner_val;
+    }
+    if (srv_sock_val) {
+        inner_val = std::make_shared<MemeValue>();
+        if (key == "fd") {
+            inner_val->type = TYPE_INT;
+            inner_val->i_val = srv_sock_val->get_fd();
+        } else if (key == "port") {
+            inner_val->type = TYPE_INT;
+            inner_val->i_val = srv_sock_val->port;
+        } else if (key == "is_closed") {
+            inner_val->type = TYPE_BOOL;
+            inner_val->b_val = srv_sock_val->is_closed_fn();
+        }
+        return *inner_val;
+    }
+    if (type != TYPE_MAP) {
+        type = TYPE_MAP;
+    }
+    ensure_map();
+    auto it = map_data->map_val.find(key);
+    if (it != map_data->map_val.end()) {
+        return it->second;
+    }
+    map_data->map_keys.push_back(key);
+    return map_data->map_val[key];
+}
+
+inline MemeValue &MemeValue::operator[](const std::string &key) const {
+    return const_cast<MemeValue *>(this)->operator[](key);
+}
+
+inline MemeValue &MemeValue::operator[](const char *key) {
+    return (*this)[std::string(key ? key : "")];
+}
+
+inline MemeValue &MemeValue::operator[](const char *key) const {
+    return const_cast<MemeValue *>(this)->operator[](std::string(key ? key : ""));
+}
 
 inline MemeValue::MemeValue(const MemeMutex &mtx) : type(TYPE_OBJECT), mtx_val(std::make_shared<MemeMutex>(mtx)) {}
 inline void MemeValue::lock() const { if (mtx_val) mtx_val->lock(); }

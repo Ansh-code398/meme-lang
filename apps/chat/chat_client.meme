@@ -1,0 +1,302 @@
+// ==============================================================================
+// MEMElang Real-time Chat GUI & Client
+// 100% Bit-exact 2D ANSI Canvas layout and network protocol engine
+// ==============================================================================
+
+bula "net";
+bula "samay";
+bula "sys";
+
+kar wrap_text(text, max_width) {
+    dekh (text.length() <= max_width) {
+        pakad r = [];
+        r.push(text);
+        wapas r;
+    }
+    pakad words = text.split(" ");
+    pakad lines = [];
+    pakad cur = "";
+    pakad n = words.length();
+    pakad i = 0;
+
+    jabtak (i < n) {
+        pakad w = words[i];
+        dekh (cur == "") {
+            cur = w.to_string();
+        }
+        warna dekh (cur.length() + 1 + w.length() <= max_width) {
+            cur = cur + " " + w;
+        }
+        warna {
+            lines.push(cur);
+            cur = w.to_string();
+        }
+        i = i + 1;
+    }
+    dekh (cur != "") {
+        lines.push(cur);
+    }
+    wapas lines;
+}
+
+kar render_canvas(
+    title: str,
+    user: str,
+    port: int,
+    users: list[str],
+    messages: list[any],
+    input_buf: str,
+    latency_us: int
+) -> str {
+    pakad rows = [];
+
+    // Row 0: Top border
+    pakad top_border = "+";
+    pakad ti = 0;
+    jabtak (ti < 78) {
+        top_border = top_border + "-";
+        ti = ti + 1;
+    }
+    top_border = top_border + "+";
+    rows.push(top_border);
+
+    // Row 1: Header
+    pakad h_info = " " + title + " | User: @" + user + " | Online: " + users.length() + " | Port: " + port + " ";
+    rows.push("|" + h_info.pad_right(78) + "|");
+
+    // Row 2: Divider (57 + 20 + 1 = 78)
+    pakad mid_div = "+";
+    pakad mi1 = 0;
+    jabtak (mi1 < 57) { mid_div = mid_div + "-"; mi1 = mi1 + 1; }
+    mid_div = mid_div + "+";
+    pakad mi2 = 0;
+    jabtak (mi2 < 20) { mid_div = mid_div + "-"; mi2 = mi2 + 1; }
+    mid_div = mid_div + "+";
+    rows.push(mid_div);
+
+    // Format chat messages
+    pakad formatted_lines = [];
+    pakad mn = messages.length();
+    pakad mi = 0;
+    jabtak (mi < mn) {
+        pakad m = messages[mi];
+        pakad prefix = "[" + m["time"] + "] <" + m["user"] + "> ";
+        pakad full = prefix + m["text"];
+        pakad wrapped = wrap_text(full, 55);
+        pakad wn = wrapped.length();
+        pakad wi = 0;
+        jabtak (wi < wn) {
+            formatted_lines.push(wrapped[wi]);
+            wi = wi + 1;
+        }
+        mi = mi + 1;
+    }
+
+    pakad MAIN_ROWS = 17;
+    pakad chat_display = [];
+    dekh (formatted_lines.length() > MAIN_ROWS) {
+        pakad start_idx = formatted_lines.length() - MAIN_ROWS;
+        pakad ci = 0;
+        jabtak (ci < MAIN_ROWS) {
+            chat_display.push(formatted_lines[start_idx + ci]);
+            ci = ci + 1;
+        }
+    }
+    warna {
+        pakad pad_needed = MAIN_ROWS - formatted_lines.length();
+        pakad pi = 0;
+        jabtak (pi < pad_needed) {
+            chat_display.push("");
+            pi = pi + 1;
+        }
+        pakad fi = 0;
+        jabtak (fi < formatted_lines.length()) {
+            chat_display.push(formatted_lines[fi]);
+            fi = fi + 1;
+        }
+    }
+
+    // Sidebar lines
+    pakad sidebar_lines = [];
+    pakad un = users.length();
+    pakad ui = 0;
+    jabtak (ui < un && ui < MAIN_ROWS) {
+        pakad u = users[ui];
+        pakad is_self = "";
+        dekh (u == user) {
+            is_self = " (you)";
+        }
+        sidebar_lines.push("* " + u + is_self);
+        ui = ui + 1;
+    }
+    jabtak (sidebar_lines.length() < MAIN_ROWS) {
+        sidebar_lines.push("");
+    }
+
+    // Main content rows
+    pakad ri = 0;
+    jabtak (ri < MAIN_ROWS) {
+        pakad c_text = (" " + chat_display[ri]).pad_right(57).slice(0, 57);
+        pakad s_text = (" " + sidebar_lines[ri]).pad_right(20).slice(0, 20);
+        rows.push("|" + c_text + "|" + s_text + "|");
+        ri = ri + 1;
+    }
+
+    // Row 20: Input divider
+    rows.push(mid_div);
+
+    // Row 21: Input box
+    pakad inp_text = " > " + input_buf + "_";
+    rows.push("|" + inp_text.pad_right(78).slice(0, 78) + "|");
+
+    // Row 22: Status / hint bar
+    pakad status_text = " Commands: /quit, /ping, /clear | Latency: " + latency_us + "us | Status: CONNECTED ";
+    rows.push("|" + status_text.pad_right(78).slice(0, 78) + "|");
+
+    // Row 23: Bottom border
+    rows.push(top_border);
+
+    pakad result = "";
+    pakad r_len = rows.length();
+    pakad r_idx = 0;
+    jabtak (r_idx < r_len) {
+        dekh (r_idx > 0) {
+            result = result + "\n";
+        }
+        result = result + rows[r_idx];
+        r_idx = r_idx + 1;
+    }
+    wapas result;
+}
+
+sancha ChatClient {
+    le host: str;
+    le port: int;
+    le username: str;
+    le sock: any;
+    le users: list[str];
+    le messages: list[any];
+    le input_buf: str;
+    le latency_us: int;
+
+    shuru(host: str, port: int, username: str) {
+        khud.host = host;
+        khud.port = port;
+        khud.username = username;
+        khud.sock = null;
+        khud.users = [];
+        khud.users.push(username);
+        khud.messages = [];
+        khud.input_buf = "";
+        khud.latency_us = 0;
+    }
+
+    connect() -> bool {
+        khud.sock = net.connect(khud.host, khud.port, 2000);
+        dekh (khud.sock.is_valid()) {
+            khud.sock.set_nonblocking(false);
+            khud.sock.send("{\"op\":\"join\",\"user\":\"" + khud.username + "\"}\n");
+            wapas true;
+        }
+        wapas false;
+    }
+
+    send_message(text: str) {
+        dekh (khud.sock && khud.sock.is_valid()) {
+            khud.sock.send("{\"op\":\"msg\",\"text\":\"" + text + "\",\"user\":\"" + khud.username + "\"}\n");
+        }
+    }
+
+    ping() -> int {
+        dekh (!khud.sock || !khud.sock.is_valid()) {
+            wapas -1;
+        }
+        pakad t0 = samay.ab();
+        khud.sock.send("{\"id\":1,\"op\":\"ping\"}\n");
+        pakad res = khud.sock.recv(1024, 1000);
+        dekh (res.find("\"op\":\"pong\"") >= 0) {
+            pakad dt_us = (samay.ab() - t0) * 1000000.0;
+            khud.latency_us = dt_us;
+            wapas dt_us;
+        }
+        wapas -1;
+    }
+
+    render() -> str {
+        wapas render_canvas(
+            "MEME-CHAT Hub GUI",
+            khud.username,
+            khud.port,
+            khud.users,
+            khud.messages,
+            khud.input_buf,
+            khud.latency_us
+        );
+    }
+
+    close() {
+        dekh (khud.sock && khud.sock.is_valid()) {
+            khud.sock.send("{\"op\":\"quit\",\"user\":\"" + khud.username + "\"}\n");
+            khud.sock.close();
+        }
+    }
+}
+
+// Benchmark & Entry Point
+pakad user = "alice";
+pakad port = 9099;
+pakad frames = 500;
+pakad headless = false;
+
+pakad ai = 1;
+jabtak (ai < sys.args.length()) {
+    pakad arg = sys.args[ai];
+    dekh (arg == "--user" && ai + 1 < sys.args.length()) {
+        user = sys.args[ai + 1];
+        ai = ai + 2;
+    }
+    warna dekh (arg == "--port" && ai + 1 < sys.args.length()) {
+        port = sys.args[ai + 1].to_int();
+        ai = ai + 2;
+    }
+    warna dekh (arg == "--frames" && ai + 1 < sys.args.length()) {
+        frames = sys.args[ai + 1].to_int();
+        ai = ai + 2;
+    }
+    warna dekh (arg == "--headless") {
+        headless = true;
+        ai = ai + 1;
+    }
+    warna {
+        ai = ai + 1;
+    }
+}
+
+pakad client = naya ChatClient("127.0.0.1", port, user);
+client.messages = [
+    {"user": "sys", "text": "Connected to cluster.", "time": "12:00:00"},
+    {"user": "alice", "text": "Realtime rendering benchmark initializing.", "time": "12:00:01"},
+    {"user": "bob", "text": "Measuring frames per second with ANSI character canvas.", "time": "12:00:02"}
+];
+client.users = [];
+client.users.push("alice");
+client.users.push("bob");
+client.users.push("charlie");
+
+dekh (headless) {
+    pakad t0 = samay.ab();
+    pakad fi = 0;
+    jabtak (fi < frames) {
+        pakad out = client.render();
+        fi = fi + 1;
+    }
+    pakad dt = samay.ab() - t0;
+    pakad fps = 0.0;
+    dekh (dt > 0.0) {
+        fps = frames / dt;
+    }
+    bol "[MEME_CHAT_CLIENT] Rendered " + frames + " frames: " + fps + " fps";
+}
+warna {
+    bol client.render();
+}

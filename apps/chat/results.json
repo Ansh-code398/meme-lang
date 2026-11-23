@@ -1,0 +1,111 @@
+{
+  "system": {
+    "platform": "darwin",
+    "timestamp": "2026-11-23 18:19:13",
+    "rustc_version": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "python_version": "3.14.6"
+  },
+  "rtt_latency": [
+    {
+      "engine": "Pure Rust Server",
+      "iterations": 1000,
+      "total_time_s": 0.05360379200101306,
+      "mean_us": 52.45,
+      "median_us": 44.98,
+      "p95_us": 109.21,
+      "p99_us": 144.75,
+      "min_us": 27.42,
+      "max_us": 311.08,
+      "ops_sec": 18655.4,
+      "peak_rss_mb": 1.75
+    },
+    {
+      "engine": "MEMElang Native AOT",
+      "iterations": 1000,
+      "total_time_s": 0.05770020899944939,
+      "mean_us": 56.51,
+      "median_us": 50.81,
+      "p95_us": 112.5,
+      "p99_us": 138.54,
+      "min_us": 26.75,
+      "max_us": 487.79,
+      "ops_sec": 17331.0,
+      "peak_rss_mb": 1.7
+    },
+    {
+      "engine": "Python 3 Server",
+      "iterations": 1000,
+      "total_time_s": 0.10993120899911446,
+      "mean_us": 108.02,
+      "median_us": 84.08,
+      "p95_us": 189.83,
+      "p99_us": 369.33,
+      "min_us": 37.46,
+      "max_us": 3572.5,
+      "ops_sec": 9096.6,
+      "peak_rss_mb": 12.89
+    }
+  ],
+  "broadcast_throughput": [
+    {
+      "engine": "Pure Rust Server",
+      "num_clients": 10,
+      "messages_sent": 500,
+      "total_fanned_out": 5000,
+      "total_time_s": 0.1318,
+      "broadcast_msgs_sec": 3793.7,
+      "fanout_msgs_sec": 37936.9,
+      "peak_rss_mb": 2.09
+    },
+    {
+      "engine": "MEMElang Native AOT",
+      "num_clients": 10,
+      "messages_sent": 500,
+      "total_fanned_out": 5000,
+      "total_time_s": 0.0775,
+      "broadcast_msgs_sec": 6453.1,
+      "fanout_msgs_sec": 64530.9,
+      "peak_rss_mb": 2.06
+    },
+    {
+      "engine": "Python 3 Server",
+      "num_clients": 10,
+      "messages_sent": 500,
+      "total_fanned_out": 5000,
+      "total_time_s": 0.1086,
+      "broadcast_msgs_sec": 4605.2,
+      "fanout_msgs_sec": 46051.9,
+      "peak_rss_mb": 13.2
+    }
+  ],
+  "gui_render": [
+    {
+      "engine": "Pure Rust GUI",
+      "frames": 1000,
+      "total_time_s": 0.0535,
+      "fps": 22764.6,
+      "frame_time_us": 43.93
+    },
+    {
+      "engine": "MEMElang Native AOT GUI",
+      "frames": 1000,
+      "total_time_s": 0.0691,
+      "fps": 17609.4,
+      "frame_time_us": 56.79
+    },
+    {
+      "engine": "Python 3 GUI",
+      "frames": 1000,
+      "total_time_s": 0.1027,
+      "fps": 40704.4,
+      "frame_time_us": 24.57
+    },
+    {
+      "engine": "MEMElang Interpreter GUI",
+      "frames": 300,
+      "total_time_s": 1.118,
+      "fps": 273.4,
+      "frame_time_us": 3657.41
+    }
+  ]
+}

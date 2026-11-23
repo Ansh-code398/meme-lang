@@ -1,0 +1,230 @@
+// ==============================================================================
+// MEMElang Real-time Chat Hub Server
+// High-performance socket server with bit-exact parity to Rust and Python
+// ==============================================================================
+
+bula "net";
+bula "dhaga";
+bula "sys";
+
+kar find_str(line: str, key: str) -> str {
+    pakad pat = "\"" + key + "\":\"";
+    pakad idx = line.find(pat);
+    dekh (idx < 0) {
+        wapas "";
+    }
+    pakad start = idx + pat.length();
+    pakad rest = line.slice(start);
+    pakad end_idx = rest.find("\"");
+    dekh (end_idx < 0) {
+        wapas rest;
+    }
+    wapas rest.slice(0, end_idx);
+}
+
+kar find_int(line: str, key: str) -> int {
+    pakad pat = "\"" + key + "\":";
+    pakad idx = line.find(pat);
+    dekh (idx < 0) {
+        wapas 0;
+    }
+    pakad start = idx + pat.length();
+    pakad rest = line.slice(start).trim();
+    wapas rest.to_int();
+}
+
+sancha ChatServer {
+    le clients: list[any];
+    le client_names: list[str];
+    le history: list[str];
+    le mtx: any;
+
+    shuru() {
+        khud.clients = [];
+        khud.client_names = [];
+        khud.history = [];
+        khud.mtx = dhaga.mutex();
+    }
+
+    broadcast(payload: str, exclude_sock: any) {
+        khud.mtx.lock();
+        pakad n = khud.clients.length();
+        pakad i = 0;
+        jabtak (i < n) {
+            pakad c = khud.clients[i];
+            dekh (c != exclude_sock && c.is_valid()) {
+                c.send(payload + "\n");
+            }
+            i = i + 1;
+        }
+        khud.mtx.unlock();
+    }
+
+    get_users_json() -> str {
+        pakad res = "[";
+        pakad first = true;
+        khud.mtx.lock();
+        pakad n = khud.client_names.length();
+        pakad i = 0;
+        jabtak (i < n) {
+            pakad name = khud.client_names[i];
+            dekh (name != "") {
+                dekh (!first) {
+                    res = res + ",";
+                }
+                res = res + "\"" + name + "\"";
+                first = false;
+            }
+            i = i + 1;
+        }
+        khud.mtx.unlock();
+        res = res + "]";
+        wapas res;
+    }
+
+    get_history_json() -> str {
+        pakad res = "[";
+        pakad first = true;
+        khud.mtx.lock();
+        pakad n = khud.history.length();
+        pakad i = 0;
+        jabtak (i < n) {
+            dekh (!first) {
+                res = res + ",";
+            }
+            res = res + khud.history[i];
+            first = false;
+            i = i + 1;
+        }
+        khud.mtx.unlock();
+        res = res + "]";
+        wapas res;
+    }
+
+    handle_client(sock: any) {
+        sock.set_nonblocking(false);
+        sock.set_timeout(50);
+
+        pakad pending = "";
+        pakad username = "";
+        pakad active = true;
+
+        jabtak (active && sock.is_valid()) {
+            pakad chunk = sock.recv(4096, 50);
+            dekh (chunk != "") {
+                pending = pending + chunk;
+                jabtak (pending.find("\n") >= 0) {
+                    pakad nl = pending.find("\n");
+                    pakad line = pending.slice(0, nl).trim();
+                    pending = pending.slice(nl + 1);
+
+                    dekh (line != "") {
+                        pakad op_code = find_str(line, "op");
+
+                        dekh (op_code == "join") {
+                            username = find_str(line, "user");
+                            dekh (username == "") {
+                                username = "anon";
+                            }
+                            khud.mtx.lock();
+                            pakad n = khud.clients.length();
+                            pakad i = 0;
+                            jabtak (i < n) {
+                                dekh (khud.clients[i] == sock) {
+                                    khud.client_names[i] = username;
+                                }
+                                i = i + 1;
+                            }
+                            khud.mtx.unlock();
+
+                            pakad ujson = khud.get_users_json();
+                            pakad hjson = khud.get_history_json();
+                            pakad welcome = "{\"history\":" + hjson + ",\"op\":\"welcome\",\"user\":\"" + username + "\",\"users\":" + ujson + "}";
+                            sock.send(welcome + "\n");
+
+                            pakad presence = "{\"action\":\"join\",\"op\":\"presence\",\"user\":\"" + username + "\",\"users\":" + ujson + "}";
+                            khud.broadcast(presence, sock);
+                        }
+                        warna dekh (op_code == "msg") {
+                            pakad text = find_str(line, "text");
+                            pakad ts = "12:00:00";
+                            pakad item = "{\"op\":\"broadcast\",\"text\":\"" + text + "\",\"time\":\"" + ts + "\",\"user\":\"" + username + "\"}";
+                            pakad hist_item = "{\"text\":\"" + text + "\",\"time\":\"" + ts + "\",\"user\":\"" + username + "\"}";
+
+                            khud.mtx.lock();
+                            khud.history.push(hist_item);
+                            dekh (khud.history.length() > 50) {
+                                khud.history.pop(0);
+                            }
+                            khud.mtx.unlock();
+
+                            khud.broadcast(item, null);
+                        }
+                        warna dekh (op_code == "ping") {
+                            pakad pid = find_int(line, "id");
+                            pakad pong = "{\"id\":" + pid + ",\"op\":\"pong\"}\n";
+                            sock.send(pong);
+                        }
+                        warna dekh (op_code == "quit") {
+                            active = false;
+                        }
+                    }
+                }
+            }
+            warna {
+                dekh (sock.is_closed()) {
+                    active = false;
+                }
+            }
+        }
+
+        sock.close();
+
+        // Cleanup
+        khud.mtx.lock();
+        pakad rem_idx = -1;
+        pakad cn = khud.clients.length();
+        pakad ci = 0;
+        jabtak (ci < cn) {
+            dekh (khud.clients[ci] == sock) {
+                rem_idx = ci;
+            }
+            ci = ci + 1;
+        }
+        dekh (rem_idx >= 0) {
+            khud.clients.pop(rem_idx);
+            khud.client_names.pop(rem_idx);
+        }
+        khud.mtx.unlock();
+
+        dekh (username != "") {
+            pakad ujson = khud.get_users_json();
+            pakad presence = "{\"action\":\"leave\",\"op\":\"presence\",\"user\":\"" + username + "\",\"users\":" + ujson + "}";
+            khud.broadcast(presence, null);
+        }
+    }
+}
+
+pakad port = 9099;
+dekh (sys.args.length() > 1) {
+    port = sys.args[1].to_int();
+}
+
+pakad server = naya ChatServer();
+pakad srv = net.listen("127.0.0.1", port);
+bol "[MEME_CHAT_SERVER] Listening on 127.0.0.1:" + port + "...";
+
+jabtak (srv.is_valid()) {
+    pakad client = srv.accept(100);
+    dekh (client) {
+        server.mtx.lock();
+        server.clients.push(client);
+        server.client_names.push("");
+        server.mtx.unlock();
+
+        dhaga.spawn(kaam() {
+            server.handle_client(client);
+        });
+    }
+}
+srv.close();

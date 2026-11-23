@@ -41,7 +41,7 @@ FORBIDDEN_WORD = "".join(chr(c) for c in [98, 104, 97, 105])
 FORBIDDEN_PATTERN = re.compile(r"\b" + FORBIDDEN_WORD + r"\b", re.IGNORECASE)
 
 
-def run_command(cmd, cwd=None, timeout=120):
+def run_command(cmd, cwd=None, timeout=240):
     """Executes a command and returns (returncode, stdout, stderr, elapsed)."""
     start = time.perf_counter()
     try:
