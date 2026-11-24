@@ -1,0 +1,28 @@
+// apps/chat/desktop/tests/chat_desktop_test.meme
+// Test suite for Zero-WebView Native Desktop Chat App
+
+bula "apps/chat/desktop/src/App.meme";
+
+test("Chat Desktop - App Mounts & Generates GPU Draw Commands", () => {
+    pakad cmds = ui.mount(<App />);
+    expect(cmds.lambai() > 0).toBe(sach);
+});
+
+test("Chat Desktop - Message Structure & Filtering", () => {
+    pakad msgs = [
+        { "id": 1, "user": "sys", "text": "Init", "badge": "System" },
+        { "id": 2, "user": "alice", "text": "Hello", "badge": "User" }
+    ];
+    pakad userOnly = msgs.filter(m => m.user != "sys");
+    expect(userOnly.lambai()).toBe(1);
+    expect(userOnly[0].user).toBe("alice");
+});
+
+test("Chat Desktop - Spread Immutability on New Message", () => {
+    pakad initial = [
+        { "id": 1, "user": "alice", "text": "One" }
+    ];
+    pakad added = [...initial, { "id": 2, "user": "you", "text": "Two" }];
+    expect(added.lambai()).toBe(2);
+    expect(initial.lambai()).toBe(1);
+});

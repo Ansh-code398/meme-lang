@@ -1,0 +1,7 @@
+{
+  "name": "chat_desktop",
+  "version": "1.0.0",
+  "description": "Zero-WebView Native Desktop Realtime Chat GUI in MEMElang",
+  "entry": "src/App.meme",
+  "dependencies": {}
+}

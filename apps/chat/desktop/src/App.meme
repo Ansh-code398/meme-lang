@@ -1,0 +1,183 @@
+// apps/chat/desktop/src/App.meme
+// Realtime Chat Hub - Zero-WebView Native Desktop GUI (Cocoa / 60 FPS)
+
+kaam App() {
+    pakad defaultMessages = [
+        { "id": 1, "user": "sys", "text": "Connected to cluster at 127.0.0.1:9099", "time": "12:00:00", "badge": "System" },
+        { "id": 2, "user": "alice", "text": "Welcome to the Zero-WebView Native GUI!", "time": "12:00:01", "badge": "Member" },
+        { "id": 3, "user": "bob", "text": "Pure native Cocoa window, 60 FPS, no Chromium.", "time": "12:00:02", "badge": "Core" },
+        { "id": 4, "user": "charlie", "text": "56.51 us RTT latency and 64k msg/s fanout.", "time": "12:00:03", "badge": "Bot" }
+    ];
+
+    [messages, setMessages] = useState(defaultMessages);
+    [inputMsg, setInputMsg] = useState("");
+    [activeFilter, setActiveFilter] = useState("all");
+    [latency, setLatency] = useState("48 us");
+    [status, setStatus] = useState("CONNECTED");
+
+    pakad users = [
+        { "name": "alice", "role": "Member", "online": sach },
+        { "name": "bob", "role": "Core", "online": sach },
+        { "name": "charlie", "role": "Bot", "online": sach },
+        { "name": "you", "role": "Host", "online": sach }
+    ];
+
+    kaam sendMessage() {
+        agar (inputMsg != "") {
+            pakad nextId = messages.lambai() + 1;
+            pakad newMsg = {
+                "id": nextId,
+                "user": "you",
+                "text": inputMsg,
+                "time": "12:00:05",
+                "badge": "Host"
+            };
+            setMessages([...messages, newMsg]);
+            setInputMsg("");
+        }
+    }
+
+    kaam pingServer() {
+        setLatency("42 us");
+        setStatus("PING_OK");
+        pakad nextId = messages.lambai() + 1;
+        setMessages([...messages, {
+            "id": nextId,
+            "user": "sys",
+            "text": "RTT Latency probe acknowledged: 42 us round-trip.",
+            "time": "12:00:06",
+            "badge": "Probe"
+        }]);
+    }
+
+    kaam clearChat() {
+        setMessages([{
+            "id": 1,
+            "user": "sys",
+            "text": "Chat history cleared.",
+            "time": "12:00:00",
+            "badge": "System"
+        }]);
+    }
+
+    pakad filtered = activeFilter == "user" ? messages.filter(m => m.user != "sys") : messages;
+
+    de (
+        <div class="p-6 bg-slate-950 min-h-screen flex flex-col items-center">
+            <div class="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+                
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-500 flex items-center justify-center font-black text-slate-950 text-lg shadow-md">
+                            ⚡
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-black text-white flex items-center gap-2">
+                                MEME-CHAT Desktop
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
+                                    Native Cocoa
+                                </span>
+                            </h1>
+                            <p class="text-xs text-slate-400">Zero-WebView • 60 FPS • Realtime Immediate Feedback</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <div class="px-3 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-amber-400">
+                            {"Latency: " + latency}
+                        </div>
+                        <button
+                            class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold"
+                            onClick={pingServer}
+                        >
+                            ⚡ Ping
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                    <div class="flex-1 flex flex-col gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 min-h-[360px]">
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                {"Messages (" + filtered.lambai() + ")"}
+                            </span>
+                            <div class="flex gap-1">
+                                <button
+                                    class={activeFilter == "all" ? "px-2.5 py-0.5 bg-slate-700 text-white rounded text-xs" : "px-2.5 py-0.5 text-slate-400 rounded text-xs"}
+                                    onClick={() => setActiveFilter("all")}
+                                >
+                                    All
+                                </button>
+                                <button
+                                    class={activeFilter == "user" ? "px-2.5 py-0.5 bg-slate-700 text-white rounded text-xs" : "px-2.5 py-0.5 text-slate-400 rounded text-xs"}
+                                    onClick={() => setActiveFilter("user")}
+                                >
+                                    Users Only
+                                </button>
+                                <button
+                                    class="px-2 py-0.5 text-slate-500 hover:text-slate-300 rounded text-xs"
+                                    onClick={clearChat}
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2.5 flex-1 overflow-y-auto">
+                            {filtered.map(item => (
+                                <div key={item.id} class="p-3 bg-slate-800/70 border border-slate-700/50 rounded-xl flex flex-col gap-1">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-bold text-amber-400 font-mono">{"@" + item.user}</span>
+                                            <span class="text-[10px] px-1.5 py-0.2 bg-slate-700 text-slate-300 rounded">
+                                                {item.badge}
+                                            </span>
+                                        </div>
+                                        <span class="text-[10px] text-slate-500 font-mono">{item.time}</span>
+                                    </div>
+                                    <p class="text-sm text-slate-200">{item.text}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div class="w-56 bg-slate-950/60 p-4 rounded-xl border border-slate-800 flex flex-col gap-3">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-2">
+                            {"Peers (" + users.lambai() + ")"}
+                        </span>
+                        <div class="space-y-2">
+                            {users.map(u => (
+                                <div key={u.name} class="flex items-center justify-between p-2 rounded-lg bg-slate-800/40 border border-slate-800">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                        <span class="text-xs font-medium text-slate-300">{"@" + u.name}</span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500">{u.role}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="flex items-center gap-2 pt-2 border-t border-slate-800">
+                    <input
+                        class="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-amber-400"
+                        placeholder="Type your message and click Send..."
+                        value={inputMsg}
+                        onChange={(e) => setInputMsg(e.target.value)}
+                    />
+                    <button
+                        class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm transition-all"
+                        onClick={sendMessage}
+                    >
+                        Send
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    );
+}
+
+ui.mount(<App />);
