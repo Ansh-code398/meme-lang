@@ -47,6 +47,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " env <init|info|clean>     Manage project virtual environment (.meme_env/)\n";
     std::cout << "  " << prog << " tapri <install|suchi>     Package manager (py:numpy, npm:canvas, etc.)\n";
     std::cout << "  " << prog << " dev [file] [--platform]   Start dev server (Web 60FPS Canvas, Desktop, Terminal)\n";
+    std::cout << "  " << prog << " gui <file> [args]         Run native desktop GUI window directly (Zero-WebView, 60 FPS Cocoa)\n";
     std::cout << "  " << prog << " setup                     Link 'meme' CLI globally into PATH (alias: link)\n";
     std::cout << "  " << prog << " run <script>              Run a script defined in tapri.json\n";
     std::cout << "  " << prog << " test [dir]                Run test runner on *_test.meme files\n";
@@ -1286,6 +1287,77 @@ static void printDevDashboard(const std::string &targetFile, int port, const std
     std::cout.flush();
 }
 
+static void handleGui(int argc, char *argv[])
+{
+    if (argc < 3)
+    {
+        std::cout << formatRichText("[peela]Usage:[/] ./meme gui <filename.meme> [args]\n");
+        return;
+    }
+    std::string targetFile = argv[2];
+    if (!std::filesystem::exists(targetFile))
+    {
+        std::cout << formatRichText("[laal]❌ File '" + targetFile + "' nahi mili![/]\n");
+        return;
+    }
+
+    auto state = std::make_shared<DevServerState>();
+    state->targetFile = targetFile;
+    state->platform = "desktop";
+    state->appName = std::filesystem::path(targetFile).stem().string();
+    state->running = true;
+
+    auto interpreter = std::make_unique<Interpreter>();
+    state->interpreter = interpreter.get();
+    interpreter->setCurrentFilePath(targetFile);
+
+    std::vector<std::string> scriptArgs;
+    for (int i = 3; i < argc; ++i)
+    {
+        scriptArgs.push_back(argv[i]);
+    }
+    interpreter->setCommandLineArgs(scriptArgs);
+
+    // Read and run target file
+    std::ifstream f(targetFile);
+    if (!f.is_open())
+    {
+        std::cout << formatRichText("[laal]❌ File open nahi ho saki: " + targetFile + "[/]\n");
+        return;
+    }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    std::string src = ss.str();
+
+    if (!runSource(src, *interpreter))
+    {
+        return;
+    }
+
+    state->gpuCommands = interpreter->getLastGpuCommandsJson();
+    state->hitRegions = interpreter->getLastHitRegionsJson();
+
+    bool isHeadless = (std::getenv("MEME_HEADLESS") != nullptr);
+    if (isHeadless)
+    {
+        return;
+    }
+
+#if defined(__APPLE__)
+    if (!MemeUI::isNativeDesktopWindowOpen())
+    {
+        MemeUI::showNativeDesktopWindow(*state);
+    }
+    while (state->running && MemeUI::isNativeDesktopWindowOpen())
+    {
+        MemeUI::pumpNativeDesktopEvents(0.016);
+    }
+#else
+    std::cout << formatRichText("[peela]Native desktop window currently macOS Cocoa par supported hai. Terminal layout generated:[/]\n");
+    std::cout << interpreter->getLastTerminalUi() << "\n";
+#endif
+}
+
 static void handleDev(int argc, char *argv[])
 {
     std::string targetFile = "";
@@ -2204,6 +2276,11 @@ int main(int argc, char *argv[])
         else if (arg1 == "dev")
         {
             handleDev(argc, argv);
+            return 0;
+        }
+        else if (arg1 == "gui" || arg1 == "desktop")
+        {
+            handleGui(argc, argv);
             return 0;
         }
         else if (arg1 == "setup" || arg1 == "link")

@@ -1,5 +1,7 @@
 #include "Interpreter.h"
 #include "../ui/TailwindEngine.h"
+#include "../ui/DevServerState.h"
+#include "../ui/NativeDesktopWindow.h"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -8741,6 +8743,31 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
         return Value(interpreter.getLastGpuCommandsJson());
     })));
 
+    auto showFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string winTitle = args.size() > 0 ? args[0].deref().toString() : "MEMElang Native Desktop";
+        bool isHeadless = (std::getenv("MEME_HEADLESS") != nullptr);
+        if (isHeadless) {
+            return Value(true);
+        }
+#if defined(__APPLE__)
+        DevServerState state;
+        state.appName = winTitle;
+        state.interpreter = &interpreter;
+        state.running = true;
+        MemeUI::showNativeDesktopWindow(state);
+        while (state.running && MemeUI::isNativeDesktopWindowOpen()) {
+            MemeUI::pumpNativeDesktopEvents(0.016);
+        }
+        return Value(true);
+#else
+        std::cout << "[MEME_UI] Native desktop window currently macOS Cocoa par supported hai.\n";
+        return Value(false);
+#endif
+    };
+    m->set("show", Value(std::make_shared<NativeMethodCallable>("show", 0, 1, showFn)));
+    m->set("chala", Value(std::make_shared<NativeMethodCallable>("chala", 0, 1, showFn)));
+    m->set("run", Value(std::make_shared<NativeMethodCallable>("run", 0, 1, showFn)));
+
     auto dispatchFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         int id = args.size() > 0 ? static_cast<int>(args[0].deref().asInt()) : 0;
         std::string evType = args.size() > 1 ? args[1].deref().toString() : "click";
@@ -11548,9 +11575,11 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("ui", uiMod);
     globals->define("view", uiMod);
     globals->define("gui", uiMod);
+    globals->define("egui", uiMod);
     importedModules["ui"] = uiMod;
     importedModules["view"] = uiMod;
     importedModules["gui"] = uiMod;
+    importedModules["egui"] = uiMod;
 
     // React Hooks & Component System
     auto useStateFn = [this](Interpreter &interp, const std::vector<Value> &args) -> Value {
