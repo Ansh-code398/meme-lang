@@ -18,6 +18,7 @@
     NSTrackingArea *trackingArea;
 }
 - (instancetype)initWithFrame:(NSRect)frameRect state:(DevServerState *)st;
+- (void)setState:(DevServerState *)st;
 @end
 
 @interface MemeWindowDelegate : NSObject <NSWindowDelegate> {
@@ -43,6 +44,7 @@ static MemeWindowDelegate *g_windowDelegate = nil;
     (void)notification;
     if (statePtr) {
         std::lock_guard<std::mutex> lock(statePtr->mtx);
+        statePtr->running = false;
         statePtr->platform = "terminal";
     }
     g_nativeWindow = nil;
@@ -52,6 +54,10 @@ static MemeWindowDelegate *g_windowDelegate = nil;
 @end
 
 @implementation MemeNativeCanvasView
+
+- (void)setState:(DevServerState *)st {
+    statePtr = st;
+}
 
 - (instancetype)initWithFrame:(NSRect)frameRect state:(DevServerState *)st {
     self = [super initWithFrame:frameRect];
@@ -289,6 +295,7 @@ void initNativeDesktopApp() {
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [NSApp finishLaunching];
     }
 }
 
@@ -317,9 +324,15 @@ void showNativeDesktopWindow(DevServerState &state) {
             g_nativeCanvasView = [[MemeNativeCanvasView alloc] initWithFrame:frame state:&state];
             [g_nativeWindow setContentView:g_nativeCanvasView];
             [g_nativeWindow makeKeyAndOrderFront:nil];
+            [g_nativeWindow orderFrontRegardless];
             [NSApp activateIgnoringOtherApps:YES];
         } else {
+            if (g_nativeCanvasView) {
+                [g_nativeCanvasView setState:&state];
+            }
             [g_nativeWindow makeKeyAndOrderFront:nil];
+            [g_nativeWindow orderFrontRegardless];
+            [NSApp activateIgnoringOtherApps:YES];
             [g_nativeCanvasView setNeedsDisplay:YES];
         }
     }

@@ -8750,12 +8750,12 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
             return Value(true);
         }
 #if defined(__APPLE__)
-        DevServerState state;
-        state.appName = winTitle;
-        state.interpreter = &interpreter;
-        state.running = true;
-        MemeUI::showNativeDesktopWindow(state);
-        while (state.running && MemeUI::isNativeDesktopWindowOpen()) {
+        static auto s_state = std::make_shared<DevServerState>();
+        s_state->appName = winTitle;
+        s_state->interpreter = &interpreter;
+        s_state->running = true;
+        MemeUI::showNativeDesktopWindow(*s_state);
+        while (s_state->running && MemeUI::isNativeDesktopWindowOpen()) {
             MemeUI::pumpNativeDesktopEvents(0.016);
         }
         return Value(true);
