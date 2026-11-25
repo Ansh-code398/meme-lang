@@ -2957,12 +2957,14 @@ void testNativeUiPrimitivesTextEngineAndTessellator()
     eguiCtx.endFrame();
     assert(btnClickedFrame2);
 
-    // 4. UiSession accessible audit + portal centering + broken audit rejection
+    // 4. UiSession accessible audit + portal centering + scroll-ancestor hit-order + broken audit rejection
     MemeUI::UiSession sess;
+    bool btnClickedByPtr = false;
     MemeUI::UiNode root;
-    root.tag = "div"; root.classStr = "min-h-screen w-full p-4 flex flex-col gap-3";
+    root.tag = "div"; root.classStr = "min-h-screen w-full p-4 flex flex-col gap-3 overflow-y-auto";
     MemeUI::UiNode okBtn;
     okBtn.tag = "button"; okBtn.testId = "ok_btn"; okBtn.classStr = "px-4 py-2 bg-indigo-600 text-white rounded-xl";
+    okBtn.handlers["click"] = [&](const MemeUI::UiEvent &) { btnClickedByPtr = true; };
     MemeUI::UiNode okTxt; okTxt.isText = true; okTxt.text = "Confirm";
     okBtn.children.push_back(okTxt);
     MemeUI::UiNode slNode;
@@ -2977,11 +2979,29 @@ void testNativeUiPrimitivesTextEngineAndTessellator()
     dlgNode.children.push_back(dlgTxt);
     root.children.push_back(okBtn);
     root.children.push_back(slNode);
-    root.children.push_back(dlgNode);
 
+    // First verify raw pointer click inside overflow-y-auto ancestor hits child button cleanly!
+    sess.cachedRoot = root;
+    sess.renderFrame(960.0f, 720.0f);
+    auto btnHits = sess.agentQuery("", "", "ok_btn");
+    assert(btnHits.size() == 1);
+    float bx = btnHits[0].x + btnHits[0].width * 0.5f;
+    float by = btnHits[0].y + btnHits[0].height * 0.5f;
+    assert(sess.hitTestTopmost(bx, by) && sess.hitTestTopmost(bx, by)->testId == "ok_btn");
+    assert(sess.handlePointerDown(bx, by, 0, 1));
+    assert(sess.handlePointerUp(bx, by, 0));
+    assert(btnClickedByPtr);
+
+    // Now mount modal dialog and verify backdrop blocks clicks to underlying ok_btn!
+    btnClickedByPtr = false;
+    root.children.push_back(dlgNode);
     sess.cachedRoot = root;
     sess.renderFrame(960.0f, 720.0f);
     assert(sess.agentAssertAccessible().ok);
+    const auto *blockedHit = sess.hitTestTopmost(bx, by);
+    assert(blockedHit && blockedHit->tag == "backdrop");
+    sess.handlePointerDown(bx, by, 0, 1);
+    assert(!sess.handlePointerUp(bx, by, 0) && !btnClickedByPtr);
     auto dlgHits = sess.agentQuery("", "", "test_dlg");
     assert(dlgHits.size() == 1);
     assert(dlgHits[0].x > 100.0f && dlgHits[0].y > 100.0f && dlgHits[0].y + dlgHits[0].height <= 720.0f);

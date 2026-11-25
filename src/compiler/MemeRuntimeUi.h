@@ -912,10 +912,26 @@ inline MemeValue build_shadcn_module() {
                 boxProps["class"] = MemeValue(ctrlCls);
                 std::vector<MemeValue> rowCh;
                 rowCh.push_back(make_jsx_element(tag, false, toPairs(boxProps, false, true), {}));
+                std::vector<std::pair<std::string, MemeValue>> spanProps = {{"class", MemeValue("text-sm text-slate-200 cursor-pointer")}};
+                MemeValue cb = props.get("onChange", props.get("onchange", props.get("onClick", props.get("onclick", MemeValue()))));
+                bool isDisabled = props.get("disabled", MemeValue(false)).is_truthy();
+                if (cb.is_callable() && !isDisabled) {
+                    bool curChecked = props.get("checked", MemeValue(false)).is_truthy();
+                    MemeValue toggleFn = meme_fn([cb, curChecked](const std::vector<MemeValue> &) -> MemeValue {
+                        MemeValue ev = make_map({
+                            {"type", MemeValue("click")},
+                            {"checked", MemeValue(!curChecked)},
+                            {"target", make_map({{"checked", MemeValue(!curChecked)}})}
+                        });
+                        cb.call_args({ev});
+                        return MemeValue();
+                    });
+                    spanProps.emplace_back("onClick", toggleFn);
+                }
                 if (hasLabel) {
-                    rowCh.push_back(make_jsx_element("span", false, {{"class", MemeValue("text-sm text-slate-200")}}, {props.get("label")}));
+                    rowCh.push_back(make_jsx_element("span", false, spanProps, {props.get("label")}));
                 } else {
-                    rowCh.push_back(make_jsx_element("span", false, {{"class", MemeValue("text-sm text-slate-200")}}, *ch.list_data));
+                    rowCh.push_back(make_jsx_element("span", false, spanProps, *ch.list_data));
                 }
                 std::string wrapCls = "inline-flex items-center gap-2";
                 std::string uc = props.get("class", props.get("className", MemeValue(""))).to_string();

@@ -728,9 +728,9 @@ static std::string getLivePreviewHtml(const std::string &appName, int port, cons
 )RAWHTML" + initialHtml + R"RAWHTML(
     </div>
 
-    <div class="dev-badge">
-        <span class="pulse"></span>
-        <span class="text-slate-200 font-semibold">MEMElang Live</span>
+    <div class="dev-badge" id="dev-status-badge">
+        <span class="pulse" id="dev-status-dot"></span>
+        <span class="text-slate-200 font-semibold" id="dev-status-text">MEMElang Live</span>
         <span class="text-slate-500">|</span>
         <span class="text-xs text-slate-400 capitalize" id="platform-label">)RAWHTML" + platform + R"RAWHTML(</span>
         <span class="text-slate-500">|</span>
@@ -740,6 +740,20 @@ static std::string getLivePreviewHtml(const std::string &appName, int port, cons
     <script>
         let currentVersion = 1;
         let isDispatching = false;
+        function setDevConnected(ok) {
+            const dot = document.getElementById('dev-status-dot');
+            const txt = document.getElementById('dev-status-text');
+            if (!dot || !txt) return;
+            if (ok) {
+                dot.style.background = '#22c55e';
+                dot.style.boxShadow = '0 0 8px #22c55e';
+                txt.textContent = 'MEMElang Live';
+            } else {
+                dot.style.background = '#ef4444';
+                dot.style.boxShadow = '0 0 8px #ef4444';
+                txt.textContent = 'Dev Server Offline (restart meme dev)';
+            }
+        }
 
         async function __memeDispatch(id, type, value) {
             let sendVal = value || '';
@@ -769,8 +783,10 @@ static std::string getLivePreviewHtml(const std::string &appName, int port, cons
                 });
                 if (!res.ok) {
                     console.error("HTTP error from /api/dispatch:", res.status);
+                    setDevConnected(false);
                     return;
                 }
+                setDevConnected(true);
                 const data = await res.json();
                 if (data.ok && data.html) {
                     currentVersion = data.version;
@@ -830,14 +846,15 @@ static std::string getLivePreviewHtml(const std::string &appName, int port, cons
             if (isDispatching) return;
             try {
                 const res = await fetch('/api/state');
-                if (!res.ok) return;
+                if (!res.ok) { setDevConnected(false); return; }
+                setDevConnected(true);
                 const data = await res.json();
                 if (data.version !== currentVersion && !isDispatching) {
                     currentVersion = data.version;
                     if (data.html) updateApp(data.html);
                     if (data.platform) document.getElementById('platform-label').textContent = data.platform;
                 }
-            } catch (err) {}
+            } catch (err) { setDevConnected(false); }
         }
 
         window.addEventListener('keydown', (e) => {

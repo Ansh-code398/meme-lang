@@ -153,8 +153,33 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
     };
     m->set("Textarea", Value(std::make_shared<NativeMethodCallable>("Textarea", 0, 1, textareaFn)));
 
+    auto addLabelClickToggle = [](const std::shared_ptr<MemeMap> &props, const std::shared_ptr<MemeMap> &spanProps) {
+        spanProps->set("class", Value(std::string("text-sm text-slate-200 cursor-pointer")));
+        bool isDis = props->has("disabled") && props->entries["disabled"].deref().isTruthy();
+        if (isDis) return;
+        Value cbVal;
+        if (props->has("onChange") && props->entries["onChange"].deref().isCallable()) cbVal = props->entries["onChange"].deref();
+        else if (props->has("onchange") && props->entries["onchange"].deref().isCallable()) cbVal = props->entries["onchange"].deref();
+        else if (props->has("onClick") && props->entries["onClick"].deref().isCallable()) cbVal = props->entries["onClick"].deref();
+        else if (props->has("onclick") && props->entries["onclick"].deref().isCallable()) cbVal = props->entries["onclick"].deref();
+        if (cbVal.isCallable()) {
+            bool curChecked = props->has("checked") && props->entries["checked"].deref().isTruthy();
+            auto fn = [cbVal, curChecked](Interpreter &interp, const std::vector<Value> &) -> Value {
+                auto ev = std::make_shared<MemeMap>();
+                ev->set("type", Value(std::string("click")));
+                ev->set("checked", Value(!curChecked));
+                auto tgt = std::make_shared<MemeMap>();
+                tgt->set("checked", Value(!curChecked));
+                ev->set("target", Value(tgt));
+                cbVal.getCallable()->call(interp, {Value(ev)});
+                return Value();
+            };
+            spanProps->set("onClick", Value(std::make_shared<NativeMethodCallable>("labelToggle", 0, 1, fn)));
+        }
+    };
+
     // Checkbox
-    auto checkboxFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+    auto checkboxFn = [addLabelClickToggle](Interpreter &, const std::vector<Value> &args) -> Value {
         auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
         Value emptyChildren(std::make_shared<MemeList>());
         if (props->has("label") || (props->has("children") && props->entries["children"].deref().isList() && !props->entries["children"].deref().getList()->elements.empty())) {
@@ -165,14 +190,16 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
             boxProps->entries.erase("className");
             if (!boxProps->has("name") && props->has("label")) boxProps->set("name", props->entries["label"]);
             rowChildren->elements.push_back(createJsxElement("checkbox", "shrink-0", boxProps, emptyChildren));
+            auto spanProps = std::make_shared<MemeMap>();
+            addLabelClickToggle(props, spanProps);
             if (props->has("label")) {
                 auto spanList = std::make_shared<MemeList>();
                 spanList->elements.push_back(props->entries["label"]);
-                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", spanProps, Value(spanList)));
             } else {
                 auto spanList = std::make_shared<MemeList>();
                 spanList->elements = props->entries["children"].deref().getList()->elements;
-                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", spanProps, Value(spanList)));
             }
             auto wrapProps = std::make_shared<MemeMap>();
             if (props->has("class")) wrapProps->set("class", props->entries["class"]);
@@ -184,7 +211,7 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
     m->set("Checkbox", Value(std::make_shared<NativeMethodCallable>("Checkbox", 0, 1, checkboxFn)));
 
     // Switch
-    auto switchFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+    auto switchFn = [addLabelClickToggle](Interpreter &, const std::vector<Value> &args) -> Value {
         auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
         Value emptyChildren(std::make_shared<MemeList>());
         if (props->has("label")) {
@@ -195,9 +222,11 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
             swProps->entries.erase("className");
             if (!swProps->has("name")) swProps->set("name", props->entries["label"]);
             rowChildren->elements.push_back(createJsxElement("switch", "shrink-0", swProps, emptyChildren));
+            auto spanProps = std::make_shared<MemeMap>();
+            addLabelClickToggle(props, spanProps);
             auto spanList = std::make_shared<MemeList>();
             spanList->elements.push_back(props->entries["label"]);
-            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", spanProps, Value(spanList)));
             return createJsxElement("div", "inline-flex items-center gap-2", std::make_shared<MemeMap>(), Value(rowChildren));
         }
         return createJsxElement("switch", "", props, emptyChildren);
@@ -213,7 +242,7 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
     };
     m->set("RadioGroup", Value(std::make_shared<NativeMethodCallable>("RadioGroup", 0, 1, radioGroupFn)));
 
-    auto radioItemFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+    auto radioItemFn = [addLabelClickToggle](Interpreter &, const std::vector<Value> &args) -> Value {
         auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
         Value emptyChildren(std::make_shared<MemeList>());
         if (props->has("label")) {
@@ -222,9 +251,11 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
             rProps->entries = props->entries;
             if (!rProps->has("name")) rProps->set("name", props->entries["label"]);
             rowChildren->elements.push_back(createJsxElement("radio", "shrink-0", rProps, emptyChildren));
+            auto spanProps = std::make_shared<MemeMap>();
+            addLabelClickToggle(props, spanProps);
             auto spanList = std::make_shared<MemeList>();
             spanList->elements.push_back(props->entries["label"]);
-            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", spanProps, Value(spanList)));
             return createJsxElement("div", "inline-flex items-center gap-2", std::make_shared<MemeMap>(), Value(rowChildren));
         }
         return createJsxElement("radio", "", props, emptyChildren);

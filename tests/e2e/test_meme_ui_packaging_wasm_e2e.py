@@ -332,6 +332,33 @@ function loadWasmModule(jsFile) {
   appMod._meme_web_render(1040, 720);
   assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text === 'Direction: RTL'), 'RTL toggle failed');
   console.log('[PASS] T4_wasm_showcase_canvas_editor_and_rtl');
+
+  // Raw pointer coordinate clicks inside overflow-y-auto root container (desktop + mobile viewport!)
+  const clickAt = (x, y) => {
+    appMod._meme_web_pointer_down(x, y, 0, 1);
+    appMod._meme_web_pointer_up(x, y, 0);
+    appMod._meme_web_render(appMod._vw || 1040, appMod._vh || 720);
+  };
+  appMod._vw = 393; appMod._vh = 852;
+  appMod._meme_web_render(393, 852);
+  let snapMob = getSnap();
+  let tabExp = snapMob.nodes.find(n => n.testId === 'tab_explorer');
+  assert(tabExp && tabExp.width > 20 && tabExp.height > 15, 'Mobile tab_explorer bounds missing');
+  clickAt(tabExp.x + tabExp.width * 0.5, tabExp.y + tabExp.height * 0.5);
+  assert(getSnap().nodes.some(n => n.testId === 'agree_checkbox'), 'Raw pointer tap on tab_explorer failed on mobile viewport');
+
+  let chk = getSnap().nodes.find(n => n.testId === 'agree_checkbox');
+  let beforeChk = chk.checked;
+  clickAt(chk.x + chk.width * 0.5, chk.y + chk.height * 0.5);
+  assert(getSnap().nodes.find(n => n.testId === 'agree_checkbox').checked === !beforeChk, 'Raw pointer tap on checkbox failed');
+
+  let openDlgBtn = getSnap().nodes.find(n => n.testId === 'open_modal');
+  clickAt(openDlgBtn.x + openDlgBtn.width * 0.5, openDlgBtn.y + openDlgBtn.height * 0.5);
+  assert(getSnap().nodes.some(n => n.testId === 'settings_dialog'), 'Raw pointer tap did not open dialog');
+  let closeDlgBtn = getSnap().nodes.find(n => n.testId === 'modal_close_btn');
+  clickAt(closeDlgBtn.x + closeDlgBtn.width * 0.5, closeDlgBtn.y + closeDlgBtn.height * 0.5);
+  assert(!getSnap().nodes.some(n => n.testId === 'settings_dialog'), 'Raw pointer tap did not close dialog');
+  console.log('[PASS] T4_wasm_showcase_raw_pointer_coords_interactive');
 })();
 """, encoding="utf-8")
 
@@ -346,6 +373,7 @@ function loadWasmModule(jsFile) {
         "T4_wasm_showcase_explorer_controls_and_typeahead",
         "T4_wasm_showcase_reorder_and_centered_modal",
         "T4_wasm_showcase_canvas_editor_and_rtl",
+        "T4_wasm_showcase_raw_pointer_coords_interactive",
     ):
         if f"[PASS] {req_pass}" not in r_node.stdout:
             fail_test("T4_wasm_missing_assertion", f"Missing [PASS] {req_pass} in Node output:\n{r_node.stdout}\n{r_node.stderr}")

@@ -828,6 +828,18 @@ inline void solveUiNode(
         scrim.x = 0; scrim.y = 0; scrim.width = ctx.viewportW; scrim.height = ctx.viewportH;
         scrim.color = "#020617"; scrim.alpha = 0.68f; scrim.zIndex = effZ;
         cmds.push_back(scrim);
+        if (hitRegions) {
+            UiHitRegion bd;
+            bd.id = 0;
+            bd.nodeKey = nodeKey + "$backdrop";
+            bd.x = 0; bd.y = 0; bd.width = ctx.viewportW; bd.height = ctx.viewportH;
+            bd.clipRect = {0, 0, ctx.viewportW, ctx.viewportH};
+            bd.zIndex = effZ;
+            bd.tag = "backdrop";
+            bd.role = "presentation";
+            bd.accessibleName = "Modal backdrop";
+            hitRegions->push_back(std::move(bd));
+        }
     }
 
     float nodeX = parentX + style.margin[3];
@@ -897,6 +909,7 @@ inline void solveUiNode(
                              (isScroll && (node.tag == "scrollarea" || style.height > 0 || style.maxHeight > 0)));
 
     size_t bgIndex = cmds.size();
+    size_t hitBgIndex = hitRegions ? hitRegions->size() : 0;
     UiRect childClip = clipRect;
     if (emitOverflowClip) {
         float estClipH = style.height > 0 ? style.height : (stretchTargetH > 0 ? stretchTargetH : (style.maxHeight > 0 ? style.maxHeight : parentH));
@@ -1444,7 +1457,11 @@ inline void solveUiNode(
         hr.numStep = node.getNumProp("step", 1.0);
         hr.isRtl = style.isRtl;
         hr.ariaProps = node.aria;
-        hitRegions->push_back(std::move(hr));
+        if (hitBgIndex <= hitRegions->size()) {
+            hitRegions->insert(hitRegions->begin() + static_cast<std::ptrdiff_t>(hitBgIndex), std::move(hr));
+        } else {
+            hitRegions->push_back(std::move(hr));
+        }
     }
 
     // Background / Gradient / Shadow inserted BEFORE children

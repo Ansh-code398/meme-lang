@@ -114,6 +114,8 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
     id<MTLRenderPipelineState> _pipeline;
     id<MTLTexture> _atlasTex;
     CAMetalLayer *_metalLayer;
+    CGPoint _touchStartPt;
+    BOOL _touchScrolled;
 }
 
 + (Class)layerClass {
@@ -298,6 +300,8 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
     UITouch *t = [touches anyObject];
     if (!t) return;
     CGPoint pt = [t locationInView:self];
+    _touchStartPt = pt;
+    _touchScrolled = NO;
     _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 0, static_cast<int>(t.tapCount));
     const auto *hr = _session->hitTestTopmost(static_cast<float>(pt.x), static_cast<float>(pt.y));
     if (hr && (hr->tag == "input" || hr->tag == "textarea")) [self becomeFirstResponder];
@@ -315,10 +319,18 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
     CGPoint prev = [t previousLocationInView:self];
     float dy = static_cast<float>(pt.y - prev.y);
     float dx = static_cast<float>(pt.x - prev.x);
-    if (std::abs(dy) > 0.5f || std::abs(dx) > 0.5f) {
-        _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx * 0.25f, dy * 0.25f);
+    float totalDist = std::hypot(static_cast<float>(pt.x - _touchStartPt.x), static_cast<float>(pt.y - _touchStartPt.y));
+    bool scrolled = false;
+    if (totalDist > 8.0f && !_session->interaction.draggingSlider) {
+        _touchScrolled = YES;
+        _session->interaction.activeId = 0;
+        _session->interaction.activeKey.clear();
+        if (std::abs(dy) > 0.3f || std::abs(dx) > 0.3f) {
+            scrolled = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx / 28.0f, dy / 28.0f);
+        }
     }
-    if (_session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y))) {
+    bool moved = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
+    if (scrolled || moved) {
         meme_host_rerender();
         [self renderFrameNow];
     }
@@ -379,6 +391,7 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
         s->input.safeLeft = static_cast<float>(ins.left);
         s->input.safeRight = static_cast<float>(ins.right);
         s->needsRender = true;
+        meme_host_rerender();
         [self.renderView renderFrameNow];
     }
 }

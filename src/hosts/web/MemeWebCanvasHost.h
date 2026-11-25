@@ -60,7 +60,7 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
 <title>)HTML") + title + R"HTML(</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
-  canvas#meme-canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  canvas#meme-canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
 </style>
 </head>
 <body>
@@ -231,25 +231,41 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
   s.src = ")HTML" + jsFileName + R"HTML(";
   document.body.appendChild(s);
 
+  const pt = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
   canvas.addEventListener("pointermove", (e) => {
     if (!Mod) return;
-    if (Mod._meme_web_pointer_move(e.offsetX, e.offsetY)) renderFrame();
+    const [px, py] = pt(e);
+    if (Mod._meme_web_pointer_move(px, py)) renderFrame();
   });
   canvas.addEventListener("pointerdown", (e) => {
     if (!Mod) return;
     canvas.focus();
-    Mod._meme_web_pointer_down(e.offsetX, e.offsetY, e.button, e.detail || 1);
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (_) {} }
+    const [px, py] = pt(e);
+    Mod._meme_web_pointer_down(px, py, e.button, e.detail || 1);
     renderFrame();
   });
   canvas.addEventListener("pointerup", (e) => {
     if (!Mod) return;
-    Mod._meme_web_pointer_up(e.offsetX, e.offsetY, e.button);
+    if (canvas.releasePointerCapture) { try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} }
+    const [px, py] = pt(e);
+    Mod._meme_web_pointer_up(px, py, e.button);
+    renderFrame();
+  });
+  canvas.addEventListener("pointercancel", (e) => {
+    if (!Mod) return;
+    const [px, py] = pt(e);
+    Mod._meme_web_pointer_up(px, py, e.button);
     renderFrame();
   });
   canvas.addEventListener("wheel", (e) => {
     if (!Mod) return;
     e.preventDefault();
-    if (Mod._meme_web_scroll(e.offsetX, e.offsetY, -e.deltaX * 0.1, -e.deltaY * 0.1)) renderFrame();
+    const [px, py] = pt(e);
+    if (Mod._meme_web_scroll(px, py, -e.deltaX * 0.1, -e.deltaY * 0.1)) renderFrame();
   }, { passive: false });
   canvas.addEventListener("keydown", async (e) => {
     if (!Mod) return;

@@ -147,14 +147,24 @@ public:
     }
 
     const UiHitRegion *hitTestTopmost(float px, float py) const {
-        for (auto it = lastHits.rbegin(); it != lastHits.rend(); ++it) {
-            if (!it->disabled && it->clipRect.contains(px, py) &&
-                px >= it->x && px <= it->x + it->width &&
-                py >= it->y && py <= it->y + it->height) {
-                return &(*it);
+        const UiHitRegion *best = nullptr;
+        auto priorityOf = [](const UiHitRegion &hr) -> int {
+            if (hr.hasClick || hr.hasChange || hr.hasPointerDown || hr.hasKeyDown || hr.focusable) return 3;
+            if (hr.tag == "backdrop") return 2;
+            if (hr.isScrollContainer) return 1;
+            return 0;
+        };
+        for (const auto &hr : lastHits) {
+            if (!hr.disabled && hr.clipRect.contains(px, py) &&
+                px >= hr.x && px <= hr.x + hr.width &&
+                py >= hr.y && py <= hr.y + hr.height) {
+                if (!best || hr.zIndex > best->zIndex ||
+                    (hr.zIndex == best->zIndex && priorityOf(hr) >= priorityOf(*best))) {
+                    best = &hr;
+                }
             }
         }
-        return nullptr;
+        return best;
     }
 
     const UiHitRegion *findRegionById(int id) const {
@@ -365,14 +375,21 @@ public:
             input.wheelDeltaX = 0; input.wheelDeltaY = 0;
             return true;
         }
-        for (auto it = lastHits.rbegin(); it != lastHits.rend(); ++it) {
-            if (it->isScrollContainer && x >= it->x && x <= it->x + it->width && y >= it->y && y <= it->y + it->height) {
-                float &sy = interaction.scrollOffsetsY[it->nodeKey];
-                sy = std::clamp(sy - dy * 28.0f, 0.0f, std::max(0.0f, it->maxScrollY));
-                needsRender = true;
-                version++;
-                return true;
+        const UiHitRegion *scrollTarget = nullptr;
+        for (const auto &hr : lastHits) {
+            if (hr.isScrollContainer && hr.clipRect.contains(x, y) &&
+                x >= hr.x && x <= hr.x + hr.width && y >= hr.y && y <= hr.y + hr.height) {
+                if (!scrollTarget || hr.zIndex >= scrollTarget->zIndex) {
+                    scrollTarget = &hr;
+                }
             }
+        }
+        if (scrollTarget) {
+            float &sy = interaction.scrollOffsetsY[scrollTarget->nodeKey];
+            sy = std::clamp(sy - dy * 28.0f, 0.0f, std::max(0.0f, scrollTarget->maxScrollY));
+            needsRender = true;
+            version++;
+            return true;
         }
         return false;
     }

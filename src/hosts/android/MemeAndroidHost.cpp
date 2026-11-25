@@ -217,7 +217,11 @@ void processAndroidInput(AndroidAppState *st, AInputEvent *ev, MemeUI::UiSession
         } else if (action == AMOTION_EVENT_ACTION_MOVE) {
             float dy = (sess->input.pointerY >= 0) ? (py - sess->input.pointerY) : 0.0f;
             float dx = (sess->input.pointerX >= 0) ? (px - sess->input.pointerX) : 0.0f;
-            if (std::abs(dy) > 0.5f || std::abs(dx) > 0.5f) sess->handleScroll(px, py, dx * 0.25f, dy * 0.25f);
+            if (!sess->interaction.draggingSlider && (std::abs(dy) > 4.0f || std::abs(dx) > 4.0f)) {
+                sess->interaction.activeId = 0;
+                sess->interaction.activeKey.clear();
+                sess->handleScroll(px, py, dx / 28.0f, dy / 28.0f);
+            }
             sess->handlePointerMove(px, py);
             meme_host_rerender();
         } else if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
