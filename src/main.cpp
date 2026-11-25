@@ -28,6 +28,7 @@
 #include "ui/DevServerState.h"
 #include "ui/NativeDesktopWindow.h"
 #include "compiler/NativeCompiler.h"
+#include "packager/MemePackager.h"
 #include "lsp/LspServer.h"
 #include "dap/DapServer.h"
 
@@ -53,6 +54,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " test [dir]                Run test runner on *_test.meme files\n";
     std::cout << "  " << prog << " build [file]              Build project via tapri.json or compile script\n";
     std::cout << "  " << prog << " compile <file> [-o bin]   Ahead-Of-Time (AOT) compile to native machine binary\n";
+    std::cout << "  " << prog << " package <file> --target=.. Package multi-platform app (mac|win|deb|rpm|apk|ipa|ipk|web|all)\n";
     std::cout << "  " << prog << " --native <file> [args]    Compile and run immediately at 100% native CPU speed\n";
     std::cout << "  " << prog << " pakao <file> ...          Alias for compile (Cook/bake to native binary)\n";
     std::cout << "  " << prog << " lsp | --lsp              Launch Language Server Protocol (LSP) daemon\n";
@@ -1866,6 +1868,25 @@ static void handleCompile(int argc, char *argv[])
         return;
     }
 
+    if (target == "mac" || target == "macos" || target == "win" || target == "windows" ||
+        target == "deb" || target == "rpm" || target == "ipk" || target == "apk" ||
+        target == "ipa" || target == "ios" || target == "web" || target == "wasm" || target == "all")
+    {
+        std::string outDir = outputPath.empty() ? "dist" : outputPath;
+        std::cout << formatRichText("[asmani bold]📦 Packaging " + file + " for target '" + target + "' -> " + outDir + "...[/]\n");
+        MemePackager::PackageResult pr = MemePackager::packageForTarget(file, target, outDir, verbose);
+        if (!pr.success)
+        {
+            std::cerr << formatRichText("[laal bold]❌ Packaging failed:\n" + pr.error + "[/]\n");
+            std::exit(1);
+        }
+        for (const auto &art : pr.artifacts)
+        {
+            std::cout << formatRichText("[hara bold]✔ Packaged:[/] [bold]" + art + "[/]\n");
+        }
+        return;
+    }
+
     if (outputPath.empty())
     {
         outputPath = stem;
@@ -1956,11 +1977,20 @@ static bool parseTapriJson(const std::string &content, TapriManifest &manifest, 
 
 static void handleBuild(int argc, char *argv[])
 {
-    // If a source file was explicitly passed: ./meme build foo.meme
-    if (argc >= 3 && std::string(argv[2]).ends_with(".meme"))
+    std::string buildTarget = "host";
+    std::string customOut = "";
+    bool verbose = false;
+    for (int i = 2; i < argc; ++i)
     {
-        handleCompile(argc, argv);
-        return;
+        std::string a = argv[i];
+        if (a.ends_with(".meme"))
+        {
+            handleCompile(argc, argv);
+            return;
+        }
+        if (a.rfind("--target=", 0) == 0) buildTarget = a.substr(9);
+        else if ((a == "-o" || a == "--output") && i + 1 < argc) customOut = argv[++i];
+        else if (a == "-v" || a == "--verbose") verbose = true;
     }
 
     // Automatically inspect tapri.json manifest in current directory
@@ -2006,9 +2036,30 @@ static void handleBuild(int argc, char *argv[])
         std::exit(1);
     }
 
-    if (manifest.output.empty())
+    if (!customOut.empty())
+    {
+        manifest.output = customOut;
+    }
+    else if (manifest.output.empty())
     {
         manifest.output = manifest.name.empty() ? "bin/app" : ("bin/" + manifest.name);
+    }
+
+    if (buildTarget != "host" && buildTarget != "native")
+    {
+        std::string outDir = customOut.empty() ? "dist" : customOut;
+        std::cout << formatRichText("[asmani bold]📦 Building & packaging tapri project '" + manifest.name + "' (target=" + buildTarget + ") -> " + outDir + "...[/]\n");
+        MemePackager::PackageResult pr = MemePackager::packageForTarget(manifest.entry, buildTarget, outDir, verbose);
+        if (!pr.success)
+        {
+            std::cerr << formatRichText("[laal bold]❌ Packaging failed:\n" + pr.error + "[/]\n");
+            std::exit(1);
+        }
+        for (const auto &art : pr.artifacts)
+        {
+            std::cout << formatRichText("[hara bold]✔ Packaged:[/] [bold]" + art + "[/]\n");
+        }
+        return;
     }
 
     // Ensure output directories exist
@@ -2031,6 +2082,63 @@ static void handleBuild(int argc, char *argv[])
     }
 
     std::cout << formatRichText("[hara bold]✔ Pak gaya:[/] Generated native machine binary at [bold]" + res.binaryPath + "[/] (" + std::to_string(static_cast<int>(res.compileTimeMs)) + "ms)\n");
+}
+
+static void handlePackage(int argc, char *argv[])
+{
+    if (argc < 3)
+    {
+        std::cout << formatRichText("[peela]Usage:[/] ./meme package <file.meme> [--target=mac|win|deb|rpm|ipk|apk|ipa|web|all] [-o outdir] [-v]\n");
+        return;
+    }
+    std::string file = "";
+    std::string target = "mac";
+    std::string outDir = "dist";
+    bool verbose = false;
+
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string a = argv[i];
+        if ((a == "-o" || a == "--output") && i + 1 < argc)
+        {
+            outDir = argv[++i];
+        }
+        else if (a.rfind("--target=", 0) == 0)
+        {
+            target = a.substr(9);
+        }
+        else if (a == "--target" && i + 1 < argc)
+        {
+            target = argv[++i];
+        }
+        else if (a == "-v" || a == "--verbose")
+        {
+            verbose = true;
+        }
+        else if (!a.empty() && a[0] != '-' && file.empty())
+        {
+            file = a;
+        }
+    }
+
+    if (file.empty())
+    {
+        std::cerr << formatRichText("[laal]❌ Source file path daalo: ./meme package <file.meme> --target=...[/]\n");
+        std::exit(1);
+    }
+
+    std::cout << formatRichText("[asmani bold]📦 Packaging " + file + " (target=" + target + ") -> " + outDir + "...[/]\n");
+    MemePackager::PackageResult pr = MemePackager::packageForTarget(file, target, outDir, verbose);
+    if (!pr.success)
+    {
+        std::cerr << formatRichText("[laal bold]❌ Packaging failed:\n" + pr.error + "[/]\n");
+        std::exit(1);
+    }
+    std::cout << formatRichText("[hara bold]✔ Package ready:[/] [bold]" + pr.outputPath + "[/] (" + std::to_string(static_cast<int>(pr.elapsedMs)) + "ms)\n");
+    for (const auto &art : pr.artifacts)
+    {
+        std::cout << "   -> " << art << "\n";
+    }
 }
 
 static bool runSource(const std::string &source, Interpreter &interpreter)
@@ -2306,6 +2414,11 @@ int main(int argc, char *argv[])
         else if (arg1 == "pakao" || arg1 == "compile")
         {
             handleCompile(argc, argv);
+            return 0;
+        }
+        else if (arg1 == "package" || arg1 == "bandh")
+        {
+            handlePackage(argc, argv);
             return 0;
         }
         else if (arg1 == "lsp" || arg1 == "--lsp")

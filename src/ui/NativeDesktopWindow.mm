@@ -2,379 +2,179 @@
 
 #if defined(__APPLE__)
 #import <Cocoa/Cocoa.h>
-#include "src/ui/TailwindEngine.h"
-#include "src/interpreter/Interpreter.h"
-#include <vector>
-#include <mutex>
-#include <iostream>
+#include "../interpreter/Interpreter.h"
+#include "../hosts/macos/MemeMacHost.h"
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <functional>
+#include <string>
 
-@interface MemeNativeCanvasView : NSView <NSTextFieldDelegate> {
-    DevServerState *statePtr;
-    NSTextField *nativeInput;
-    int activeInputId;
-    std::vector<TailwindEngine::GpuDrawCmd> cachedCmds;
-    std::vector<TailwindEngine::HitRegion> cachedHitRegions;
-    NSTrackingArea *trackingArea;
-}
-- (instancetype)initWithFrame:(NSRect)frameRect state:(DevServerState *)st;
-- (void)setState:(DevServerState *)st;
+@interface MemeDevWindowDelegate : NSObject <NSWindowDelegate>
+@property (nonatomic, assign) DevServerState *devState;
+@property (nonatomic, assign) bool *windowOpenPtr;
 @end
 
-@interface MemeWindowDelegate : NSObject <NSWindowDelegate> {
-    DevServerState *statePtr;
-}
-- (instancetype)initWithState:(DevServerState *)st;
-@end
-
-static NSWindow *g_nativeWindow = nil;
-static MemeNativeCanvasView *g_nativeCanvasView = nil;
-static MemeWindowDelegate *g_windowDelegate = nil;
-
-@implementation MemeWindowDelegate
-- (instancetype)initWithState:(DevServerState *)st {
-    self = [super init];
-    if (self) {
-        statePtr = st;
-    }
-    return self;
-}
-
+@implementation MemeDevWindowDelegate
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
-    if (statePtr) {
-        std::lock_guard<std::mutex> lock(statePtr->mtx);
-        statePtr->running = false;
-        statePtr->platform = "terminal";
-    }
-    g_nativeWindow = nil;
-    g_nativeCanvasView = nil;
-    g_windowDelegate = nil;
+    if (_windowOpenPtr) *_windowOpenPtr = false;
+    if (_devState) _devState->running = false;
 }
-@end
-
-@implementation MemeNativeCanvasView
-
-- (void)setState:(DevServerState *)st {
-    statePtr = st;
-}
-
-- (instancetype)initWithFrame:(NSRect)frameRect state:(DevServerState *)st {
-    self = [super initWithFrame:frameRect];
-    if (self) {
-        statePtr = st;
-        activeInputId = 0;
-
-        nativeInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
-        [nativeInput setHidden:YES];
-        [nativeInput setDelegate:self];
-        [nativeInput setFocusRingType:NSFocusRingTypeNone];
-        [nativeInput setBordered:NO];
-        [nativeInput setDrawsBackground:NO];
-        [nativeInput setTextColor:[NSColor whiteColor]];
-        [nativeInput setFont:[NSFont systemFontOfSize:14.0 weight:NSFontWeightRegular]];
-
-        NSMutableAttributedString *ph = [[NSMutableAttributedString alloc] initWithString:@"Naya task likho..."];
-        [ph addAttribute:NSForegroundColorAttributeName
-                   value:[NSColor colorWithRed:100.0/255.0 green:116.0/255.0 blue:139.0/255.0 alpha:1.0]
-                   range:NSMakeRange(0, [ph length])];
-        [[nativeInput cell] setPlaceholderAttributedString:ph];
-
-        [self addSubview:nativeInput];
-    }
-    return self;
-}
-
-- (BOOL)isFlipped {
-    return YES;
-}
-
-- (BOOL)acceptsFirstResponder {
-    return YES;
-}
-
-- (void)updateTrackingAreas {
-    [super updateTrackingAreas];
-    if (trackingArea) {
-        [self removeTrackingArea:trackingArea];
-    }
-    trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds]
-                                                options:(NSTrackingMouseMoved | NSTrackingActiveAlways)
-                                                  owner:self
-                                               userInfo:nil];
-    [self addTrackingArea:trackingArea];
-}
-
-- (void)mouseMoved:(NSEvent *)event {
-    NSPoint loc = [self convertPoint:[event locationInWindow] fromView:nil];
-    bool isOverClickable = false;
-    for (const auto &hr : cachedHitRegions) {
-        if (hr.hasClick &&
-            loc.x >= hr.x && loc.x <= hr.x + hr.width &&
-            loc.y >= hr.y && loc.y <= hr.y + hr.height) {
-            isOverClickable = true;
-            break;
-        }
-    }
-    if (isOverClickable) {
-        [[NSCursor pointingHandCursor] set];
-    } else {
-        [[NSCursor arrowCursor] set];
-    }
-}
-
-- (void)mouseDown:(NSEvent *)event {
-    if (!statePtr || !statePtr->interpreter) return;
-
-    NSPoint loc = [self convertPoint:[event locationInWindow] fromView:nil];
-    for (const auto &hr : cachedHitRegions) {
-        if (loc.x >= hr.x && loc.x <= hr.x + hr.width &&
-            loc.y >= hr.y && loc.y <= hr.y + hr.height) {
-            if (hr.hasClick) {
-                // If native input has text, pass it along with the click
-                std::string inVal = "";
-                if (![nativeInput isHidden]) {
-                    inVal = [[nativeInput stringValue] UTF8String];
-                }
-                bool ok = false;
-                {
-                    std::lock_guard<std::mutex> lock(statePtr->mtx);
-                    ok = statePtr->interpreter->dispatchUiEvent(hr.id, "click", inVal);
-                    if (ok) {
-                        statePtr->version++;
-                        statePtr->gpuCommands = statePtr->interpreter->getLastGpuCommandsJson();
-                        statePtr->hitRegions = statePtr->interpreter->getLastHitRegionsJson();
-                        statePtr->terminalUi = statePtr->interpreter->getLastTerminalUi();
-                        statePtr->html = statePtr->interpreter->getLastHtml();
-                    }
-                }
-                if (ok) {
-                    [self setNeedsDisplay:YES];
-                }
-                return;
-            } else if (hr.tag == "input" || hr.hasChange) {
-                [[self window] makeFirstResponder:nativeInput];
-                return;
-            }
-        }
-    }
-}
-
-- (void)controlTextDidChange:(NSNotification *)obj {
-    (void)obj;
-    if (activeInputId > 0 && statePtr && statePtr->interpreter) {
-        std::string val = [[nativeInput stringValue] UTF8String];
-        statePtr->interpreter->dispatchUiEvent(activeInputId, "change", val);
-        std::lock_guard<std::mutex> lock(statePtr->mtx);
-        statePtr->version++;
-        statePtr->gpuCommands = statePtr->interpreter->getLastGpuCommandsJson();
-        statePtr->hitRegions = statePtr->interpreter->getLastHitRegionsJson();
-        statePtr->terminalUi = statePtr->interpreter->getLastTerminalUi();
-        statePtr->html = statePtr->interpreter->getLastHtml();
-    }
-}
-
-- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector {
-    (void)control;
-    (void)textView;
-    if (commandSelector == @selector(insertNewline:)) {
-        if (activeInputId > 0 && statePtr && statePtr->interpreter) {
-            std::string val = [[nativeInput stringValue] UTF8String];
-            statePtr->interpreter->dispatchUiEvent(activeInputId, "enter", val);
-            {
-                std::lock_guard<std::mutex> lock(statePtr->mtx);
-                statePtr->version++;
-                statePtr->gpuCommands = statePtr->interpreter->getLastGpuCommandsJson();
-                statePtr->hitRegions = statePtr->interpreter->getLastHitRegionsJson();
-                statePtr->terminalUi = statePtr->interpreter->getLastTerminalUi();
-                statePtr->html = statePtr->interpreter->getLastHtml();
-            }
-            [nativeInput setStringValue:@""];
-            [self setNeedsDisplay:YES];
-        }
-        return YES;
-    }
-    return NO;
-}
-
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    if (!statePtr || !statePtr->interpreter) return;
-
-    NSRect b = [self bounds];
-    cachedHitRegions.clear();
-
-    {
-        std::lock_guard<std::mutex> lock(statePtr->mtx);
-        Value rootVal = statePtr->interpreter->getRootUiComponent();
-        cachedCmds = TailwindEngine::computeNativeLayout(rootVal, b.size.width, b.size.height, &cachedHitRegions);
-        statePtr->gpuCommands = TailwindEngine::gpuCommandsToJson(cachedCmds);
-        statePtr->hitRegions = TailwindEngine::hitRegionsToJson(cachedHitRegions);
-    }
-
-    // Window background: Slate 950 (#020617)
-    [[NSColor colorWithRed:2.0/255.0 green:6.0/255.0 blue:23.0/255.0 alpha:1.0] setFill];
-    NSRectFill(b);
-
-    // Locate active input hit region
-    const TailwindEngine::HitRegion *inputHr = nullptr;
-    for (const auto &hr : cachedHitRegions) {
-        if (hr.tag == "input" || hr.hasChange) {
-            inputHr = &hr;
-            break;
-        }
-    }
-
-    if (inputHr) {
-        activeInputId = inputHr->id;
-        NSRect inFrame = NSMakeRect(inputHr->x + 16, inputHr->y + 8,
-                                    std::max(60.0f, inputHr->width - 32),
-                                    std::max(20.0f, inputHr->height - 16));
-        [nativeInput setFrame:inFrame];
-        [nativeInput setHidden:NO];
-        if (![nativeInput currentEditor] || inputHr->inputValue.empty()) {
-            [nativeInput setStringValue:[NSString stringWithUTF8String:inputHr->inputValue.c_str()]];
-        }
-    } else {
-        [nativeInput setHidden:YES];
-    }
-
-    // Direct Native CoreGraphics Painting
-    for (const auto &cmd : cachedCmds) {
-        // Skip drawing placeholder or text inside the input box since nativeInput handles it natively
-        if (inputHr && cmd.type == "DRAW_TEXT" &&
-            cmd.x >= inputHr->x && cmd.x <= inputHr->x + inputHr->width &&
-            cmd.y >= inputHr->y && cmd.y <= inputHr->y + inputHr->height) {
-            continue;
-        }
-
-        TailwindEngine::ColorRgba c = TailwindEngine::hexToRgba(cmd.color, cmd.alpha);
-        NSColor *col = [NSColor colorWithRed:c.r green:c.g blue:c.b alpha:c.a];
-
-        if (cmd.type == "FILL_ROUND_RECT") {
-            NSRect r = NSMakeRect(cmd.x, cmd.y, cmd.width, cmd.height);
-            NSBezierPath *bp = [NSBezierPath bezierPathWithRoundedRect:r xRadius:cmd.radius yRadius:cmd.radius];
-            [col setFill];
-            [bp fill];
-        } else if (cmd.type == "STROKE_ROUND_RECT") {
-            NSRect r = NSMakeRect(cmd.x, cmd.y, cmd.width, cmd.height);
-            NSBezierPath *bp = [NSBezierPath bezierPathWithRoundedRect:r xRadius:cmd.radius yRadius:cmd.radius];
-            [bp setLineWidth:cmd.lineWidth];
-            [col setStroke];
-            [bp stroke];
-        } else if (cmd.type == "DRAW_LINE") {
-            NSBezierPath *bp = [NSBezierPath bezierPath];
-            [bp moveToPoint:NSMakePoint(cmd.x, cmd.y)];
-            [bp lineToPoint:NSMakePoint(cmd.x + cmd.width, cmd.y + cmd.height)];
-            [bp setLineWidth:cmd.lineWidth];
-            [col setStroke];
-            [bp stroke];
-        } else if (cmd.type == "DRAW_TEXT") {
-            NSFontWeight w = (cmd.fontWeight >= 800) ? NSFontWeightBlack :
-                             (cmd.fontWeight >= 700) ? NSFontWeightBold :
-                             (cmd.fontWeight >= 600) ? NSFontWeightSemibold :
-                             (cmd.fontWeight >= 500) ? NSFontWeightMedium : NSFontWeightRegular;
-            NSFont *font = [NSFont systemFontOfSize:cmd.fontSize weight:w];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: font,
-                NSForegroundColorAttributeName: col
-            };
-            NSString *nsText = [NSString stringWithUTF8String:cmd.text.c_str()];
-            // In flipped coordinates, baseline is cmd.y. The glyph top-left is at cmd.y - fontSize * 0.88.
-            NSPoint pt = NSMakePoint(cmd.x, cmd.y - cmd.fontSize * 0.88f);
-            [nsText drawAtPoint:pt withAttributes:attrs];
-        }
-    }
-}
-
 @end
 
 namespace MemeUI {
 
+static NSWindow *g_window = nil;
+static MemeNativeGpuView *g_view = nil;
+static MemeDevWindowDelegate *g_delegate = nil;
+static bool g_windowOpen = false;
+static int g_lastSeenVersion = -1;
+static std::function<void()> g_renderCallback;
+static UiSession g_fallbackSession;
+
 void initNativeDesktopApp() {
+    if (std::getenv("MEME_HEADLESS") != nullptr) return;
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-        [NSApp finishLaunching];
+    }
+}
+
+void triggerNativeDesktopRepaint() {
+    if (g_view != nil) {
+        if (g_renderCallback) g_renderCallback();
+        [g_view setNeedsDisplay:YES];
     }
 }
 
 void showNativeDesktopWindow(DevServerState &state) {
-    @autoreleasepool {
-        if (!g_nativeWindow) {
-            initNativeDesktopApp();
+    if (std::getenv("MEME_HEADLESS") != nullptr) return;
+    if (g_windowOpen && g_window != nil) {
+        [g_window makeKeyAndOrderFront:nil];
+        return;
+    }
 
-            NSRect frame = NSMakeRect(0, 0, 960, 720);
-            g_nativeWindow = [[NSWindow alloc] initWithContentRect:frame
-                                                         styleMask:(NSWindowStyleMaskTitled |
-                                                                    NSWindowStyleMaskClosable |
-                                                                    NSWindowStyleMaskMiniaturizable |
-                                                                    NSWindowStyleMaskResizable)
-                                                           backing:NSBackingStoreBuffered
-                                                             defer:NO];
-            std::string winTitle = state.appName + " — MEMElang Native Desktop";
-            [g_nativeWindow setTitle:[NSString stringWithUTF8String:winTitle.c_str()]];
-            [g_nativeWindow setReleasedWhenClosed:NO];
-            [g_nativeWindow center];
-            [g_nativeWindow setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]];
+    UiSession *sess = state.uiSession
+        ? state.uiSession
+        : (state.interpreter ? &state.interpreter->getUiSession() : &g_fallbackSession);
+    bindMacClipboard(*sess);
 
-            g_windowDelegate = [[MemeWindowDelegate alloc] initWithState:&state];
-            [g_nativeWindow setDelegate:g_windowDelegate];
-
-            g_nativeCanvasView = [[MemeNativeCanvasView alloc] initWithFrame:frame state:&state];
-            [g_nativeWindow setContentView:g_nativeCanvasView];
-            [g_nativeWindow makeKeyAndOrderFront:nil];
-            [g_nativeWindow orderFrontRegardless];
-            [NSApp activateIgnoringOtherApps:YES];
-        } else {
-            if (g_nativeCanvasView) {
-                [g_nativeCanvasView setState:&state];
-            }
-            [g_nativeWindow makeKeyAndOrderFront:nil];
-            [g_nativeWindow orderFrontRegardless];
-            [NSApp activateIgnoringOtherApps:YES];
-            [g_nativeCanvasView setNeedsDisplay:YES];
+    g_renderCallback = [&state, sess]() {
+        if (state.onRenderFrame) {
+            state.onRenderFrame();
+        } else if (state.interpreter) {
+            state.interpreter->triggerUiRerender();
+        } else if (sess) {
+            float vw = sess->input.viewportW > 0 ? sess->input.viewportW : static_cast<float>(state.viewportWidth);
+            float vh = sess->input.viewportH > 0 ? sess->input.viewportH : static_cast<float>(state.viewportHeight);
+            sess->renderFrame(vw, vh);
         }
+    };
+
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+        int w = std::max(320, state.viewportWidth);
+        int h = std::max(240, state.viewportHeight);
+        NSRect frame = NSMakeRect(120, 120, w, h);
+        NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                  NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
+
+        g_window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+        std::string title = state.appName + " — MEME-UI Native Desktop";
+        NSString *nsTitle = [NSString stringWithUTF8String:title.c_str()];
+        [g_window setTitle:(nsTitle ? nsTitle : @"MEME-UI Native Desktop")];
+        [g_window setAcceptsMouseMovedEvents:YES];
+
+        g_delegate = [[MemeDevWindowDelegate alloc] init];
+        g_delegate.devState = &state;
+        g_delegate.windowOpenPtr = &g_windowOpen;
+        [g_window setDelegate:g_delegate];
+
+        g_view = [[MemeNativeGpuView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+        g_view.session = sess;
+        g_view.sessionMutex = &state.mtx;
+        g_view.onNeedRender = &g_renderCallback;
+        [g_view setupRenderer];
+
+        [g_window setContentView:g_view];
+        [g_window makeFirstResponder:g_view];
+        [g_window center];
+        [g_window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+
+        g_windowOpen = true;
+        g_lastSeenVersion = state.version;
+        if (sess) {
+            sess->input.viewportW = static_cast<float>(w);
+            sess->input.viewportH = static_cast<float>(h);
+            g_renderCallback();
+        }
+        [g_view setNeedsDisplay:YES];
     }
 }
 
 void hideNativeDesktopWindow() {
+    g_windowOpen = false;
     @autoreleasepool {
-        if (g_nativeWindow) {
-            [g_nativeWindow orderOut:nil];
+        if (g_window) {
+            [g_window close];
+            MEME_OBJC_RELEASE(g_window);
+            g_window = nil;
+        }
+        if (g_view) {
+            MEME_OBJC_RELEASE(g_view);
+            g_view = nil;
+        }
+        if (g_delegate) {
+            MEME_OBJC_RELEASE(g_delegate);
+            g_delegate = nil;
         }
     }
 }
 
 bool isNativeDesktopWindowOpen() {
-    return (g_nativeWindow != nil && [g_nativeWindow isVisible]);
+    return g_windowOpen;
 }
 
 void pumpNativeDesktopEvents(double timeoutSeconds) {
+    if (!g_windowOpen) return;
     @autoreleasepool {
-        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                            untilDate:[NSDate dateWithTimeIntervalSinceNow:timeoutSeconds]
-                                               inMode:NSDefaultRunLoopMode
-                                              dequeue:YES];
-        if (event) {
-            [NSApp sendEvent:event];
-            [NSApp updateWindows];
+        NSEvent *ev = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                         untilDate:[NSDate dateWithTimeIntervalSinceNow:timeoutSeconds]
+                                            inMode:NSDefaultRunLoopMode
+                                           dequeue:YES];
+        while (ev) {
+            [NSApp sendEvent:ev];
+            ev = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                    untilDate:[NSDate distantPast]
+                                       inMode:NSDefaultRunLoopMode
+                                      dequeue:YES];
         }
-    }
-}
+        [NSApp updateWindows];
 
-void triggerNativeDesktopRepaint() {
-    @autoreleasepool {
-        if (g_nativeCanvasView) {
-            [g_nativeCanvasView setNeedsDisplay:YES];
+        if (g_view && g_view.session) {
+            bool redraw = false;
+            if (g_view.session->needsRender || g_view.session->isImmediateMode) redraw = true;
+            if (g_delegate && g_delegate.devState && g_delegate.devState->version != g_lastSeenVersion) {
+                g_lastSeenVersion = g_delegate.devState->version;
+                if (g_delegate.devState->uiSession) g_view.session = g_delegate.devState->uiSession;
+                else if (g_delegate.devState->interpreter) g_view.session = &g_delegate.devState->interpreter->getUiSession();
+                redraw = true;
+            }
+            if (redraw) {
+                if (g_renderCallback) g_renderCallback();
+                [g_view setNeedsDisplay:YES];
+            }
         }
     }
 }
 
 } // namespace MemeUI
 
-#else // Non-Apple stub
-
+#else
 namespace MemeUI {
 void initNativeDesktopApp() {}
 void showNativeDesktopWindow(DevServerState &) {}
@@ -383,5 +183,4 @@ bool isNativeDesktopWindowOpen() { return false; }
 void pumpNativeDesktopEvents(double) {}
 void triggerNativeDesktopRepaint() {}
 }
-
 #endif

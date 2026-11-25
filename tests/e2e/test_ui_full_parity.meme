@@ -1,0 +1,484 @@
+// ==============================================================================
+// MEMElang E2E Test Suite - MEME-UI Full Primitives, JSX/Tailwind, A11y & Egui
+// Verifies dual-engine parity (Tree-Walk Interpreter + Native C++20 AOT).
+// Note: Strictly adheres to 0 occurrences of the forbidden word.
+// ==============================================================================
+
+bula "ui:primitives" jaise {
+    definePrimitive, createParts, mergeProps,
+    createPopup, createRovingFocus, createFocusTrap, createFocusScope,
+    createSelection, createTypeahead, createVirtualizer,
+    createReorder, createResize, createDisclosure, createTabs,
+    createSlider, createToast, createTooltip, createAgent
+};
+bula "ui:shadcn" jaise {
+    Card, Button, Badge, Input, Textarea, Checkbox, Switch,
+    RadioGroup, RadioItem, Slider, Progress,
+    Tabs, TabsList, TabsTrigger, TabsContent,
+    Dialog, Popover, Tooltip, Toast,
+    ResizablePanelGroup, ResizablePanel, ResizableHandle,
+    ScrollArea, Canvas, Icon, Separator
+};
+bula "egui";
+
+dikha "=== MEME-UI Comprehensive Dual-Engine Parity Suite ===";
+
+kaam sahi_hai(actual, expected, name) {
+    agar (actual != expected) {
+        dikha "[FAIL] " + name + " | expected=" + string(expected) + " got=" + string(actual);
+        chillao "Assertion failed: " + name;
+    }
+    dikha "[PASS] " + name;
+}
+
+kaam assert_true(cond, name) {
+    agar (!cond) {
+        dikha "[FAIL] " + name;
+        chillao "Assertion failed: " + name;
+    }
+    dikha "[PASS] " + name;
+}
+
+// ==============================================================================
+// TIER 1 & 2: Headless Composable Primitives & Edge Cases (vercel-labs/ui)
+// ==============================================================================
+
+// 1. mergeProps, createParts, definePrimitive (chained handlers & class merge)
+pakad clickLog = [];
+pakad pMerged = mergeProps(
+    { "class": "base-cls", "role": "button", "onClick": (e) => { clickLog.push("A"); } },
+    { "class": "extra-cls", "disabled": jhooth, "onClick": (e) => { clickLog.push("B"); } }
+);
+sahi_hai(pMerged["class"], "base-cls extra-cls", "T1_merge_props_class");
+pMerged.onClick({});
+sahi_hai(clickLog.lambai(), 2, "T1_merge_props_chains_handlers_len");
+sahi_hai(clickLog[0] + clickLog[1], "AB", "T1_merge_props_handler_order");
+
+pakad parts = createParts({
+    "root": (u) => ({ "class": "part-root", "role": "group" }),
+    "trigger": (u) => ({ "class": "part-trig", "tabIndex": 0 })
+});
+sahi_hai(parts.root({ "class": "custom" })["class"], "part-root custom", "T1_create_parts_root");
+
+pakad makeToggleBox = definePrimitive({
+    "defaults": { "labelPrefix": "Box" },
+    "parts": {
+        "button": (opts, u) => ({ "role": "checkbox", "aria-label": opts.labelPrefix })
+    },
+    "setup": (opts, inst) => ({ "kind": "custom_primitive" })
+});
+pakad tBox = makeToggleBox({ "labelPrefix": "Agree" });
+sahi_hai(tBox.kind, "custom_primitive", "T1_define_primitive_setup");
+sahi_hai(tBox.parts.button({})["aria-label"], "Agree", "T1_define_primitive_parts");
+
+// 2. createPopup (collision flip/shift, RTL, nested LIFO Escape, outside click)
+pakad outerClosed = jhooth;
+pakad innerClosed = jhooth;
+pakad pOuter = createPopup({
+    "id": "pop_outer",
+    "restoreFocusToId": "anchor_btn",
+    "onOpenChange": (o) => { agar (!o) { outerClosed = sach; } }
+});
+pakad pInner = createPopup({
+    "id": "pop_inner",
+    "restoreFocusToId": "outer_item",
+    "onOpenChange": (o) => { agar (!o) { innerClosed = sach; } }
+});
+pakad placeFlip = pOuter.computePlacement({
+    "side": "bottom",
+    "align": "start",
+    "anchor": { "x": 340, "y": 530, "width": 80, "height": 32 },
+    "popupWidth": 180,
+    "popupHeight": 140,
+    "viewport": { "x": 0, "y": 0, "width": 400, "height": 600 },
+    "flip": sach,
+    "shift": sach
+});
+sahi_hai(placeFlip.flipped, sach, "T2_popup_collision_flips");
+sahi_hai(placeFlip.side, "top", "T2_popup_collision_flipped_top");
+sahi_hai(placeFlip.shifted, sach, "T2_popup_collision_shifts_x");
+assert_true(placeFlip.x + 180 <= 400, "T2_popup_inside_viewport_right");
+
+pakad placeRtl = pOuter.computePlacement({
+    "side": "right",
+    "rtl": sach,
+    "avoidCollisions": jhooth,
+    "anchor": { "x": 200, "y": 100, "width": 80, "height": 32 },
+    "popupWidth": 100,
+    "popupHeight": 60,
+    "viewport": { "x": 0, "y": 0, "width": 800, "height": 600 }
+});
+sahi_hai(placeRtl.side, "left", "T2_popup_rtl_side_swap");
+
+pOuter.open({ "bounds": { "x": 100, "y": 100, "width": 160, "height": 120 } });
+pInner.open({ "bounds": { "x": 140, "y": 140, "width": 120, "height": 80 } });
+sahi_hai(pOuter.isOpen(), sach, "T1_popup_outer_open");
+sahi_hai(pInner.isOpen(), sach, "T1_popup_inner_open");
+pInner.handleEscape();
+sahi_hai(pInner.isOpen(), jhooth, "T2_popup_nested_escape_closes_inner_first");
+sahi_hai(pOuter.isOpen(), sach, "T2_popup_nested_escape_preserves_outer");
+pOuter.handlePointerDown(5, 5);
+sahi_hai(pOuter.isOpen(), jhooth, "T2_popup_outside_click_closes_outer");
+
+// 3. createRovingFocus (disabled skip, clamp vs loop, 2D grid, RTL, tabIndex)
+pakad rovVert = createRovingFocus({
+    "orientation": "vertical",
+    "loop": jhooth,
+    "items": [
+        { "id": "i1", "disabled": jhooth },
+        { "id": "i2", "disabled": sach },
+        { "id": "i3", "disabled": jhooth }
+    ]
+});
+sahi_hai(rovVert.getActiveId(), "i1", "T1_roving_init");
+sahi_hai(rovVert.getTabIndex("i1"), 0, "T1_roving_active_tabindex_0");
+sahi_hai(rovVert.getTabIndex("i3"), -1, "T1_roving_inactive_tabindex_neg1");
+sahi_hai(rovVert.handleKey("ArrowDown"), "i3", "T2_roving_skips_disabled");
+rovVert.handleKey("ArrowDown");
+sahi_hai(rovVert.getActiveId(), "i3", "T2_roving_clamps_no_loop");
+
+pakad rovGrid = createRovingFocus({
+    "orientation": "both",
+    "columns": 3,
+    "loop": sach,
+    "items": ["g0", "g1", "g2", "g3", "g4", "g5"]
+});
+sahi_hai(rovGrid.handleKey("ArrowDown"), "g3", "T2_roving_2d_grid_down");
+sahi_hai(rovGrid.handleKey("ArrowRight"), "g4", "T2_roving_2d_grid_right");
+sahi_hai(rovGrid.handleKey("Home"), "g0", "T2_roving_home");
+sahi_hai(rovGrid.handleKey("End"), "g5", "T2_roving_end");
+
+pakad rovRtl = createRovingFocus({
+    "orientation": "horizontal",
+    "rtl": sach,
+    "loop": sach,
+    "items": ["r0", "r1", "r2"]
+});
+sahi_hai(rovRtl.handleKey("ArrowLeft"), "r1", "T2_roving_rtl_left_advances");
+
+// 4. createFocusTrap & createFocusScope (nested trap Tab/Shift+Tab isolation & restore)
+pakad outerTrap = createFocusTrap({
+    "id": "modal_outer",
+    "focusableIds": ["o_a", "o_b"],
+    "initialFocusId": "o_a",
+    "restoreFocusToId": "page_btn"
+});
+pakad innerTrap = createFocusTrap({
+    "id": "modal_inner",
+    "focusableIds": ["i_a", "i_b"],
+    "initialFocusId": "i_a",
+    "restoreFocusToId": "o_b"
+});
+sahi_hai(outerTrap.mount("page_btn"), "o_a", "T1_focus_trap_outer_mount");
+sahi_hai(innerTrap.mount("o_b"), "i_a", "T2_focus_trap_nested_mount");
+sahi_hai(innerTrap.handleTab(jhooth), "i_b", "T2_focus_trap_tab_forward");
+sahi_hai(innerTrap.handleTab(jhooth), "i_a", "T2_focus_trap_tab_wraps_inner_only");
+sahi_hai(innerTrap.handleTab(sach), "i_b", "T2_focus_trap_shift_tab_wraps_back");
+sahi_hai(innerTrap.unmount(), "o_b", "T2_focus_trap_inner_unmount_restores_outer");
+sahi_hai(outerTrap.isActive(), sach, "T2_focus_trap_outer_active_again");
+sahi_hai(outerTrap.unmount(), "page_btn", "T2_focus_trap_outer_unmount_restores_page");
+
+// 5. createSelection (single disallowEmpty, multiple range Shift-click & disabled)
+pakad selSingle = createSelection({ "mode": "single", "disallowEmpty": sach, "selectedIds": ["opt1"] });
+sahi_hai(selSingle.toggle("opt1"), jhooth, "T2_selection_disallow_empty_toggle");
+sahi_hai(selSingle.clear(), jhooth, "T2_selection_disallow_empty_clear");
+sahi_hai(selSingle.select("opt2"), sach, "T1_selection_single_switch");
+
+pakad selMulti = createSelection({ "mode": "multiple", "disabledIds": ["b"] });
+selMulti.select("a");
+selMulti.selectRange("d", ["a", "b", "c", "d"]);
+pakad multiArr = selMulti.getSelected();
+sahi_hai(multiArr.lambai(), 3, "T2_selection_range_skips_disabled");
+sahi_hai(selMulti.isSelected("b"), jhooth, "T2_selection_disabled_excluded");
+selMulti.selectAll(["a", "b", "c", "d"]);
+sahi_hai(selMulti.getSelected().lambai(), 3, "T2_selection_all_skips_disabled");
+
+// 6. createTypeahead (timeout reset, repeated char cycle, diacritic fold, matchQuery)
+pakad ta = createTypeahead({
+    "timeoutMs": 500,
+    "items": [
+        { "id": "apple", "text": "Apple", "disabled": jhooth },
+        { "id": "apricot", "text": "Apricot", "disabled": sach },
+        { "id": "avocado", "text": "Avocado", "disabled": jhooth },
+        { "id": "ecole", "text": "École", "disabled": jhooth }
+    ]
+});
+sahi_hai(ta.handleChar("a", 100, ""), "apple", "T1_typeahead_first_a");
+sahi_hai(ta.handleChar("a", 200, "apple"), "avocado", "T2_typeahead_repeat_skips_disabled_apricot");
+sahi_hai(ta.handleChar("e", 1000, ""), "ecole", "T2_typeahead_timeout_and_diacritic_fold");
+sahi_hai(ta.matchQuery("avo"), "avocado", "T1_typeahead_match_query");
+
+// 7. createVirtualizer (100k items O(log N) Fenwick, dynamic measure, itemCount alias, sticky)
+pakad virt = createVirtualizer({
+    "itemCount": 100000,
+    "estimateSize": 40,
+    "viewportSize": 200,
+    "overscan": 2,
+    "stickyIndices": [0, 50, 200]
+});
+sahi_hai(virt.getTotalSize(), 4000000.0, "T2_virtualizer_100k_itemCount_total");
+virt.measureItem(5, 120);
+sahi_hai(virt.getTotalSize(), 4000080.0, "T2_virtualizer_fenwick_dynamic_measure");
+sahi_hai(virt.offsetOf(6), 320.0, "T2_virtualizer_fenwick_prefix_offset");
+virt.scrollToIndex(60, "start");
+sahi_hai(virt.getStickyIndex(), 50, "T2_virtualizer_sticky_header_at_60");
+pakad visRows = virt.getVirtualItems();
+assert_true(visRows.lambai() > 4 && visRows.lambai() < 20, "T2_virtualizer_overscan_bounded");
+
+// 8. createReorder (keyboard Space grab / Arrow / Escape cancel + pointer drag)
+pakad reord = createReorder({ "items": ["Alpha", "Beta", "Gamma"] });
+pakad rGrab = reord.handleKey(" ", 0);
+sahi_hai(rGrab.grabbedIndex, 0, "T2_reorder_space_grab");
+pakad rMove = reord.handleKey("ArrowDown", 0);
+sahi_hai(rMove.items[0], "Beta", "T2_reorder_arrow_swaps_item0");
+sahi_hai(rMove.items[1], "Alpha", "T2_reorder_arrow_swaps_item1");
+assert_true(rMove.announcement.lambai() > 5, "T2_reorder_announcement_emitted");
+reord.handleKey("Escape", 1);
+sahi_hai(reord.getGrabbedIndex(), -1, "T2_reorder_escape_cancels_grab");
+reord.startDrag(0, 10);
+reord.updateDrag(110, [20, 60, 100]);
+pakad dragRes = reord.endDrag();
+sahi_hai(dragRes[2], "Alpha", "T1_reorder_drag_moves_item");
+
+// 9. createResize (min/max clamps, collapse threshold, coarse shift step)
+pakad resz = createResize({
+    "sizes": [240, 560],
+    "minSizes": [140, 200],
+    "maxSizes": [400, 800],
+    "collapsible": [sach, jhooth],
+    "step": 10,
+    "coarseStep": 50
+});
+resz.handleKey(0, "ArrowRight", sach);
+sahi_hai(resz.getSizes()[0], 290.0, "T2_resize_coarse_step_arrow");
+resz.resizeHandle(0, -250);
+sahi_hai(resz.getSizes()[0], 0.0, "T2_resize_collapsible_snaps_zero");
+
+// 10. createDisclosure & createTabs (automatic vs manual activation, disabled skip)
+pakad discCount = 0;
+pakad disc = createDisclosure({ "defaultOpen": jhooth, "onOpenChange": (o) => { discCount = discCount + 1; } });
+disc.open();
+sahi_hai(disc.isOpen(), sach, "T1_disclosure_open");
+sahi_hai(disc.getTriggerProps({})["aria-expanded"], sach, "T1_disclosure_trigger_aria");
+sahi_hai(discCount, 1, "T1_disclosure_callback");
+
+pakad tabsManual = createTabs({
+    "activationMode": "manual",
+    "defaultValue": "t1",
+    "items": [
+        { "id": "t1", "disabled": jhooth },
+        { "id": "t2", "disabled": sach },
+        { "id": "t3", "disabled": jhooth }
+    ]
+});
+pakad tRes1 = tabsManual.handleKey("ArrowRight");
+sahi_hai(tRes1.focusedTab, "t3", "T2_tabs_skips_disabled");
+sahi_hai(tRes1.activeTab, "t1", "T2_tabs_manual_delays_activation");
+tabsManual.handleKey("Enter");
+sahi_hai(tabsManual.activeTab(), "t3", "T2_tabs_manual_enter_activates");
+
+// 11. createSlider (multi-thumb collision, IEEE-754 snap, RTL)
+pakad sldMulti = createSlider({
+    "min": 0, "max": 100, "step": 5, "minStepsBetweenThumbs": 4, "values": [20, 45]
+});
+sldMulti.setValue(0, 90);
+sahi_hai(sldMulti.getValues()[0], 25.0, "T2_slider_min_steps_between_thumbs_clamps");
+
+pakad sldPrec = createSlider({ "min": 0.0, "max": 1.0, "step": 0.1, "value": 0.0 });
+sldPrec.handleKey(0, "ArrowRight", jhooth);
+sldPrec.handleKey(0, "ArrowRight", jhooth);
+sldPrec.handleKey(0, "ArrowRight", jhooth);
+pakad snapV = sldPrec.getValues()[0];
+assert_true(snapV > 0.2999999 && snapV < 0.3000001, "T2_slider_ieee754_clean_snap");
+
+pakad sldRtl = createSlider({ "min": 0, "max": 100, "step": 10, "rtl": sach, "value": 50 });
+sldRtl.handleKey(0, "ArrowRight", jhooth);
+sahi_hai(sldRtl.getValues()[0], 40.0, "T2_slider_rtl_arrow_right_decrements");
+
+// 12. createToast (maxVisible eviction, hover pause timer hold)
+pakad toasts = createToast({ "isolated": sach, "maxVisible": 2 });
+pakad tid1 = toasts.add("First", "d1", "default", 1000);
+pakad tid2 = toasts.add("Second", "d2", "default", 1000);
+pakad tid3 = toasts.add("Third", "d3", "default", 1000);
+sahi_hai(toasts.list().lambai(), 2, "T2_toast_max_visible_eviction");
+toasts.setPaused(tid2, sach);
+toasts.tick(1500);
+sahi_hai(toasts.list().lambai(), 1, "T2_toast_hover_pause_holds_toast");
+sahi_hai(toasts.list()[0].id, tid2, "T2_toast_paused_id_preserved");
+
+// 13. createTooltip (openDelay, skipDelay warmup, Escape)
+pakad tips = createTooltip({ "openDelayMs": 300, "skipDelayMs": 500 });
+sahi_hai(tips.onTriggerHoverStart("btn_a"), "", "T2_tooltip_waits_for_open_delay");
+tips.tick(300);
+sahi_hai(tips.getOpenTriggerId(), "btn_a", "T2_tooltip_opens_after_delay");
+tips.onTriggerHoverEnd("btn_a");
+tips.tick(100);
+sahi_hai(tips.onTriggerHoverStart("btn_b"), "btn_b", "T2_tooltip_skip_delay_warmup_instant");
+sahi_hai(tips.handleEscape(), sach, "T2_tooltip_escape_closes");
+sahi_hai(tips.getOpenTriggerId(), "", "T2_tooltip_closed_after_escape");
+
+// ==============================================================================
+// TIER 3 & 4: Full Mounted JSX + Tailwind + Shadcn + Agent Interaction + A11y
+// ==============================================================================
+
+kaam ParityDemoApp() {
+    [tab, setTab] = useState("main");
+    [draft, setDraft] = useState("");
+    [checked, setChecked] = useState(jhooth);
+    [tri, setTri] = useState(sach);
+    [sw, setSw] = useState(sach);
+    [gain, setGain] = useState(40);
+    [notes, setNotes] = useState("Line1");
+    [secret, setSecret] = useState("tok_123");
+    [dialogOpen, setDialogOpen] = useState(jhooth);
+    [rtlMode, setRtlMode] = useState(jhooth);
+    [paintCalls, setPaintCalls] = useState(0);
+
+    de (
+        <div rtl={rtlMode} class="p-4 bg-slate-950 min-h-screen flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+                <h1 class="text-lg font-bold text-white">MEME-UI Parity App</h1>
+                <Button testId="rtl_btn" onClick={() => setRtlMode(!rtlMode)}>
+                    {rtlMode ? "RTL" : "LTR"}
+                </Button>
+            </div>
+            <Tabs value={tab}>
+                <TabsList>
+                    <TabsTrigger testId="tab_main" selected={tab == "main"} onClick={() => setTab("main")}>Main</TabsTrigger>
+                    <TabsTrigger testId="tab_canvas" selected={tab == "canvas"} onClick={() => setTab("canvas")}>Canvas</TabsTrigger>
+                </TabsList>
+                <TabsContent hidden={tab != "main"} class="flex flex-col gap-2">
+                    <Input testId="name_input" placeholder="Enter name" value={draft} onChange={(e) => setDraft(e.target.value)} />
+                    <Input testId="pass_input" type="password" placeholder="Secret" value={secret} onChange={(e) => setSecret(e.target.value)} />
+                    <Textarea testId="notes_area" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                    <Checkbox testId="agree_chk" label="Enable Native Metal" checked={checked} onChange={(e) => setChecked(e.checked)} />
+                    <Checkbox testId="tri_chk" label="Tri Filter" checked={jhooth} indeterminate={tri} onChange={() => setTri(!tri)} />
+                    <Switch testId="live_sw" label="Live Telemetry" checked={sw} onChange={(e) => setSw(e.checked)} />
+                    <Slider testId="gain_sld" accessibleName="Gain Control" min={0} max={100} step={5} value={gain} onChange={(e) => setGain(e.numValue)} />
+                    <Button testId="modal_open_btn" onClick={() => setDialogOpen(sach)}>Open Modal</Button>
+                    <ScrollArea testId="feed_scroll" class="h-24">
+                        <div class="h-12 text-slate-200">Row 1</div>
+                        <div class="h-12 text-slate-200">Row 2</div>
+                        <div class="h-12 text-slate-200">Row 3</div>
+                        <div class="h-12 text-slate-200">Row 4</div>
+                    </ScrollArea>
+                </TabsContent>
+                <TabsContent hidden={tab != "canvas"}>
+                    <Canvas testId="wave_canvas" onPaint={(p, b) => { p.rect_filled(4, 4, b.width - 8, 24, 4, "#1e293b"); p.text(12, 18, "OK", 12, "#ffffff"); }} />
+                </TabsContent>
+            </Tabs>
+            <Dialog testId="demo_dialog" hidden={!dialogOpen} class="w-80">
+                <p class="text-sm text-white">Modal Body</p>
+                <Button testId="modal_close_btn" onClick={() => setDialogOpen(jhooth)}>Close Modal</Button>
+            </Dialog>
+        </div>
+    );
+}
+
+ui.mount(<ParityDemoApp />);
+pakad agent = createAgent();
+assert_true(agent.assertAccessible(), "T3_mounted_app_initial_a11y_pass");
+
+pakad snap0 = agent.snapshot();
+assert_true(snap0.nodes.lambai() >= 8, "T3_agent_snapshot_has_hit_regions");
+sahi_hai(agent.getByTestId("pass_input").isPassword, sach, "T3_password_input_flag");
+sahi_hai(agent.getByTestId("tri_chk").indeterminate, sach, "T3_tristate_checkbox_flag");
+
+// Drive text typing on single-line Input
+agent.act("name_input", "type", "MEME");
+sahi_hai(agent.getByTestId("name_input").value, "MEME", "T3_agent_type_updates_input_state");
+
+// Drive Checkbox & Switch toggle
+agent.act("agree_chk", "click");
+sahi_hai(agent.getByTestId("agree_chk").checked, sach, "T3_agent_click_toggles_checkbox");
+agent.act("tri_chk", "click");
+sahi_hai(agent.getByTestId("tri_chk").indeterminate, jhooth, "T3_agent_click_toggles_tristate");
+agent.act("live_sw", "click");
+sahi_hai(agent.getByTestId("live_sw").checked, jhooth, "T3_agent_click_toggles_switch");
+
+// Drive Slider change & keyboard stepping
+agent.act("gain_sld", "change", 75);
+sahi_hai(agent.getByTestId("gain_sld").numValue, 75.0, "T3_agent_slider_change");
+agent.act("gain_sld", "keydown", "ArrowRight");
+sahi_hai(agent.getByTestId("gain_sld").numValue, 80.0, "T3_agent_slider_keydown_step");
+
+// Drive ScrollArea
+agent.act("feed_scroll", "scroll", -2);
+assert_true(agent.getByTestId("feed_scroll").scrollY > 0.0, "T3_agent_scroll_updates_offset");
+
+// Drive Dialog open -> centered inside viewport -> close
+agent.act("modal_open_btn", "click");
+pakad dlgNode = agent.getByTestId("demo_dialog");
+assert_true(dlgNode.x > 0 && dlgNode.y > 0 && (dlgNode.y + dlgNode.height) <= 720.0, "T3_dialog_centered_within_viewport");
+assert_true(agent.assertAccessible(), "T3_mounted_app_with_dialog_a11y_pass");
+agent.act("modal_close_btn", "click");
+sahi_hai(agent.getByTestId("demo_dialog"), khali, "T3_dialog_closed_unmounted_from_hits");
+
+// Drive RTL direction toggle & Canvas tab
+agent.act("rtl_btn", "click");
+sahi_hai(agent.getByTestId("gain_sld").isRtl, sach, "T3_rtl_propagates_to_descendant_slider");
+agent.act("tab_canvas", "click");
+assert_true(agent.getByTestId("wave_canvas").height >= 140.0, "T3_canvas_tab_visible_height");
+
+// Verify audit catches intentional accessibility violations
+kaam BrokenA11yApp() {
+    de (
+        <div class="p-4 flex flex-col gap-2">
+            <Button testId="dup_btn" onClick={() => {}}></Button>
+            <Button testId="dup_btn" onClick={() => {}}>Second</Button>
+            <Slider testId="bad_sld" min={0} max={100} value={150} />
+        </div>
+    );
+}
+ui.mount(<BrokenA11yApp />);
+pakad badAudit = agent.audit();
+sahi_hai(badAudit.valid, jhooth, "T2_agent_audit_detects_violations");
+assert_true(badAudit.violations.lambai() >= 3, "T2_agent_audit_reports_3_violations");
+pakad threwA11y = jhooth;
+panga {
+    agent.assertAccessible();
+} lafda (err) {
+    threwA11y = sach;
+}
+sahi_hai(threwA11y, sach, "T2_agent_assert_accessible_throws_on_violation");
+
+// ==============================================================================
+// TIER 4: Immediate-Mode egui Dual-Engine Parity
+// ==============================================================================
+
+pakad eguiClicks = useRef(0);
+pakad eguiEnabled = useRef(sach);
+pakad eguiGain = useRef(50.0);
+pakad eguiBtnRect = useRef({ "x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0 });
+
+kaam renderImmediateFrame(ctx) {
+    ctx.top_panel("tp", 40, (u) => {
+        u.heading("Egui Parity Test");
+    });
+    ctx.left_panel("lp", 200, (u) => {
+        u.checkbox("chk_en", eguiEnabled, "Active");
+        u.slider("sld_g", eguiGain, 0, 100, "%");
+        pakad br = u.button("Trigger");
+        eguiBtnRect.current = br.rect;
+        agar (br.clicked) {
+            eguiClicks.current = eguiClicks.current + 1;
+        }
+    });
+    ctx.central_panel((u) => {
+        pakad p = u.painter();
+        p.rect_filled(10, 10, 120, 40, 6, "#334155");
+        p.circle_filled(80, 30, 8, "#38bdf8");
+    });
+}
+
+pakad frameCmds = egui.frame(renderImmediateFrame, 960, 600);
+assert_true(frameCmds.lambai() >= 10, "T4_egui_frame_emits_gpu_cmds");
+assert_true(eguiBtnRect.current.width > 10.0, "T4_egui_button_rect_measured");
+
+// Click button via headless pointer step
+pakad bx = eguiBtnRect.current.x + 8.0;
+pakad by = eguiBtnRect.current.y + 8.0;
+egui.step(16, bx, by, sach);
+sahi_hai(eguiClicks.current, 1, "T4_egui_step_pointer_triggers_button_click");
+
+dikha "ALL MEME-UI DUAL-ENGINE PARITY TESTS PASSED!";

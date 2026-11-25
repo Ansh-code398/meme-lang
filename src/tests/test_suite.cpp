@@ -2809,6 +2809,199 @@ static void testFastHttpServersExpressAndElysiaTypeSafety()
     std::cout << "PASSED\n";
 }
 
+void testNativeUiPrimitivesTextEngineAndTessellator()
+{
+    std::cout << "[TEST] Native UI TextEngine, Tessellator, Egui & Session... ";
+
+    // 1. TextFieldState: double-click word, triple-click line, Shift+Arrow, Ctrl+C/X/V/A/Z/Y, wrap & password safety
+    MemeUI::TextFieldState tf;
+    tf.syncFromProp("hello world test");
+    float worldMidX = MemeUI::measureTextWidth("hello wo", 14.0f, false);
+    assert(tf.handlePointerDown(worldMidX, 5.0f, 320.0f, 14.0f, false, 2));
+    assert(tf.hasSelection());
+    assert(tf.selectedText() == "world");
+
+    // Ctrl+C copies selection, Ctrl+A selects all, Ctrl+V replaces, Ctrl+Z undoes, Ctrl+Y redoes
+    MemeUI::UiKeyEvent kevCopy; kevCopy.key = "c"; kevCopy.ctrl = true;
+    auto copyRes = tf.handleKeyEvent(kevCopy, 320.0f, 24.0f, 14.0f, false, "");
+    assert(copyRes.requestClipboardCopy && copyRes.clipboardSet == "world");
+
+    MemeUI::UiKeyEvent kevCut; kevCut.key = "x"; kevCut.ctrl = true;
+    auto cutRes = tf.handleKeyEvent(kevCut, 320.0f, 24.0f, 14.0f, false, "");
+    assert(cutRes.textChanged && cutRes.clipboardSet == "world");
+    assert(tf.text == "hello  test");
+
+    MemeUI::UiKeyEvent kevPaste; kevPaste.key = "v"; kevPaste.ctrl = true;
+    auto pasteRes = tf.handleKeyEvent(kevPaste, 320.0f, 24.0f, 14.0f, false, "planet");
+    assert(pasteRes.textChanged && tf.text == "hello planet test");
+
+    MemeUI::UiKeyEvent kevUndo; kevUndo.key = "z"; kevUndo.ctrl = true;
+    assert(tf.handleKeyEvent(kevUndo, 320.0f, 24.0f, 14.0f, false, "").textChanged);
+    assert(tf.text == "hello  test");
+
+    MemeUI::UiKeyEvent kevRedo; kevRedo.key = "y"; kevRedo.ctrl = true;
+    assert(tf.handleKeyEvent(kevRedo, 320.0f, 24.0f, 14.0f, false, "").textChanged);
+    assert(tf.text == "hello planet test");
+
+    MemeUI::UiKeyEvent kevAll; kevAll.key = "a"; kevAll.ctrl = true;
+    tf.handleKeyEvent(kevAll, 320.0f, 24.0f, 14.0f, false, "");
+    assert(tf.selectedText() == "hello planet test");
+
+    // Shift+ArrowLeft selection shrinks selection from end
+    MemeUI::UiKeyEvent kevShiftLeft; kevShiftLeft.key = "ArrowLeft"; kevShiftLeft.shift = true;
+    tf.handleKeyEvent(kevShiftLeft, 320.0f, 24.0f, 14.0f, false, "");
+    assert(tf.selectedText() == "hello planet tes");
+
+    // Multiline triple-click line selection & wrapTextLines
+    MemeUI::TextFieldState ml;
+    ml.multiline = true;
+    ml.syncFromProp("alpha line\nbeta gamma\nomega");
+    float line2Y = 14.0f * 1.5f;
+    assert(ml.handlePointerDown(12.0f, line2Y, 260.0f, 14.0f, false, 3));
+    assert(ml.selectedText().find("beta gamma") != std::string::npos);
+    assert(ml.selectedText().find("alpha") == std::string::npos);
+    auto wrapped = MemeUI::wrapTextLines("one two three four five", 60.0f, 14.0f, false);
+    assert(wrapped.size() >= 2);
+
+    // Password field must mask rendered bullets & disallow clipboard copy/selectedText leak
+    MemeUI::TextFieldState pw;
+    pw.password = true;
+    pw.syncFromProp("topsecret");
+    pw.selectAll();
+    assert(pw.selectedText().empty());
+    std::vector<MemeUI::GpuDrawCmd> pwCmds;
+    pw.emitDrawCommands(pwCmds, 0, 0, 200, 24, 14.0f, 400, MemeUI::hexToRgba("#ffffff"), "", true, false, 1, 0);
+    bool sawBulletText = false;
+    for (const auto &c : pwCmds) {
+        if (c.type == "DRAW_TEXT") {
+            assert(c.text.find("topsecret") == std::string::npos);
+            if (c.text.find("\xE2\x80\xA2") != std::string::npos) sawBulletText = true;
+        }
+    }
+    assert(sawBulletText);
+
+    // 2. Tessellator & FontAtlas: 20-byte vertex stride, nested clip batching, gradients, shadows, SVG, glyphs
+    static_assert(sizeof(MemeUI::UiVertex) == 20, "UiVertex stride must be 20 bytes");
+    auto rgbaAtlas = MemeUI::FontAtlas::getRgbaAtlas();
+    assert(rgbaAtlas.size() == static_cast<size_t>(MemeUI::FontAtlas::ATLAS_W * MemeUI::FontAtlas::ATLAS_H * 4));
+    assert(rgbaAtlas[0] == 255 && rgbaAtlas[3] == 255);
+    float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+    MemeUI::FontAtlas::getGlyphUV('A', u0, v0, u1, v1);
+    assert(u1 > u0 && v1 > v0 && u1 <= 1.0f && v1 <= 1.0f);
+
+    std::vector<MemeUI::GpuDrawCmd> tcmds;
+    MemeUI::GpuDrawCmd sh; sh.type = "SHADOW_ROUND_RECT"; sh.x = 12; sh.y = 12; sh.width = 180; sh.height = 60; sh.radius = 12; sh.blur = 8; sh.alpha = 0.4f;
+    tcmds.push_back(sh);
+    MemeUI::GpuDrawCmd gr; gr.type = "FILL_GRADIENT_RECT"; gr.x = 12; gr.y = 12; gr.width = 180; gr.height = 60; gr.radius = 12; gr.color = "#4f46e5"; gr.color2 = "#06b6d4";
+    tcmds.push_back(gr);
+    MemeUI::GpuDrawCmd clip1; clip1.type = "PUSH_CLIP"; clip1.x = 10; clip1.y = 20; clip1.width = 100; clip1.height = 80;
+    tcmds.push_back(clip1);
+    MemeUI::GpuDrawCmd r1; r1.type = "FILL_ROUND_RECT"; r1.x = 15; r1.y = 25; r1.width = 60; r1.height = 30; r1.color = "#ffffff";
+    tcmds.push_back(r1);
+    MemeUI::GpuDrawCmd clip2; clip2.type = "PUSH_CLIP"; clip2.x = 50; clip2.y = 40; clip2.width = 100; clip2.height = 100;
+    tcmds.push_back(clip2);
+    MemeUI::GpuDrawCmd sv; sv.type = "DRAW_SVG_PATH"; sv.x = 52; sv.y = 42; sv.width = 24; sv.height = 24; sv.svgPath = "M 20 6 L 9 17 L 4 12"; sv.color = "#10b981"; sv.filled = false;
+    tcmds.push_back(sv);
+    MemeUI::GpuDrawCmd txt; txt.type = "DRAW_TEXT"; txt.x = 52; txt.y = 70; txt.text = "Hello"; txt.fontSize = 14.0f; txt.color = "#f8fafc";
+    tcmds.push_back(txt);
+    MemeUI::GpuDrawCmd popCmd; popCmd.type = "POP_CLIP";
+    tcmds.push_back(popCmd);
+    tcmds.push_back(popCmd);
+
+    auto mesh = MemeUI::Tessellator::tessellate(tcmds, 800.0f, 600.0f);
+    assert(mesh.vertices.size() > 50);
+    assert(mesh.indices.size() > 80 && (mesh.indices.size() % 3) == 0);
+    assert(mesh.batches.size() >= 3);
+    bool foundIntersectedClip = false;
+    for (const auto &b : mesh.batches) {
+        if (std::abs(b.clipRect.x - 50.0f) < 0.1f && std::abs(b.clipRect.y - 40.0f) < 0.1f &&
+            std::abs(b.clipRect.width - 60.0f) < 0.1f && std::abs(b.clipRect.height - 60.0f) < 0.1f) {
+            foundIntersectedClip = true;
+        }
+    }
+    assert(foundIntersectedClip);
+
+    // 3. EguiContext immediate-mode panels, widgets & click cycle
+    MemeUI::EguiContext eguiCtx;
+    MemeUI::UiRect saveBtnRect;
+    bool btnClickedFrame1 = false;
+    MemeUI::UiInputState in1;
+    in1.viewportW = 800; in1.viewportH = 600;
+    eguiCtx.beginFrame(in1);
+    eguiCtx.topPanel("top", 44.0f, [&](MemeUI::EguiUi &ui) {
+        auto r = ui.button("Save");
+        saveBtnRect = r.rect;
+        btnClickedFrame1 = r.clicked;
+    });
+    eguiCtx.centralPanel([&](MemeUI::EguiUi &ui) {
+        bool ck = true;
+        double sl = 42.0;
+        ui.checkbox("ck_imm", ck, "Enable");
+        ui.slider("sl_imm", sl, 0.0, 100.0, "Gain");
+    });
+    eguiCtx.endFrame();
+    assert(!btnClickedFrame1);
+    assert(saveBtnRect.width > 30.0f && saveBtnRect.height >= 24.0f);
+    assert(!eguiCtx.cmds.empty() && eguiCtx.hitRegions.size() >= 3);
+
+    bool btnClickedFrame2 = false;
+    MemeUI::UiInputState in2;
+    in2.viewportW = 800; in2.viewportH = 600;
+    in2.pointerX = saveBtnRect.x + saveBtnRect.width * 0.5f;
+    in2.pointerY = saveBtnRect.y + saveBtnRect.height * 0.5f;
+    in2.mouseReleased[0] = true;
+    eguiCtx.beginFrame(in2);
+    eguiCtx.topPanel("top", 44.0f, [&](MemeUI::EguiUi &ui) {
+        btnClickedFrame2 = ui.button("Save").clicked;
+    });
+    eguiCtx.endFrame();
+    assert(btnClickedFrame2);
+
+    // 4. UiSession accessible audit + portal centering + broken audit rejection
+    MemeUI::UiSession sess;
+    MemeUI::UiNode root;
+    root.tag = "div"; root.classStr = "min-h-screen w-full p-4 flex flex-col gap-3";
+    MemeUI::UiNode okBtn;
+    okBtn.tag = "button"; okBtn.testId = "ok_btn"; okBtn.classStr = "px-4 py-2 bg-indigo-600 text-white rounded-xl";
+    MemeUI::UiNode okTxt; okTxt.isText = true; okTxt.text = "Confirm";
+    okBtn.children.push_back(okTxt);
+    MemeUI::UiNode slNode;
+    slNode.tag = "slider"; slNode.role = "slider"; slNode.testId = "vol_slider"; slNode.ariaLabel = "Volume";
+    slNode.classStr = "w-64 h-6"; slNode.numProps["min"] = 0; slNode.numProps["max"] = 100; slNode.numProps["value"] = 50;
+    MemeUI::UiNode dlgNode;
+    dlgNode.tag = "dialog"; dlgNode.role = "dialog"; dlgNode.testId = "test_dlg"; dlgNode.isPortal = true; dlgNode.open = true;
+    dlgNode.classStr = "w-96 p-6 bg-slate-900 rounded-2xl flex flex-col gap-2";
+    MemeUI::UiNode dlgTxt; dlgTxt.tag = "p";
+    MemeUI::UiNode dlgTxtLeaf; dlgTxtLeaf.isText = true; dlgTxtLeaf.text = "Centered Modal";
+    dlgTxt.children.push_back(dlgTxtLeaf);
+    dlgNode.children.push_back(dlgTxt);
+    root.children.push_back(okBtn);
+    root.children.push_back(slNode);
+    root.children.push_back(dlgNode);
+
+    sess.cachedRoot = root;
+    sess.renderFrame(960.0f, 720.0f);
+    assert(sess.agentAssertAccessible().ok);
+    auto dlgHits = sess.agentQuery("", "", "test_dlg");
+    assert(dlgHits.size() == 1);
+    assert(dlgHits[0].x > 100.0f && dlgHits[0].y > 100.0f && dlgHits[0].y + dlgHits[0].height <= 720.0f);
+
+    // Broken a11y tree must fail audit cleanly
+    MemeUI::UiNode badRoot;
+    badRoot.tag = "div"; badRoot.classStr = "flex flex-col gap-2 p-4";
+    MemeUI::UiNode badBtn; badBtn.tag = "button"; badBtn.testId = "dup"; badBtn.classStr = "w-8 h-8";
+    MemeUI::UiNode badSl; badSl.tag = "slider"; badSl.role = "slider"; badSl.testId = "dup"; badSl.ariaLabel = "Bad";
+    badSl.numProps["min"] = 0; badSl.numProps["max"] = 100; badSl.numProps["value"] = 150;
+    badRoot.children.push_back(badBtn);
+    badRoot.children.push_back(badSl);
+    sess.cachedRoot = badRoot;
+    sess.renderFrame(960.0f, 720.0f);
+    auto badAudit = sess.agentAssertAccessible();
+    assert(!badAudit.ok && badAudit.violations.size() >= 3);
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -2840,6 +3033,7 @@ int main()
     testOptimizedDatatypesAndExtendedPrimitives();
     testStandardLibraries();
     testFastHttpServersExpressAndElysiaTypeSafety();
+    testNativeUiPrimitivesTextEngineAndTessellator();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

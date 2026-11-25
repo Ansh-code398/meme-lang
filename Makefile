@@ -4,7 +4,7 @@ LDFLAGS =
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-    LDFLAGS += -framework Cocoa -framework CoreGraphics
+    LDFLAGS += -framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore
     MM_SRCS = src/ui/NativeDesktopWindow.mm
     MM_OBJS = $(MM_SRCS:.mm=.o)
 endif

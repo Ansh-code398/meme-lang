@@ -237,6 +237,7 @@ def main():
         "benchmarks": TESTS_E2E_DIR / "test_benchmarks_e2e.py",
         "build_tooling": TESTS_E2E_DIR / "test_build_tooling_e2e.py",
         "invariants": TESTS_E2E_DIR / "test_invariants_e2e.py",
+        "ui_full_parity": TESTS_E2E_DIR / "test_ui_full_parity.meme",
     }
 
     all_suites = {**baseline_suites, **staged_suites}
@@ -303,10 +304,10 @@ def main():
             sys.exit(1)
 
     tier_map = {
-        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants"],
-        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants"],
+        "1": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants", "ui_full_parity"],
+        "2": ["overloading", "pointers", "memory_safety", "aliases", "packaging_modules", "namespaces", "option_result", "error_handling", "pattern_matching", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "env", "benchmarks", "build_tooling", "invariants", "ui_full_parity"],
         "3": ["combinations", "cross_combinations", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics"],
-        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics"],
+        "4": ["scenarios", "real_world_scenarios", "compiler_bootstrap", "m1_self_compile", "m2_break_continue", "m3_json_csv", "m4_pch", "m5_lsp", "m6_tapri_git", "m7_generics", "ui_full_parity"],
         "5": ["tier5_adversarial_overloading", "tier5_adversarial_pointers"],
     }
 

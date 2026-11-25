@@ -130,6 +130,280 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
     };
     m->set("Alert", Value(std::make_shared<NativeMethodCallable>("Alert", 0, 1, alertFn)));
 
+    // CardDescription & CardFooter
+    auto cardDescFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("p", "text-sm text-slate-400", props, children);
+    };
+    m->set("CardDescription", Value(std::make_shared<NativeMethodCallable>("CardDescription", 0, 1, cardDescFn)));
+
+    auto cardFooterFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "flex items-center p-6 pt-0 gap-2", props, children);
+    };
+    m->set("CardFooter", Value(std::make_shared<NativeMethodCallable>("CardFooter", 0, 1, cardFooterFn)));
+
+    // Textarea
+    auto textareaFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("textarea", "flex min-h-[80px] w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100", props, children);
+    };
+    m->set("Textarea", Value(std::make_shared<NativeMethodCallable>("Textarea", 0, 1, textareaFn)));
+
+    // Checkbox
+    auto checkboxFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value emptyChildren(std::make_shared<MemeList>());
+        if (props->has("label") || (props->has("children") && props->entries["children"].deref().isList() && !props->entries["children"].deref().getList()->elements.empty())) {
+            auto rowChildren = std::make_shared<MemeList>();
+            auto boxProps = std::make_shared<MemeMap>();
+            boxProps->entries = props->entries;
+            boxProps->entries.erase("class");
+            boxProps->entries.erase("className");
+            if (!boxProps->has("name") && props->has("label")) boxProps->set("name", props->entries["label"]);
+            rowChildren->elements.push_back(createJsxElement("checkbox", "shrink-0", boxProps, emptyChildren));
+            if (props->has("label")) {
+                auto spanList = std::make_shared<MemeList>();
+                spanList->elements.push_back(props->entries["label"]);
+                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            } else {
+                auto spanList = std::make_shared<MemeList>();
+                spanList->elements = props->entries["children"].deref().getList()->elements;
+                rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            }
+            auto wrapProps = std::make_shared<MemeMap>();
+            if (props->has("class")) wrapProps->set("class", props->entries["class"]);
+            if (props->has("className")) wrapProps->set("className", props->entries["className"]);
+            return createJsxElement("div", "inline-flex items-center gap-2", wrapProps, Value(rowChildren));
+        }
+        return createJsxElement("checkbox", "", props, emptyChildren);
+    };
+    m->set("Checkbox", Value(std::make_shared<NativeMethodCallable>("Checkbox", 0, 1, checkboxFn)));
+
+    // Switch
+    auto switchFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value emptyChildren(std::make_shared<MemeList>());
+        if (props->has("label")) {
+            auto rowChildren = std::make_shared<MemeList>();
+            auto swProps = std::make_shared<MemeMap>();
+            swProps->entries = props->entries;
+            swProps->entries.erase("class");
+            swProps->entries.erase("className");
+            if (!swProps->has("name")) swProps->set("name", props->entries["label"]);
+            rowChildren->elements.push_back(createJsxElement("switch", "shrink-0", swProps, emptyChildren));
+            auto spanList = std::make_shared<MemeList>();
+            spanList->elements.push_back(props->entries["label"]);
+            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            return createJsxElement("div", "inline-flex items-center gap-2", std::make_shared<MemeMap>(), Value(rowChildren));
+        }
+        return createJsxElement("switch", "", props, emptyChildren);
+    };
+    m->set("Switch", Value(std::make_shared<NativeMethodCallable>("Switch", 0, 1, switchFn)));
+
+    // RadioGroup & RadioItem
+    auto radioGroupFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("radiogroup")));
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "flex flex-col gap-2", props, children);
+    };
+    m->set("RadioGroup", Value(std::make_shared<NativeMethodCallable>("RadioGroup", 0, 1, radioGroupFn)));
+
+    auto radioItemFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value emptyChildren(std::make_shared<MemeList>());
+        if (props->has("label")) {
+            auto rowChildren = std::make_shared<MemeList>();
+            auto rProps = std::make_shared<MemeMap>();
+            rProps->entries = props->entries;
+            if (!rProps->has("name")) rProps->set("name", props->entries["label"]);
+            rowChildren->elements.push_back(createJsxElement("radio", "shrink-0", rProps, emptyChildren));
+            auto spanList = std::make_shared<MemeList>();
+            spanList->elements.push_back(props->entries["label"]);
+            rowChildren->elements.push_back(createJsxElement("span", "text-sm text-slate-200", std::make_shared<MemeMap>(), Value(spanList)));
+            return createJsxElement("div", "inline-flex items-center gap-2", std::make_shared<MemeMap>(), Value(rowChildren));
+        }
+        return createJsxElement("radio", "", props, emptyChildren);
+    };
+    m->set("RadioItem", Value(std::make_shared<NativeMethodCallable>("RadioItem", 0, 1, radioItemFn)));
+
+    // Slider & Progress
+    auto sliderFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("slider", "w-full h-6", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Slider", Value(std::make_shared<NativeMethodCallable>("Slider", 0, 1, sliderFn)));
+
+    auto progressFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("progress", "w-full h-2.5 rounded-full bg-slate-800", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Progress", Value(std::make_shared<NativeMethodCallable>("Progress", 0, 1, progressFn)));
+
+    // Select & Combobox
+    auto selectFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("select", "inline-flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100", props, children);
+    };
+    m->set("Select", Value(std::make_shared<NativeMethodCallable>("Select", 0, 1, selectFn)));
+
+    auto comboboxFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("combobox", "inline-flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100", props, children);
+    };
+    m->set("Combobox", Value(std::make_shared<NativeMethodCallable>("Combobox", 0, 1, comboboxFn)));
+
+    // Accordion, Tabs, TabsList, TabsTrigger, TabsContent
+    auto accordionFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "flex flex-col divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-900/60", props, children);
+    };
+    m->set("Accordion", Value(std::make_shared<NativeMethodCallable>("Accordion", 0, 1, accordionFn)));
+
+    auto tabsFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "flex flex-col gap-2", props, children);
+    };
+    m->set("Tabs", Value(std::make_shared<NativeMethodCallable>("Tabs", 0, 1, tabsFn)));
+
+    auto tabsListFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("tablist")));
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "inline-flex items-center gap-1 rounded-xl bg-slate-900 border border-slate-800 p-1", props, children);
+    };
+    m->set("TabsList", Value(std::make_shared<NativeMethodCallable>("TabsList", 0, 1, tabsListFn)));
+
+    auto tabsTriggerFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("tab")));
+        bool active = props->has("active") ? props->entries["active"].deref().isTruthy()
+                    : (props->has("selected") ? props->entries["selected"].deref().isTruthy() : false);
+        std::string cls = active
+            ? "inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium bg-indigo-600 text-white"
+            : "inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-100";
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("tab", cls, props, children);
+    };
+    m->set("TabsTrigger", Value(std::make_shared<NativeMethodCallable>("TabsTrigger", 0, 1, tabsTriggerFn)));
+
+    auto tabsContentFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("tabpanel")));
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "mt-2 rounded-xl border border-slate-800 bg-slate-950/60 p-4", props, children);
+    };
+    m->set("TabsContent", Value(std::make_shared<NativeMethodCallable>("TabsContent", 0, 1, tabsContentFn)));
+
+    // Dialog, Popover, Tooltip, ContextMenu, Toast
+    auto dialogFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("dialog")));
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("dialog", "rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl text-slate-100", props, children);
+    };
+    m->set("Dialog", Value(std::make_shared<NativeMethodCallable>("Dialog", 0, 1, dialogFn)));
+
+    auto popoverFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("popover", "rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl text-slate-100", props, children);
+    };
+    m->set("Popover", Value(std::make_shared<NativeMethodCallable>("Popover", 0, 1, popoverFn)));
+
+    auto tooltipFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("tooltip", "rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-100 shadow-lg", props, children);
+    };
+    m->set("Tooltip", Value(std::make_shared<NativeMethodCallable>("Tooltip", 0, 1, tooltipFn)));
+
+    auto contextMenuFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("contextmenu", "min-w-[160px] rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-xl text-slate-100", props, children);
+    };
+    m->set("ContextMenu", Value(std::make_shared<NativeMethodCallable>("ContextMenu", 0, 1, contextMenuFn)));
+
+    auto toastFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("toast", "rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl", props, children);
+    };
+    m->set("Toast", Value(std::make_shared<NativeMethodCallable>("Toast", 0, 1, toastFn)));
+
+    // Table, ResizablePanelGroup/Panel/Handle, ScrollArea, Avatar, Skeleton, Canvas, Icon
+    auto tableFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "w-full rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden", props, children);
+    };
+    m->set("Table", Value(std::make_shared<NativeMethodCallable>("Table", 0, 1, tableFn)));
+
+    auto resizeGroupFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        std::string dir = props->has("direction") ? props->entries["direction"].deref().toString() : "horizontal";
+        std::string cls = (dir == "vertical") ? "flex flex-col w-full h-full" : "flex flex-row w-full h-full";
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", cls, props, children);
+    };
+    m->set("ResizablePanelGroup", Value(std::make_shared<NativeMethodCallable>("ResizablePanelGroup", 0, 1, resizeGroupFn)));
+
+    auto resizePanelFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "flex-1 min-w-0 min-h-0 overflow-hidden", props, children);
+    };
+    m->set("ResizablePanel", Value(std::make_shared<NativeMethodCallable>("ResizablePanel", 0, 1, resizePanelFn)));
+
+    auto resizeHandleFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        if (!props->has("role")) props->set("role", Value(std::string("separator")));
+        if (!props->has("aria-label") && !props->has("accessibleName")) props->set("aria-label", Value(std::string("Resize panel handle")));
+        return createJsxElement("div", "w-1.5 min-h-[24px] bg-slate-800 hover:bg-indigo-500 cursor-col-resize shrink-0", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("ResizableHandle", Value(std::make_shared<NativeMethodCallable>("ResizableHandle", 0, 1, resizeHandleFn)));
+
+    auto scrollAreaFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("scrollarea", "overflow-auto flex flex-col", props, children);
+    };
+    m->set("ScrollArea", Value(std::make_shared<NativeMethodCallable>("ScrollArea", 0, 1, scrollAreaFn)));
+
+    auto avatarFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+        return createJsxElement("div", "inline-flex items-center justify-center w-10 h-10 rounded-full bg-indigo-600 text-white text-sm font-semibold", props, children);
+    };
+    m->set("Avatar", Value(std::make_shared<NativeMethodCallable>("Avatar", 0, 1, avatarFn)));
+
+    auto skeletonFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("div", "rounded-xl bg-slate-800/70 h-4 w-full", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Skeleton", Value(std::make_shared<NativeMethodCallable>("Skeleton", 0, 1, skeletonFn)));
+
+    auto canvasFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("canvas", "w-full h-40 rounded-xl bg-slate-950 border border-slate-800", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Canvas", Value(std::make_shared<NativeMethodCallable>("Canvas", 0, 1, canvasFn)));
+
+    auto iconFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("icon", "w-4 h-4 text-slate-200", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Icon", Value(std::make_shared<NativeMethodCallable>("Icon", 0, 1, iconFn)));
+
     return m;
 }
 

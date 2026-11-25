@@ -97,6 +97,24 @@ private:
     std::unordered_set<std::string> knownClasses;
     std::unordered_set<std::string> knownFunctions;
     std::unordered_set<std::string> knownClassFields;
+    std::unordered_set<std::string> knownClassMethods;
+    std::unordered_set<std::string> topLevelVars;
+    std::vector<std::unordered_set<std::string>> scopeDeclaredVars;
+    bool programUsesUi = false;
+    bool inMainPass = false;
+    int tempCounter = 0;
+
+    void pushVarScope() { scopeDeclaredVars.emplace_back(); }
+    void popVarScope() { if (!scopeDeclaredVars.empty()) scopeDeclaredVars.pop_back(); }
+    void declareScopeVar(const std::string &n) {
+        if (!scopeDeclaredVars.empty()) scopeDeclaredVars.back().insert(n);
+    }
+    bool isVarDeclaredInScope(const std::string &n) const {
+        for (auto it = scopeDeclaredVars.rbegin(); it != scopeDeclaredVars.rend(); ++it) {
+            if (it->count(n)) return true;
+        }
+        return false;
+    }
     std::unordered_set<std::string> knownModuleAliases = {
         "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
         "env", "paryavaran", "dotenv", "json", "csv", "dhaga", "thread",
@@ -267,6 +285,7 @@ private:
         if (name == "nhi" || name == "false") return "false";
         if (name == "sach") return "true";
         if (name == "jhooth") return "false";
+        if (name == "main") return "meme_user_main";
 
         // C++ reserved keywords
         static const std::unordered_set<std::string> cppKeywords = {
@@ -311,14 +330,83 @@ public:
     explicit CodeGenerator(const std::string &sourceFile = "")
         : currentSourceFile(sourceFile) {}
 
+    bool detectUiInExpr(const Expr *expr) const {
+        if (!expr) return false;
+        if (dynamic_cast<const JsxElementExpr *>(expr)) return true;
+        if (auto *id = dynamic_cast<const IdentifierExpr *>(expr)) {
+            static const std::unordered_set<std::string> uiSyms = {
+                "ui", "egui", "view", "gui", "useState", "state_bana", "useEffect",
+                "useMemo", "useCallback", "useReducer", "useRef", "createContext",
+                "useContext", "useRouter", "Router", "Route", "Link"
+            };
+            if (uiSyms.count(id->name)) return true;
+        }
+        if (auto *u = dynamic_cast<const UnaryExpr *>(expr)) return detectUiInExpr(u->operand.get());
+        if (auto *b = dynamic_cast<const BinaryExpr *>(expr)) return detectUiInExpr(b->left.get()) || detectUiInExpr(b->right.get());
+        if (auto *c = dynamic_cast<const CallExpr *>(expr)) {
+            if (detectUiInExpr(c->callee.get())) return true;
+            for (const auto &a : c->args) if (detectUiInExpr(a.get())) return true;
+        }
+        if (auto *g = dynamic_cast<const GetExpr *>(expr)) return detectUiInExpr(g->object.get());
+        if (auto *a = dynamic_cast<const AssignExpr *>(expr)) return detectUiInExpr(a->value.get());
+        if (auto *da = dynamic_cast<const DestructureAssignExpr *>(expr)) return detectUiInExpr(da->value.get());
+        if (auto *arr = dynamic_cast<const ArrayLiteralExpr *>(expr)) {
+            for (const auto &el : arr->elements) if (detectUiInExpr(el.get())) return true;
+        }
+        if (auto *mp = dynamic_cast<const MapLiteralExpr *>(expr)) {
+            for (const auto &kv : mp->entries) {
+                if (detectUiInExpr(kv.first.get()) || detectUiInExpr(kv.second.get())) return true;
+            }
+        }
+        if (auto *l = dynamic_cast<const LambdaExpr *>(expr)) {
+            if (l->declaration && detectUiInStmt(l->declaration->body.get())) return true;
+        }
+        if (auto *t = dynamic_cast<const TernaryExpr *>(expr)) {
+            return detectUiInExpr(t->condition.get()) || detectUiInExpr(t->thenBranch.get()) || detectUiInExpr(t->elseBranch.get());
+        }
+        if (auto *sp = dynamic_cast<const SpreadExpr *>(expr)) return detectUiInExpr(sp->expr.get());
+        return false;
+    }
+
+    bool detectUiInStmt(const Stmt *stmt) const {
+        if (!stmt) return false;
+        if (auto *imp = dynamic_cast<const ImportStmt *>(stmt)) {
+            if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui" ||
+                imp->path == "ui:shadcn" || imp->path == "ui:primitives" || imp->path == "primitives" ||
+                imp->path == "vercel:ui" || imp->path.rfind("ui:", 0) == 0) {
+                return true;
+            }
+        }
+        if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt)) return detectUiInExpr(v->initializer.get());
+        if (auto *ads = dynamic_cast<const ArrayDestructureStmt *>(stmt)) return detectUiInExpr(ads->initializer.get());
+        if (auto *mds = dynamic_cast<const MapDestructureStmt *>(stmt)) return detectUiInExpr(mds->initializer.get());
+        if (auto *e = dynamic_cast<const ExprStmt *>(stmt)) return detectUiInExpr(e->expression.get());
+        if (auto *r = dynamic_cast<const ReturnStmt *>(stmt)) return detectUiInExpr(r->value.get());
+        if (auto *b = dynamic_cast<const BlockStmt *>(stmt)) {
+            for (const auto &s : b->statements) if (detectUiInStmt(s.get())) return true;
+        }
+        if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt)) return detectUiInStmt(f->body.get());
+        if (auto *i = dynamic_cast<const IfStmt *>(stmt)) {
+            return detectUiInExpr(i->condition.get()) || detectUiInStmt(i->thenBranch.get()) || detectUiInStmt(i->elseBranch.get());
+        }
+        if (auto *w = dynamic_cast<const WhileStmt *>(stmt)) return detectUiInExpr(w->condition.get()) || detectUiInStmt(w->body.get());
+        if (auto *g = dynamic_cast<const GhoomStmt *>(stmt)) return detectUiInExpr(g->start.get()) || detectUiInExpr(g->end.get()) || detectUiInStmt(g->body.get());
+        if (auto *gm = dynamic_cast<const GhumaMeinStmt *>(stmt)) return detectUiInExpr(gm->collection.get()) || detectUiInStmt(gm->body.get());
+        return false;
+    }
+
     void scanDeclarations(const std::vector<std::unique_ptr<Stmt>> &program) {
         for (const auto &stmt : program) {
+            if (detectUiInStmt(stmt.get())) {
+                programUsesUi = true;
+            }
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
                 knownClasses.insert(c->name);
                 for (const auto &cf : c->fields) {
                     knownClassFields.insert(cf.name);
                 }
                 for (const auto &m : c->methods) {
+                    knownClassMethods.insert(sanitizeIdentifier(m->name));
                     if (m->name == "shuru" || m->name == "init" || m->name == "constructor" || m->name == "naya" || m->name == "paida") {
                         if (auto *b = dynamic_cast<const BlockStmt *>(m->body.get())) {
                             for (const auto &s : b->statements) {
@@ -334,8 +422,13 @@ public:
             } else if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
                 knownFunctions.insert(f->name);
             } else if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
-                std::string alias = imp->alias.empty() ? imp->path : imp->alias;
-                knownModuleAliases.insert(sanitizeIdentifier(alias));
+                if (imp->path != "ui" && imp->path != "egui" && imp->path != "view" && imp->path != "gui" &&
+                    imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui") {
+                    std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
+                    if (!alias.empty() && imp->namedImports.empty()) {
+                        knownModuleAliases.insert(sanitizeIdentifier(alias));
+                    }
+                }
             }
         }
     }
@@ -468,6 +561,9 @@ public:
             return "MemeValue(std::vector<uint8_t>{" + bytesList + "})";
         }
         if (auto *e = dynamic_cast<const IdentifierExpr *>(expr)) {
+            if (knownFunctions.count(e->name) && !isVarDeclaredInScope(e->name) && !topLevelVars.count(e->name)) {
+                return sanitizeIdentifier(e->name) + "_fn";
+            }
             return sanitizeIdentifier(e->name);
         }
         if (auto *e = dynamic_cast<const AssignExpr *>(expr)) {
@@ -481,6 +577,22 @@ public:
             return "(" + opStr + generateExpr(e->operand.get()) + ")";
         }
         if (auto *e = dynamic_cast<const BinaryExpr *>(expr)) {
+            auto isPureBoolOrCmp = [](const Expr *sub) -> bool {
+                if (dynamic_cast<const BoolExpr *>(sub)) return true;
+                if (auto *b = dynamic_cast<const BinaryExpr *>(sub)) {
+                    return b->op.type == TokenType::EQUAL || b->op.type == TokenType::NOT_EQUAL ||
+                           b->op.type == TokenType::LESS_THAN || b->op.type == TokenType::LESS_THAN_EQUAL ||
+                           b->op.type == TokenType::GREATER_THAN || b->op.type == TokenType::GREATER_THAN_EQUAL ||
+                           b->op.type == TokenType::AUR || b->op.type == TokenType::YA;
+                }
+                return false;
+            };
+            if (e->op.type == TokenType::AUR && !isPureBoolOrCmp(e->right.get())) {
+                return "([&]() -> MemeValue { MemeValue _lv = MemeValue(" + generateExpr(e->left.get()) + "); return is_truthy(_lv) ? MemeValue(" + generateExpr(e->right.get()) + ") : _lv; })()";
+            }
+            if (e->op.type == TokenType::YA && !isPureBoolOrCmp(e->right.get())) {
+                return "([&]() -> MemeValue { MemeValue _lv = MemeValue(" + generateExpr(e->left.get()) + "); return is_truthy(_lv) ? _lv : MemeValue(" + generateExpr(e->right.get()) + "); })()";
+            }
             std::string opStr;
             switch (e->op.type) {
             case TokenType::PLUS: opStr = "+"; break;
@@ -692,11 +804,44 @@ public:
                 if (strMethods.count(method)) {
                     return "MemeValue(" + objStr + ")." + method + "(" + args + ")";
                 }
-                return objStr + "->" + method + "(" + args + ")";
+                if (knownClassMethods.count(method) || objStr.rfind("std::make_shared<", 0) == 0) {
+                    return objStr + "->" + method + "(" + args + ")";
+                }
+                std::string mArgs;
+                for (size_t i = 0; i < e->args.size(); ++i) {
+                    if (i > 0) mArgs += ", ";
+                    mArgs += "MemeValue(" + generateExpr(e->args[i].get()) + ")";
+                }
+                return "meme_call_method(" + objStr + ", \"" + escapeString(get->name) + "\", std::vector<MemeValue>{" + mArgs + "})";
             }
 
             // Regular function call
-            std::string calleeStr = generateExpr(e->callee.get());
+            std::string calleeStr;
+            std::string spreadCalleeStr;
+            if (auto *id = dynamic_cast<const IdentifierExpr *>(e->callee.get())) {
+                if (knownFunctions.count(id->name) && !isVarDeclaredInScope(id->name) && !topLevelVars.count(id->name)) {
+                    calleeStr = sanitizeIdentifier(id->name);
+                    spreadCalleeStr = sanitizeIdentifier(id->name) + "_fn";
+                } else {
+                    calleeStr = spreadCalleeStr = sanitizeIdentifier(id->name);
+                }
+            } else {
+                calleeStr = spreadCalleeStr = generateExpr(e->callee.get());
+            }
+            bool hasSpreadArg = false;
+            for (const auto &a : e->args) if (dynamic_cast<const SpreadExpr *>(a.get())) { hasSpreadArg = true; break; }
+            if (hasSpreadArg) {
+                std::string pieces;
+                for (size_t i = 0; i < e->args.size(); ++i) {
+                    if (i > 0) pieces += ", ";
+                    if (auto *sp = dynamic_cast<const SpreadExpr *>(e->args[i].get())) {
+                        pieces += "meme_list_spread(" + generateExpr(sp->expr.get()) + ")";
+                    } else {
+                        pieces += "meme_list_item(" + generateExpr(e->args[i].get()) + ")";
+                    }
+                }
+                return "MemeValue(" + spreadCalleeStr + ").call_args(*meme_build_list({" + pieces + "}).list_data)";
+            }
             std::string args;
             for (size_t i = 0; i < e->args.size(); ++i) {
                 if (i > 0) args += ", ";
@@ -780,6 +925,20 @@ public:
             return "(" + targetLValue + " = " + generateExpr(e->value.get()) + ")";
         }
         if (auto *e = dynamic_cast<const ArrayLiteralExpr *>(expr)) {
+            bool hasSpread = false;
+            for (const auto &el : e->elements) if (dynamic_cast<const SpreadExpr *>(el.get())) { hasSpread = true; break; }
+            if (hasSpread) {
+                std::string pieces;
+                for (size_t i = 0; i < e->elements.size(); ++i) {
+                    if (i > 0) pieces += ", ";
+                    if (auto *sp = dynamic_cast<const SpreadExpr *>(e->elements[i].get())) {
+                        pieces += "meme_list_spread(" + generateExpr(sp->expr.get()) + ")";
+                    } else {
+                        pieces += "meme_list_item(" + generateExpr(e->elements[i].get()) + ")";
+                    }
+                }
+                return "meme_build_list({" + pieces + "})";
+            }
             std::string elems;
             for (size_t i = 0; i < e->elements.size(); ++i) {
                 if (i > 0) elems += ", ";
@@ -808,10 +967,24 @@ public:
             return "std::move(" + generateExpr(e->operand.get()) + ")";
         }
         if (auto *e = dynamic_cast<const TernaryExpr *>(expr)) {
-            return "(is_truthy(" + generateExpr(e->condition.get()) + ") ? " +
-                   generateExpr(e->thenBranch.get()) + " : " + generateExpr(e->elseBranch.get()) + ")";
+            return "MEME_TERNARY(" + generateExpr(e->condition.get()) + ", " +
+                   generateExpr(e->thenBranch.get()) + ", " + generateExpr(e->elseBranch.get()) + ")";
         }
         if (auto *e = dynamic_cast<const MapLiteralExpr *>(expr)) {
+            bool hasSpread = false;
+            for (const auto &kv : e->entries) if (dynamic_cast<const SpreadExpr *>(kv.first.get()) || !kv.second) { hasSpread = true; break; }
+            if (hasSpread) {
+                std::string pieces;
+                for (size_t i = 0; i < e->entries.size(); ++i) {
+                    if (i > 0) pieces += ", ";
+                    if (auto *sp = dynamic_cast<const SpreadExpr *>(e->entries[i].first.get())) {
+                        pieces += "meme_map_spread(" + generateExpr(sp->expr.get()) + ")";
+                    } else if (e->entries[i].second) {
+                        pieces += "meme_map_kv(" + generateExpr(e->entries[i].first.get()) + ", " + generateExpr(e->entries[i].second.get()) + ")";
+                    }
+                }
+                return "meme_build_map({" + pieces + "})";
+            }
             std::string entries;
             for (size_t i = 0; i < e->entries.size(); ++i) {
                 if (i > 0) entries += ", ";
@@ -894,18 +1067,91 @@ public:
             return ss.str();
         }
 
+        if (auto *jsx = dynamic_cast<const JsxElementExpr *>(expr)) {
+            std::string propsPairs = "{";
+            for (size_t i = 0; i < jsx->props.size(); ++i) {
+                if (i > 0) propsPairs += ", ";
+                propsPairs += "{\"" + escapeString(jsx->props[i].first) + "\", MemeValue(" + generateExpr(jsx->props[i].second.get()) + ")}";
+            }
+            propsPairs += "}";
+
+            std::string childrenVec = "{";
+            for (size_t i = 0; i < jsx->children.size(); ++i) {
+                if (i > 0) childrenVec += ", ";
+                childrenVec += "MemeValue(" + generateExpr(jsx->children[i].get()) + ")";
+            }
+            childrenVec += "}";
+
+            if (jsx->isFragment || jsx->tag == "Fragment" || jsx->tag == "fragment") {
+                return "make_jsx_element(\"fragment\", true, {}, " + childrenVec + ")";
+            }
+
+            size_t dotPos = jsx->tag.find('.');
+            if (dotPos != std::string::npos && jsx->tag.substr(dotPos + 1) == "Provider") {
+                std::string ctxObj = sanitizeIdentifier(jsx->tag.substr(0, dotPos));
+                std::string valExprStr = "MemeValue()";
+                for (const auto &p : jsx->props) {
+                    if (p.first == "value") {
+                        valExprStr = "MemeValue(" + generateExpr(p.second.get()) + ")";
+                        break;
+                    }
+                }
+                return "([&]() -> MemeValue { meme_push_context(" + ctxObj + ", " + valExprStr + "); "
+                       "MemeValue _p_res = make_jsx_element(\"fragment\", true, {}, " + childrenVec + "); "
+                       "meme_pop_context(" + ctxObj + "); return _p_res; })()";
+            }
+
+            if (!jsx->tag.empty() && (std::isupper(static_cast<unsigned char>(jsx->tag[0])) || dotPos != std::string::npos)) {
+                std::string compExprStr;
+                if (dotPos != std::string::npos) {
+                    std::string base = sanitizeIdentifier(jsx->tag.substr(0, dotPos));
+                    std::string mem = jsx->tag.substr(dotPos + 1);
+                    compExprStr = "meme_index(" + base + ", \"" + escapeString(mem) + "\")";
+                } else {
+                    if (knownFunctions.count(jsx->tag) && !isVarDeclaredInScope(jsx->tag) && !topLevelVars.count(jsx->tag)) {
+                        compExprStr = sanitizeIdentifier(jsx->tag) + "_fn";
+                    } else if (jsx->tag == "Router" || jsx->tag == "Route" || jsx->tag == "Link") {
+                        compExprStr = jsx->tag + "_fn";
+                    } else {
+                        compExprStr = sanitizeIdentifier(jsx->tag);
+                    }
+                }
+                return "make_jsx_component(" + compExprStr + ", \"" + escapeString(jsx->tag) + "\", " + propsPairs + ", " + childrenVec + ")";
+            }
+
+            return "make_jsx_element(\"" + escapeString(jsx->tag) + "\", false, " + propsPairs + ", " + childrenVec + ")";
+        }
+
         if (auto *le = dynamic_cast<const LambdaExpr *>(expr)) {
             if (!le->declaration) return "MemeValue()";
             const auto *f = le->declaration.get();
             std::ostringstream ss;
-            ss << "[=](";
-            for (size_t i = 0; i < f->paramList.size(); ++i) {
-                if (i > 0) ss << ", ";
-                ss << "auto " << sanitizeIdentifier(f->paramList[i].name);
-            }
-            ss << ") mutable -> MemeValue {\n";
+            ss << "meme_fn([=](const std::vector<MemeValue> &_args) mutable -> MemeValue {\n";
             int origLevel = indentLevel;
             indentLevel++;
+            pushVarScope();
+            for (size_t i = 0; i < f->paramList.size(); ++i) {
+                const auto &p = f->paramList[i];
+                if (p.isMapDestructure) {
+                    std::string tmpM = "_lm_" + std::to_string(tempCounter++);
+                    ss << indent() << "MemeValue " << tmpM << " = (" << i << " < _args.size()) ? _args[" << i << "] : make_map({});\n";
+                    for (const auto &k : p.destructureKeys) {
+                        std::string kVar = sanitizeIdentifier(k.name);
+                        declareScopeVar(k.name);
+                        std::string defExpr = k.defaultValue ? ("MemeValue(" + generateExpr(k.defaultValue.get()) + ")") : "MemeValue()";
+                        ss << indent() << "MemeValue " << kVar << " = meme_map_destruct_get(" << tmpM << ", \"" << escapeString(k.name) << "\", " << defExpr << ");\n";
+                    }
+                } else if (p.isVariadic) {
+                    std::string pVar = sanitizeIdentifier(p.name);
+                    declareScopeVar(p.name);
+                    ss << indent() << "MemeValue " << pVar << " = meme_destructure_rest(MemeValue(_args), " << i << ");\n";
+                } else {
+                    std::string pVar = sanitizeIdentifier(p.name);
+                    declareScopeVar(p.name);
+                    std::string defExpr = p.defaultValue ? ("MemeValue(" + generateExpr(p.defaultValue.get()) + ")") : "MemeValue()";
+                    ss << indent() << "MemeValue " << pVar << " = (" << i << " < _args.size()) ? _args[" << i << "] : " << defExpr << ";\n";
+                }
+            }
             if (f->body) {
                 std::ostringstream bss;
                 generateStmt(f->body.get(), bss);
@@ -916,8 +1162,9 @@ public:
             } else {
                 ss << indent() << "return MemeValue();\n";
             }
+            popVarScope();
             indentLevel = origLevel;
-            ss << indent() << "}";
+            ss << indent() << "})";
             return ss.str();
         }
 
@@ -991,6 +1238,13 @@ public:
 
         if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt)) {
             std::string varName = sanitizeIdentifier(v->name);
+            if (inMainPass && topLevelVars.count(v->name)) {
+                if (v->initializer) {
+                    out << indent() << varName << " = MemeValue(" << generateExpr(v->initializer.get()) << ");\n";
+                }
+                return;
+            }
+            declareScopeVar(v->name);
             std::string typeStr = "auto";
             if (v->typeAnnotation) {
                 std::string cppT = toCppType(v->typeAnnotation);
@@ -1035,8 +1289,102 @@ public:
             return;
         }
 
+        auto emitArrayDestruct = [&](const std::vector<DestructureItem> &items, const Expr *initExpr) {
+            std::string tmp = "_ads_" + std::to_string(tempCounter++);
+            out << indent() << "MemeValue " << tmp << " = MemeValue(" << generateExpr(initExpr) << ");\n";
+            size_t listIdx = 0;
+            for (const auto &item : items) {
+                std::string vn = sanitizeIdentifier(item.name);
+                std::string rhs = item.isVariadic
+                    ? ("meme_destructure_rest(" + tmp + ", " + std::to_string(listIdx) + ")")
+                    : ("meme_destructure_get(" + tmp + ", " + std::to_string(listIdx++) + ")");
+                if ((inMainPass && topLevelVars.count(item.name)) || isVarDeclaredInScope(item.name)) {
+                    out << indent() << vn << " = " << rhs << ";\n";
+                } else {
+                    declareScopeVar(item.name);
+                    out << indent() << "MemeValue " << vn << " = " << rhs << ";\n";
+                }
+            }
+        };
+
+        if (auto *ads = dynamic_cast<const ArrayDestructureStmt *>(stmt)) {
+            emitArrayDestruct(ads->items, ads->initializer.get());
+            return;
+        }
+
+        if (auto *mds = dynamic_cast<const MapDestructureStmt *>(stmt)) {
+            std::string tmp = "_mds_" + std::to_string(tempCounter++);
+            out << indent() << "MemeValue " << tmp << " = MemeValue(" << generateExpr(mds->initializer.get()) << ");\n";
+            for (const auto &k : mds->keys) {
+                std::string vn = sanitizeIdentifier(k);
+                std::string rhs = "meme_map_destruct_get(" + tmp + ", \"" + escapeString(k) + "\")";
+                if ((inMainPass && topLevelVars.count(k)) || isVarDeclaredInScope(k)) {
+                    out << indent() << vn << " = " << rhs << ";\n";
+                } else {
+                    declareScopeVar(k);
+                    out << indent() << "MemeValue " << vn << " = " << rhs << ";\n";
+                }
+            }
+            return;
+        }
+
         if (auto *e = dynamic_cast<const ExprStmt *>(stmt)) {
+            if (auto *da = dynamic_cast<const DestructureAssignExpr *>(e->expression.get())) {
+                emitArrayDestruct(da->items, da->value.get());
+                return;
+            }
             out << indent() << generateExpr(e->expression.get()) << ";\n";
+            return;
+        }
+
+        if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt)) {
+            std::string fnName = sanitizeIdentifier(f->name);
+            std::string boxName = "_fbox_" + fnName + "_" + std::to_string(tempCounter++);
+            declareScopeVar(f->name);
+            out << indent() << "auto " << boxName << " = std::make_shared<MemeValue>();\n";
+            out << indent() << "*" << boxName << " = meme_fn([=](const std::vector<MemeValue> &_args) mutable -> MemeValue {\n";
+            indentLevel++;
+            out << indent() << "MemeValue &" << fnName << " = *" << boxName << ";\n";
+            out << indent() << "(void)" << fnName << "; (void)_args;\n";
+            pushVarScope();
+            for (size_t i = 0; i < f->paramList.size(); ++i) {
+                const auto &p = f->paramList[i];
+                if (p.isMapDestructure) {
+                    std::string tmpM = "_nfm_" + std::to_string(tempCounter++);
+                    out << indent() << "MemeValue " << tmpM << " = (" << i << " < _args.size()) ? _args[" << i << "] : make_map({});\n";
+                    for (const auto &dk : p.destructureKeys) {
+                        std::string kVar = sanitizeIdentifier(dk.name);
+                        declareScopeVar(dk.name);
+                        std::string defExpr = dk.defaultValue ? ("MemeValue(" + generateExpr(dk.defaultValue.get()) + ")") : "MemeValue()";
+                        out << indent() << "MemeValue " << kVar << " = meme_map_destruct_get(" << tmpM << ", \"" << escapeString(dk.name) << "\", " << defExpr << ");\n";
+                    }
+                } else if (p.isVariadic) {
+                    std::string pVar = sanitizeIdentifier(p.name);
+                    declareScopeVar(p.name);
+                    out << indent() << "MemeValue " << pVar << " = meme_destructure_rest(MemeValue(_args), " << i << ");\n";
+                } else {
+                    std::string pVar = sanitizeIdentifier(p.name);
+                    declareScopeVar(p.name);
+                    std::string defExpr = p.defaultValue ? ("MemeValue(" + generateExpr(p.defaultValue.get()) + ")") : "MemeValue()";
+                    out << indent() << "MemeValue " << pVar << " = (" << i << " < _args.size()) ? _args[" << i << "] : " << defExpr << ";\n";
+                }
+            }
+            if (f->body) {
+                if (auto *fb = dynamic_cast<const BlockStmt *>(f->body.get())) {
+                    for (const auto &s : fb->statements) generateStmt(s.get(), out);
+                } else {
+                    generateStmt(f->body.get(), out);
+                }
+                if (!hasReturnStmt(f->body.get())) {
+                    out << indent() << "return MemeValue();\n";
+                }
+            } else {
+                out << indent() << "return MemeValue();\n";
+            }
+            popVarScope();
+            indentLevel--;
+            out << indent() << "});\n";
+            out << indent() << "MemeValue " << fnName << " = *" << boxName << ";\n";
             return;
         }
 
@@ -1065,9 +1413,11 @@ public:
         if (auto *b = dynamic_cast<const BlockStmt *>(stmt)) {
             out << indent() << "{\n";
             indentLevel++;
+            pushVarScope();
             for (const auto &s : b->statements) {
                 generateStmt(s.get(), out);
             }
+            popVarScope();
             indentLevel--;
             out << indent() << "}\n";
             return;
@@ -1434,7 +1784,7 @@ public:
         }
 
         if (auto *imp = dynamic_cast<const ImportStmt *>(stmt)) {
-            std::string alias = imp->alias.empty() ? imp->path : imp->alias;
+            std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
             alias = sanitizeIdentifier(alias);
             if (imp->path == "samay") {
                 if (alias != "samay") {
@@ -1459,6 +1809,18 @@ public:
             } else if (imp->path == "file") {
                 if (alias != "file") {
                     out << indent() << "auto &" << alias << " = file;\n";
+                }
+            } else if (imp->path == "ui:shadcn") {
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui") {
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << (imp->path == "egui" ? "egui" : "ui") << ", \"" << escapeString(ni) << "\");\n";
                 }
             }
             return;
@@ -1889,6 +2251,40 @@ public:
         return "const MemeValue &";
     }
 
+    bool canHaveTrailingDefault(const std::vector<FuncParam> &plist, size_t idx) const {
+        for (size_t j = idx; j < plist.size(); ++j) {
+            if (!plist[j].isMapDestructure && !plist[j].defaultValue && !plist[j].isVariadic) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::string buildFuncParamList(const FuncDeclStmt *f, bool includeDefaults) {
+        std::string paramDecl;
+        for (size_t i = 0; i < f->paramList.size(); ++i) {
+            if (i > 0) paramDecl += ", ";
+            const auto &p = f->paramList[i];
+            if (p.isMapDestructure) {
+                paramDecl += "const MemeValue &_mp_" + std::to_string(i);
+                if (includeDefaults && canHaveTrailingDefault(f->paramList, i)) {
+                    paramDecl += " = MemeValue()";
+                }
+            } else {
+                std::string tStr = getParamTypeString(p, f->typeParams);
+                paramDecl += tStr + sanitizeIdentifier(p.name);
+                if (includeDefaults && (p.defaultValue || (p.isVariadic && !p.typeAnnotation)) && canHaveTrailingDefault(f->paramList, i)) {
+                    if (p.defaultValue && tStr == "const MemeValue &") {
+                        paramDecl += " = MemeValue(" + const_cast<CodeGenerator *>(this)->generateExpr(p.defaultValue.get()) + ")";
+                    } else if (!p.defaultValue && tStr == "const MemeValue &") {
+                        paramDecl += " = MemeValue()";
+                    }
+                }
+            }
+        }
+        return paramDecl;
+    }
+
     void generateFunction(const FuncDeclStmt *f) {
         std::string fnName = sanitizeIdentifier(f->name);
         std::string returnType = "MemeValue";
@@ -1903,11 +2299,7 @@ public:
             returnType = "MemeValue";
         }
 
-        std::string paramDecl;
-        for (size_t i = 0; i < f->paramList.size(); ++i) {
-            if (i > 0) paramDecl += ", ";
-            paramDecl += getParamTypeString(f->paramList[i], f->typeParams) + sanitizeIdentifier(f->paramList[i].name);
-        }
+        std::string paramDecl = buildFuncParamList(f, false);
 
         if (!f->typeParams.empty()) {
             globalDecls << "template<";
@@ -1924,6 +2316,19 @@ public:
         indentLevel = 1;
         {
             FunctionScopeGuard guard(*this, f->body.get());
+            pushVarScope();
+            for (size_t i = 0; i < f->paramList.size(); ++i) {
+                const auto &p = f->paramList[i];
+                if (p.isMapDestructure) {
+                    for (const auto &dk : p.destructureKeys) {
+                        declareScopeVar(dk.name);
+                        std::string defStr = dk.defaultValue ? ("MemeValue(" + generateExpr(dk.defaultValue.get()) + ")") : "MemeValue()";
+                        globalDecls << indent() << "MemeValue " << sanitizeIdentifier(dk.name) << " = meme_map_destruct_get(_mp_" << i << ", \"" << escapeString(dk.name) << "\", " << defStr << ");\n";
+                    }
+                } else {
+                    declareScopeVar(p.name);
+                }
+            }
             globalDecls << indent() << "MemeCallDepthGuard _depth_guard(\"" << fnName << "\");\n";
             if (usesPropagate) {
                 globalDecls << indent() << "try {\n";
@@ -1945,8 +2350,56 @@ public:
             } else if (returnType == "MemeValue") {
                 globalDecls << indent() << "return MemeValue();\n";
             }
+            popVarScope();
         }
         globalDecls << "}\n\n";
+
+        if (f->typeParams.empty()) {
+            globalDecls << "inline MemeValue " << fnName << "_wrap(const std::vector<MemeValue> &_args) {\n";
+            if (f->paramList.empty()) {
+                globalDecls << "    (void)_args;\n";
+            }
+            std::string callArgs;
+            for (size_t i = 0; i < f->paramList.size(); ++i) {
+                if (i > 0) callArgs += ", ";
+                const auto &p = f->paramList[i];
+                if (p.isMapDestructure) {
+                    callArgs += "(" + std::to_string(i) + " < _args.size() ? _args[" + std::to_string(i) + "] : make_map({}))";
+                } else {
+                    std::string pt = getParamTypeString(p, f->typeParams);
+                    std::string defExpr = p.defaultValue ? ("MemeValue(" + generateExpr(p.defaultValue.get()) + ")") : "MemeValue()";
+                    std::string argVal = "(" + std::to_string(i) + " < _args.size() ? _args[" + std::to_string(i) + "] : " + defExpr + ")";
+                    if (pt == "const MemeValue &" || pt == "MemeValue ") {
+                        callArgs += argVal;
+                    } else if (pt == "int64_t ") {
+                        callArgs += argVal + ".as_int()";
+                    } else if (pt == "double ") {
+                        callArgs += argVal + ".as_double()";
+                    } else if (pt == "bool ") {
+                        callArgs += argVal + ".is_truthy()";
+                    } else if (pt == "const std::string &" || pt == "std::string ") {
+                        callArgs += argVal + ".to_string()";
+                    } else if (pt.find("std::shared_ptr<") != std::string::npos) {
+                        size_t lt = pt.find('<');
+                        size_t gt = pt.rfind('>');
+                        std::string innerT = (lt != std::string::npos && gt != std::string::npos && gt > lt) ? pt.substr(lt + 1, gt - lt - 1) : "void";
+                        callArgs += "std::static_pointer_cast<" + innerT + ">(" + argVal + ".obj_val)";
+                    } else if (pt.find("std::vector<MemeValue>") != std::string::npos) {
+                        callArgs += "([&]() -> std::vector<MemeValue> { MemeValue _tmp = " + argVal + "; _tmp.ensure_list(); return *_tmp.list_data; })()";
+                    } else if (pt.find("std::vector<uint8_t>") != std::string::npos) {
+                        callArgs += "([&]() -> std::vector<uint8_t> { MemeValue _tmp = " + argVal + "; _tmp.ensure_bytes(); return *_tmp.bytes_val; })()";
+                    } else {
+                        callArgs += argVal;
+                    }
+                }
+            }
+            if (returnType == "void") {
+                globalDecls << "    " << fnName << "(" << callArgs << ");\n    return MemeValue();\n";
+            } else {
+                globalDecls << "    return MemeValue(" << fnName << "(" << callArgs << "));\n";
+            }
+            globalDecls << "}\n\n";
+        }
     }
 
     std::string buildSource() {
@@ -1954,13 +2407,21 @@ public:
         out << "// ==================================================================\n";
         out << "// Automatically generated by MEMElang AOT Native Compiler\n";
         out << "// ==================================================================\n\n";
-        out << "#include \"src/compiler/MemeRuntime.h\"\n\n";
+        out << "#include \"src/compiler/MemeRuntime.h\"\n";
+        if (programUsesUi) {
+            out << "#include \"src/compiler/MemeRuntimeUi.h\"\n";
+        }
+        out << "\n";
 
         // Global declarations (classes, functions)
         out << globalDecls.str();
 
         // Main entrypoint
+        out << "#ifdef MEME_HOST_PROVIDES_MAIN\n";
+        out << "extern \"C\" int meme_user_entrypoint(int argc, char* argv[]) {\n";
+        out << "#else\n";
         out << "int main(int argc, char* argv[]) {\n";
+        out << "#endif\n";
         out << "    sys.args.clear();\n";
         out << "    for (int _i = 0; _i < argc; ++_i) {\n";
         out << "        sys.args.push_back(std::string(argv[_i]));\n";
@@ -1986,16 +2447,22 @@ public:
     std::unordered_set<std::string> importedModulesProcessed;
 
     std::filesystem::path resolveModuleFile(const std::string &modPath) {
-        std::vector<std::filesystem::path> candidates = {
-            std::filesystem::path(".tapri_modules") / (modPath + ".meme"),
-            std::filesystem::path(".tapri_modules") / modPath / "index.meme",
-            std::filesystem::path(".tapri_modules") / modPath / (modPath + ".meme"),
-            std::filesystem::path(".tapri_modules") / modPath,
-            std::filesystem::path(".meme_env") / "pkgs" / (modPath + ".meme"),
-            std::filesystem::path(".meme_env") / "pkgs" / modPath / "index.meme",
-            std::filesystem::path(modPath + ".meme"),
-            std::filesystem::path(modPath)
-        };
+        std::vector<std::filesystem::path> candidates;
+        if (!currentSourceFile.empty()) {
+            std::filesystem::path baseDir = std::filesystem::path(currentSourceFile).parent_path();
+            if (!baseDir.empty()) {
+                candidates.push_back(baseDir / (modPath + ".meme"));
+                candidates.push_back(baseDir / modPath);
+            }
+        }
+        candidates.push_back(std::filesystem::path(".tapri_modules") / (modPath + ".meme"));
+        candidates.push_back(std::filesystem::path(".tapri_modules") / modPath / "index.meme");
+        candidates.push_back(std::filesystem::path(".tapri_modules") / modPath / (modPath + ".meme"));
+        candidates.push_back(std::filesystem::path(".tapri_modules") / modPath);
+        candidates.push_back(std::filesystem::path(".meme_env") / "pkgs" / (modPath + ".meme"));
+        candidates.push_back(std::filesystem::path(".meme_env") / "pkgs" / modPath / "index.meme");
+        candidates.push_back(std::filesystem::path(modPath + ".meme"));
+        candidates.push_back(std::filesystem::path(modPath));
         for (const auto &c : candidates) {
             std::error_code ec;
             if (std::filesystem::exists(c, ec) && std::filesystem::is_regular_file(c, ec)) {
@@ -2035,12 +2502,12 @@ public:
             for (const auto &stmt : modStmts) {
                 if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
                     std::string fnName = sanitizeIdentifier(f->name);
-                    std::string paramTypes;
-                    for (size_t i = 0; i < f->paramList.size(); ++i) {
-                        if (i > 0) paramTypes += ", ";
-                        paramTypes += "const MemeValue &" + sanitizeIdentifier(f->paramList[i].name);
-                    }
+                    std::string paramTypes = buildFuncParamList(f, true);
                     globalDecls << "inline MemeValue " << fnName << "(" << paramTypes << ");\n";
+                    if (f->typeParams.empty()) {
+                        globalDecls << "inline MemeValue " << fnName << "_wrap(const std::vector<MemeValue> &_args);\n";
+                        globalDecls << "inline const MemeValue " << fnName << "_fn = meme_fn(" << fnName << "_wrap);\n";
+                    }
                 }
             }
 
@@ -2051,7 +2518,9 @@ public:
                 } else if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
                     generateFunction(f);
                 } else if (!dynamic_cast<const ImportStmt *>(stmt.get())) {
+                    inMainPass = true;
                     generateStmt(stmt.get(), mainBody);
+                    inMainPass = false;
                 }
             }
 
@@ -2061,18 +2530,31 @@ public:
             }
             modAlias = sanitizeIdentifier(modAlias);
             if (!modAlias.empty()) {
-                globalDecls << "struct _MemeMod_" << modAlias << " {\n";
+                std::vector<std::string> exportedFns;
                 for (const auto &stmt : modStmts) {
                     if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
-                        std::string fnName = sanitizeIdentifier(f->name);
+                        if (f->typeParams.empty()) exportedFns.push_back(sanitizeIdentifier(f->name));
+                    }
+                }
+                if (programUsesUi) {
+                    knownModuleAliases.erase(modAlias);
+                    globalDecls << "inline MemeValue " << modAlias << " = make_map({";
+                    for (size_t ei = 0; ei < exportedFns.size(); ++ei) {
+                        if (ei > 0) globalDecls << ", ";
+                        globalDecls << "{\"" << exportedFns[ei] << "\", " << exportedFns[ei] << "_fn}";
+                    }
+                    globalDecls << "});\n\n";
+                } else {
+                    globalDecls << "struct _MemeMod_" << modAlias << " {\n";
+                    for (const auto &fnName : exportedFns) {
                         globalDecls << "    template<typename... Args>\n";
                         globalDecls << "    decltype(auto) " << fnName << "(Args&&... args) const {\n";
                         globalDecls << "        return ::" << fnName << "(std::forward<Args>(args)...);\n";
                         globalDecls << "    }\n";
                     }
+                    globalDecls << "};\n";
+                    globalDecls << "inline _MemeMod_" << modAlias << " " << modAlias << ";\n\n";
                 }
-                globalDecls << "};\n";
-                globalDecls << "inline _MemeMod_" << modAlias << " " << modAlias << ";\n\n";
             }
         } catch (...) {}
     }
@@ -2085,7 +2567,7 @@ public:
         // Pass 0: Top-level imports
         for (const auto &stmt : program) {
             if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
-                std::string alias = imp->alias.empty() ? imp->path : imp->alias;
+                std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
                 alias = sanitizeIdentifier(alias);
                 if (imp->path == "samay") {
                     if (alias != "samay") {
@@ -2123,8 +2605,56 @@ public:
                     if (alias != "net" && alias != "m_socket" && alias != "socket") {
                         globalDecls << "inline NetModule &" << alias << " = net;\n";
                     }
+                } else if (imp->path == "ui:shadcn") {
+                    if (!imp->namedImports.empty()) {
+                        for (const auto &ni : imp->namedImports) {
+                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
+                        }
+                    } else if (!alias.empty() && alias != "ui_shadcn") {
+                        globalDecls << "inline MemeValue " << alias << " = ui_shadcn;\n";
+                    }
+                } else if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
+                    if (!imp->namedImports.empty()) {
+                        for (const auto &ni : imp->namedImports) {
+                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
+                        }
+                    } else if (!alias.empty() && alias != "ui_primitives") {
+                        globalDecls << "inline MemeValue " << alias << " = ui_primitives;\n";
+                    }
+                } else if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui") {
+                    std::string srcMod = (imp->path == "egui") ? "egui" : "ui";
+                    if (!imp->namedImports.empty()) {
+                        for (const auto &ni : imp->namedImports) {
+                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                        }
+                    } else if (!alias.empty() && alias != "ui" && alias != "egui" && alias != "view" && alias != "gui") {
+                        globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
+                    }
                 } else {
                     processModuleImport(imp->path, alias);
+                }
+            }
+        }
+
+        // Pass 0C: Hoist top-level variables for UI modules & components
+        if (programUsesUi) {
+            auto hoistVar = [&](const std::string &rawName) {
+                std::string vn = sanitizeIdentifier(rawName);
+                if (!rawName.empty() && topLevelVars.insert(rawName).second) {
+                    globalDecls << "inline MemeValue " << vn << ";\n";
+                }
+            };
+            for (const auto &stmt : program) {
+                if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt.get())) {
+                    hoistVar(v->name);
+                } else if (auto *ads = dynamic_cast<const ArrayDestructureStmt *>(stmt.get())) {
+                    for (const auto &it : ads->items) hoistVar(it.name);
+                } else if (auto *mds = dynamic_cast<const MapDestructureStmt *>(stmt.get())) {
+                    for (const auto &k : mds->keys) hoistVar(k);
+                } else if (auto *es = dynamic_cast<const ExprStmt *>(stmt.get())) {
+                    if (auto *da = dynamic_cast<const DestructureAssignExpr *>(es->expression.get())) {
+                        for (const auto &it : da->items) hoistVar(it.name);
+                    }
                 }
             }
         }
@@ -2157,11 +2687,7 @@ public:
                 } else if (f->returnTypeAnnotation) {
                     retType = toCppType(f->returnTypeAnnotation, f->typeParams, false);
                 }
-                std::string paramTypes;
-                for (size_t i = 0; i < f->paramList.size(); ++i) {
-                    if (i > 0) paramTypes += ", ";
-                    paramTypes += getParamTypeString(f->paramList[i], f->typeParams) + sanitizeIdentifier(f->paramList[i].name);
-                }
+                std::string paramTypes = buildFuncParamList(f, true);
                 if (!f->typeParams.empty()) {
                     globalDecls << "template<";
                     for (size_t i = 0; i < f->typeParams.size(); ++i) {
@@ -2171,6 +2697,10 @@ public:
                     globalDecls << ">\n";
                 }
                 globalDecls << "inline " << retType << " " << fnName << "(" << paramTypes << ");\n";
+                if (f->typeParams.empty()) {
+                    globalDecls << "inline MemeValue " << fnName << "_wrap(const std::vector<MemeValue> &_args);\n";
+                    globalDecls << "inline const MemeValue " << fnName << "_fn = meme_fn(" << fnName << "_wrap);\n";
+                }
             }
         }
         globalDecls << "\n";
@@ -2190,6 +2720,7 @@ public:
         }
 
         // Third pass: Main top-level statements
+        inMainPass = true;
         for (const auto &stmt : program) {
             if (!dynamic_cast<const ClassDeclStmt *>(stmt.get()) &&
                 !dynamic_cast<const FuncDeclStmt *>(stmt.get()) &&
@@ -2197,6 +2728,7 @@ public:
                 generateStmt(stmt.get(), mainBody);
             }
         }
+        inMainPass = false;
         currentProgram = nullptr;
     }
 };
@@ -2245,9 +2777,11 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
         }
         result.binaryPath = binPath.string();
 
+        bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
+
         // Build clang++ command with PCH acceleration
         std::filesystem::path pchPath;
-        bool usePch = ensurePchReady(options, pchPath);
+        bool usePch = (!usesUi) && ensurePchReady(options, pchPath);
 
         auto buildClangCmd = [&](bool withPch) {
             std::string c = "clang++ -std=c++20 ";
@@ -2266,7 +2800,21 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
             if (withPch && !options.tsan) {
                 c += "-include-pch \"" + pchPath.string() + "\" ";
             }
+            if (usesUi) {
+#if defined(__APPLE__)
+                if (options.target == "host" || options.target == "mac") {
+                    c += "-x objective-c++ ";
+                }
+#endif
+            }
             c += "\"" + cppPath.string() + "\" ";
+            if (usesUi) {
+#if defined(__APPLE__)
+                if (options.target == "host" || options.target == "mac") {
+                    c += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
+                }
+#endif
+            }
             c += "-o \"" + binPath.string() + "\" 2>&1";
             return c;
         };

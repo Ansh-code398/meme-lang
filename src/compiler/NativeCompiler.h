@@ -18,6 +18,8 @@ struct CompileOptions {
     bool keepCppSource = false;
     bool verbose = false;
     bool usePch = true;
+    std::string target = "host";
+    bool gui = false;
 };
 
 struct CompileResult {

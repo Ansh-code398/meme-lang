@@ -37,10 +37,12 @@ EM_JS(char*, js_get_input, (const char* prompt_str), {
 #include "../parser/Parser.h"
 #include "../types/TypeChecker.h"
 #include "../interpreter/Interpreter.h"
+#include "../hosts/web/MemeWebCanvasHost.h"
 
 static std::string output_buffer;
 static std::string last_gpu_commands_buffer;
 static std::string last_hit_regions_buffer;
+static std::vector<std::unique_ptr<Stmt>> g_wasm_program;
 static std::unique_ptr<Interpreter> g_wasm_interpreter;
 static std::ostringstream g_wasm_out;
 static std::istringstream g_wasm_in;
@@ -74,6 +76,8 @@ const char* run_meme_code(const char* source_code, const char* input_text) {
         TypeChecker typeChecker;
         typeChecker.check(program);
 
+        g_wasm_interpreter.reset();
+        g_wasm_program = std::move(program);
         g_wasm_interpreter = std::make_unique<Interpreter>(g_wasm_out, g_wasm_in);
 
 #ifdef __EMSCRIPTEN__
@@ -88,7 +92,10 @@ const char* run_meme_code(const char* source_code, const char* input_text) {
         });
 #endif
 
-        g_wasm_interpreter->interpret(program);
+        g_wasm_interpreter->interpret(g_wasm_program);
+        MemeWebHost::bindSession(&g_wasm_interpreter->getUiSession(), []() {
+            if (g_wasm_interpreter) g_wasm_interpreter->triggerUiRerender();
+        });
         last_gpu_commands_buffer = g_wasm_interpreter->getLastGpuCommandsJson();
         last_hit_regions_buffer = g_wasm_interpreter->getLastHitRegionsJson();
 

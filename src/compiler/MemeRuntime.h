@@ -29,7 +29,8 @@
 #include <crt_externs.h>
 #define meme_environ (*_NSGetEnviron())
 #elif !defined(_WIN32)
-extern char **environ;
+#include <unistd.h>
+extern "C" { extern char **environ; }
 #define meme_environ environ
 #else
 #define meme_environ _environ
@@ -44,6 +45,32 @@ extern char **environ;
 #include <fcntl.h>
 #include <poll.h>
 #include <netdb.h>
+inline void meme_ensure_wsa() {}
+inline void meme_close_sock(int fd) {
+    if (fd >= 0) ::close(fd);
+}
+#else
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+inline void meme_ensure_wsa() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        WSADATA wsa{};
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+    });
+}
+inline void meme_close_sock(int fd) {
+    if (fd >= 0) ::closesocket(static_cast<SOCKET>(fd));
+}
 #endif
 
 // ==========================================
@@ -130,10 +157,14 @@ struct MemeStringList : public std::vector<std::string> {
     const std::string &operator[](size_t idx) const;
     std::string &operator[](int idx);
     const std::string &operator[](int idx) const;
+    std::string &operator[](long idx);
+    const std::string &operator[](long idx) const;
     std::string &operator[](long long idx);
     const std::string &operator[](long long idx) const;
+#if !defined(_WIN32)
     std::string &operator[](unsigned long long idx);
     const std::string &operator[](unsigned long long idx) const;
+#endif
     std::string &operator[](const MemeValue &idx);
     const std::string &operator[](const MemeValue &idx) const;
     std::string &operator[](MemeValue &idx);
@@ -236,13 +267,17 @@ public:
     mutable std::shared_ptr<std::vector<uint8_t>> ref_buf = nullptr;
     size_t ref_idx = 0;
 
-    std::function<MemeValue()> fn0_val = nullptr;
+    MemeValue (*fn0_val)() = nullptr;
+    std::shared_ptr<std::function<MemeValue(const std::vector<MemeValue> &)>> fn_var = nullptr;
 
     MemeValue(const MemeMutex &mtx);
     MemeValue(const MemeThreadHandle &th);
     MemeValue(const MemeSocket &sock);
     MemeValue(const MemeServerSocket &srv);
     MemeValue(MemeValue (*fn)()) : type(TYPE_OBJECT), fn0_val(fn) {}
+    MemeValue(std::function<MemeValue(const std::vector<MemeValue> &)> f)
+        : type(TYPE_OBJECT),
+          fn_var(f ? std::make_shared<std::function<MemeValue(const std::vector<MemeValue> &)>>(std::move(f)) : nullptr) {}
 
     int64_t send(const MemeValue &data) const;
     int64_t send(const std::string &data) const;
@@ -288,16 +323,53 @@ public:
     bool chal_raha() const { return !is_done(); }
     bool is_alive() const { return !is_done(); }
 
+    bool is_callable() const {
+        return (fn_var && *fn_var) || (fn0_val != nullptr);
+    }
+
+    MemeValue call_args(const std::vector<MemeValue> &args) const {
+        if (fn_var && *fn_var) {
+            auto fnCopy = fn_var;
+            return (*fnCopy)(args);
+        }
+        if (fn0_val) {
+            auto fn0Copy = fn0_val;
+            return fn0Copy();
+        }
+        return *this;
+    }
+
     MemeValue operator()() const {
-        if (fn0_val) return fn0_val();
+        if (fn_var && *fn_var) {
+            auto fnCopy = fn_var;
+            return (*fnCopy)({});
+        }
+        if (fn0_val) {
+            auto fn0Copy = fn0_val;
+            return fn0Copy();
+        }
+        return *this;
+    }
+
+    template <typename... Args>
+    requires (sizeof...(Args) >= 1)
+    MemeValue operator()(Args&&... args) const {
+        if (fn_var && *fn_var) {
+            auto fnCopy = fn_var;
+            std::vector<MemeValue> argv{MemeValue(std::forward<Args>(args))...};
+            return (*fnCopy)(argv);
+        }
+        if (fn0_val) {
+            auto fn0Copy = fn0_val;
+            return fn0Copy();
+        }
         return *this;
     }
 
     MemeValue() : type(TYPE_NALLA) {}
     MemeValue(std::nullptr_t) : type(TYPE_NALLA) {}
-    MemeValue(int64_t v) : type(TYPE_INT), i_val(v) {}
-    MemeValue(int v) : type(TYPE_INT), i_val(v) {}
-    MemeValue(size_t v) : type(TYPE_INT), i_val(static_cast<int64_t>(v)) {}
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue(IntT v) : type(TYPE_INT), i_val(static_cast<int64_t>(v)) {}
     MemeValue(double v) : type(TYPE_FLOAT), f_val(v) {}
     MemeValue(float v) : type(TYPE_FLOAT), f_val(static_cast<double>(v)) {}
     MemeValue(bool v) : type(TYPE_BOOL), b_val(v) {}
@@ -344,7 +416,8 @@ public:
           bytes_val(other.bytes_val),
           ref_buf(nullptr),
           ref_idx(0),
-          fn0_val(other.fn0_val) {}
+          fn0_val(other.fn0_val),
+          fn_var(other.fn_var) {}
 
     MemeValue(MemeValue &&other) noexcept
         : type(other.type),
@@ -365,31 +438,54 @@ public:
           bytes_val(std::move(other.bytes_val)),
           ref_buf(std::move(other.ref_buf)),
           ref_idx(other.ref_idx),
-          fn0_val(std::move(other.fn0_val)) {}
+          fn0_val(std::move(other.fn0_val)),
+          fn_var(std::move(other.fn_var)) {}
 
-    MemeValue &operator=(int64_t v) {
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue &operator=(IntT v) {
         if (ref_buf && ref_idx < ref_buf->size()) {
-            (*ref_buf)[ref_idx] = static_cast<uint8_t>(v & 0xFF);
+            (*ref_buf)[ref_idx] = static_cast<uint8_t>(static_cast<int64_t>(v) & 0xFF);
             i_val = static_cast<int64_t>((*ref_buf)[ref_idx]);
             type = TYPE_INT;
             return *this;
         }
         type = TYPE_INT;
-        i_val = v;
+        i_val = static_cast<int64_t>(v);
         return *this;
-    }
-
-    MemeValue &operator=(int v) {
-        return (*this) = static_cast<int64_t>(v);
-    }
-
-    MemeValue &operator=(size_t v) {
-        return (*this) = static_cast<int64_t>(v);
     }
 
     MemeValue &operator=(double v) {
         type = TYPE_FLOAT;
         f_val = v;
+        return *this;
+    }
+
+    MemeValue &operator=(bool v) {
+        type = TYPE_BOOL;
+        b_val = v;
+        return *this;
+    }
+
+    MemeValue &operator=(const char *s) {
+        type = TYPE_STRING;
+        s_val = s ? s : "";
+        return *this;
+    }
+
+    MemeValue &operator=(const std::string &s) {
+        type = TYPE_STRING;
+        s_val = s;
+        return *this;
+    }
+
+    MemeValue &operator=(std::nullptr_t) {
+        type = TYPE_NALLA;
+        return *this;
+    }
+
+    MemeValue &operator=(void *p) {
+        type = TYPE_POINTER;
+        ptr_val = p;
         return *this;
     }
 
@@ -417,6 +513,7 @@ public:
         srv_sock_val = other.srv_sock_val;
         bytes_val = other.bytes_val;
         fn0_val = other.fn0_val;
+        fn_var = other.fn_var;
         ref_buf = nullptr;
         ref_idx = 0;
         return *this;
@@ -446,6 +543,7 @@ public:
         srv_sock_val = std::move(other.srv_sock_val);
         bytes_val = std::move(other.bytes_val);
         fn0_val = std::move(other.fn0_val);
+        fn_var = std::move(other.fn_var);
         ref_buf = nullptr;
         ref_idx = 0;
         return *this;
@@ -612,7 +710,7 @@ public:
             if (srv_sock_val) return "<server_socket>";
             if (mtx_val) return "<tala/mutex>";
             if (th_val) return "<dhaga>";
-            if (fn0_val) return "<function>";
+            if (fn0_val || (fn_var && *fn_var)) return "<function>";
             return "<object>";
         }
         case TYPE_BYTES: {
@@ -666,12 +764,15 @@ public:
         return MemeValue();
     }
 
-    MemeValue operator+(int64_t v) const {
-        if (type == TYPE_INT) return MemeValue(i_val + v);
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue operator+(IntT v) const {
+        if (type == TYPE_INT) return MemeValue(i_val + static_cast<int64_t>(v));
+        if (type == TYPE_STRING) return MemeValue(s_val + std::to_string(static_cast<int64_t>(v)));
         return MemeValue(as_double() + static_cast<double>(v));
     }
 
     MemeValue operator+(double v) const {
+        if (type == TYPE_STRING) return MemeValue(s_val + MemeValue(v).to_string());
         return MemeValue(as_double() + v);
     }
 
@@ -682,8 +783,9 @@ public:
         return MemeValue(as_double() - other.as_double());
     }
 
-    MemeValue operator-(int64_t v) const {
-        if (type == TYPE_INT) return MemeValue(i_val - v);
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue operator-(IntT v) const {
+        if (type == TYPE_INT) return MemeValue(i_val - static_cast<int64_t>(v));
         return MemeValue(as_double() - static_cast<double>(v));
     }
 
@@ -698,8 +800,9 @@ public:
         return MemeValue(as_double() * other.as_double());
     }
 
-    MemeValue operator*(int64_t v) const {
-        if (type == TYPE_INT) return MemeValue(i_val * v);
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue operator*(IntT v) const {
+        if (type == TYPE_INT) return MemeValue(i_val * static_cast<int64_t>(v));
         return MemeValue(as_double() * static_cast<double>(v));
     }
 
@@ -717,9 +820,11 @@ public:
         return MemeValue(as_double() / div);
     }
 
-    MemeValue operator/(int64_t v) const {
-        if (v == 0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
-        if (type == TYPE_INT) return MemeValue(i_val / v);
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue operator/(IntT v) const {
+        int64_t iv = static_cast<int64_t>(v);
+        if (iv == 0) throw std::runtime_error("Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!");
+        if (type == TYPE_INT) return MemeValue(i_val / iv);
         return MemeValue(as_double() / static_cast<double>(v));
     }
 
@@ -734,20 +839,28 @@ public:
         return MemeValue(as_int() % m);
     }
 
-    MemeValue operator%(int64_t m) const {
-        if (m == 0) throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
-        return MemeValue(as_int() % m);
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    MemeValue operator%(IntT m) const {
+        int64_t im = static_cast<int64_t>(m);
+        if (im == 0) throw std::runtime_error("0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!");
+        return MemeValue(as_int() % im);
     }
 
     // Comparisons
     bool operator==(std::nullptr_t) const { return type == TYPE_NALLA; }
     bool operator!=(std::nullptr_t) const { return type != TYPE_NALLA; }
-    bool operator==(int64_t v) const { return type == TYPE_INT ? i_val == v : as_double() == static_cast<double>(v); }
-    bool operator!=(int64_t v) const { return !(*this == v); }
-    bool operator<(int64_t v) const { return type == TYPE_INT ? i_val < v : as_double() < static_cast<double>(v); }
-    bool operator<=(int64_t v) const { return type == TYPE_INT ? i_val <= v : as_double() <= static_cast<double>(v); }
-    bool operator>(int64_t v) const { return type == TYPE_INT ? i_val > v : as_double() > static_cast<double>(v); }
-    bool operator>=(int64_t v) const { return type == TYPE_INT ? i_val >= v : as_double() >= static_cast<double>(v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator==(IntT v) const { int64_t iv = static_cast<int64_t>(v); return type == TYPE_INT ? i_val == iv : as_double() == static_cast<double>(v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator!=(IntT v) const { return !(*this == v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator<(IntT v) const { int64_t iv = static_cast<int64_t>(v); return type == TYPE_INT ? i_val < iv : as_double() < static_cast<double>(v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator<=(IntT v) const { int64_t iv = static_cast<int64_t>(v); return type == TYPE_INT ? i_val <= iv : as_double() <= static_cast<double>(v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator>(IntT v) const { int64_t iv = static_cast<int64_t>(v); return type == TYPE_INT ? i_val > iv : as_double() > static_cast<double>(v); }
+    template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+    bool operator>=(IntT v) const { int64_t iv = static_cast<int64_t>(v); return type == TYPE_INT ? i_val >= iv : as_double() >= static_cast<double>(v); }
     bool operator==(double v) const { return as_double() == v; }
     bool operator!=(double v) const { return !(*this == v); }
     bool operator<(double v) const { return as_double() < v; }
@@ -926,6 +1039,7 @@ public:
         return const_cast<MemeValue *>(this)->operator[](index);
     }
 
+#if !defined(_WIN32)
     MemeValue &operator[](unsigned long long index) {
         return (*this)[static_cast<long long>(index)];
     }
@@ -933,6 +1047,7 @@ public:
     const MemeValue &operator[](unsigned long long index) const {
         return (*this)[static_cast<long long>(index)];
     }
+#endif
 
     MemeValue &operator[](const std::string &key);
     MemeValue &operator[](const std::string &key) const;
@@ -1936,6 +2051,15 @@ inline const std::string &MemeStringList::operator[](int idx) const {
     return (*this)[static_cast<long long>(idx)];
 }
 
+inline std::string &MemeStringList::operator[](long idx) {
+    return (*this)[static_cast<long long>(idx)];
+}
+
+inline const std::string &MemeStringList::operator[](long idx) const {
+    return (*this)[static_cast<long long>(idx)];
+}
+
+#if !defined(_WIN32)
 inline std::string &MemeStringList::operator[](unsigned long long idx) {
     if (idx >= this->size()) {
         thread_local std::string empty;
@@ -1952,6 +2076,7 @@ inline const std::string &MemeStringList::operator[](unsigned long long idx) con
     }
     return std::vector<std::string>::operator[](static_cast<size_t>(idx));
 }
+#endif
 
 inline std::string &MemeStringList::operator[](const MemeValue &idx) {
     return (*this)[idx.as_int()];
@@ -2101,34 +2226,44 @@ inline std::ostream &operator<<(std::ostream &os, const MemeValue &v) {
     return os;
 }
 
-inline MemeValue operator+(int64_t a, const MemeValue &b) { return MemeValue(a) + b; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue operator+(IntT a, const MemeValue &b) { return MemeValue(a) + b; }
 inline MemeValue operator+(double a, const MemeValue &b) { return MemeValue(a) + b; }
 inline std::string operator+(const std::string &a, const MemeValue &b) { return a + b.to_string(); }
 inline std::string operator+(const MemeValue &a, const std::string &b) { return a.to_string() + b; }
 inline std::string operator+(const char *a, const MemeValue &b) { return std::string(a ? a : "") + b.to_string(); }
 inline std::string operator+(const MemeValue &a, const char *b) { return a.to_string() + std::string(b ? b : ""); }
 
-inline std::string operator+(const std::string &a, int64_t b) { return a + std::to_string(b); }
-inline std::string operator+(int64_t a, const std::string &b) { return std::to_string(a) + b; }
-inline std::string operator+(const std::string &a, int b) { return a + std::to_string(b); }
-inline std::string operator+(int a, const std::string &b) { return std::to_string(a) + b; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool> && !std::is_same_v<IntT, char>, int> = 0>
+inline std::string operator+(const std::string &a, IntT b) { return a + std::to_string(static_cast<int64_t>(b)); }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool> && !std::is_same_v<IntT, char>, int> = 0>
+inline std::string operator+(IntT a, const std::string &b) { return std::to_string(static_cast<int64_t>(a)) + b; }
 inline std::string operator+(const std::string &a, double b) { return a + std::to_string(b); }
 inline std::string operator+(double a, const std::string &b) { return std::to_string(a) + b; }
 inline std::string operator+(const std::string &a, bool b) { return a + (b ? "sahi" : "galat"); }
 inline std::string operator+(bool a, const std::string &b) { return (a ? "sahi" : "galat") + b; }
-inline MemeValue operator-(int64_t a, const MemeValue &b) { return MemeValue(a) - b; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue operator-(IntT a, const MemeValue &b) { return MemeValue(a) - b; }
 inline MemeValue operator-(double a, const MemeValue &b) { return MemeValue(a) - b; }
-inline MemeValue operator*(int64_t a, const MemeValue &b) { return MemeValue(a) * b; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue operator*(IntT a, const MemeValue &b) { return MemeValue(a) * b; }
 inline MemeValue operator*(double a, const MemeValue &b) { return MemeValue(a) * b; }
-inline MemeValue operator/(int64_t a, const MemeValue &b) { return MemeValue(a) / b; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue operator/(IntT a, const MemeValue &b) { return MemeValue(a) / b; }
 inline MemeValue operator/(double a, const MemeValue &b) { return MemeValue(a) / b; }
 
-inline bool operator==(int64_t a, const MemeValue &b) { return b == a; }
-inline bool operator!=(int64_t a, const MemeValue &b) { return b != a; }
-inline bool operator<(int64_t a, const MemeValue &b) { return b > a; }
-inline bool operator<=(int64_t a, const MemeValue &b) { return b >= a; }
-inline bool operator>(int64_t a, const MemeValue &b) { return b < a; }
-inline bool operator>=(int64_t a, const MemeValue &b) { return b <= a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator==(IntT a, const MemeValue &b) { return b == a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator!=(IntT a, const MemeValue &b) { return b != a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator<(IntT a, const MemeValue &b) { return b > a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator<=(IntT a, const MemeValue &b) { return b >= a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator>(IntT a, const MemeValue &b) { return b < a; }
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline bool operator>=(IntT a, const MemeValue &b) { return b <= a; }
 
 inline bool operator==(double a, const MemeValue &b) { return b == a; }
 inline bool operator!=(double a, const MemeValue &b) { return b != a; }
@@ -2190,7 +2325,9 @@ inline T &meme_assign(T &lhs, U &&rhs) {
 // ==========================================
 
 // Strings
-inline std::string meme_index(const std::string &s, int64_t idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline std::string meme_index(const std::string &s, IntT rawIdx) {
+    int64_t idx = static_cast<int64_t>(rawIdx);
     int64_t origIdx = idx;
     int64_t sz = static_cast<int64_t>(s.size());
     if (idx < 0) idx += sz;
@@ -2200,29 +2337,13 @@ inline std::string meme_index(const std::string &s, int64_t idx) {
     }
     return std::string(1, s[static_cast<size_t>(idx)]);
 }
-inline std::string meme_index(std::string &s, int64_t idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline std::string meme_index(std::string &s, IntT idx) {
     return meme_index(static_cast<const std::string &>(s), idx);
 }
-inline std::string meme_index(std::string &&s, int64_t idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline std::string meme_index(std::string &&s, IntT idx) {
     return meme_index(static_cast<const std::string &>(s), idx);
-}
-inline std::string meme_index(const std::string &s, int idx) {
-    return meme_index(s, static_cast<int64_t>(idx));
-}
-inline std::string meme_index(std::string &s, int idx) {
-    return meme_index(s, static_cast<int64_t>(idx));
-}
-inline std::string meme_index(std::string &&s, int idx) {
-    return meme_index(static_cast<const std::string &>(s), static_cast<int64_t>(idx));
-}
-inline std::string meme_index(const std::string &s, size_t idx) {
-    return meme_index(s, static_cast<int64_t>(idx));
-}
-inline std::string meme_index(std::string &s, size_t idx) {
-    return meme_index(s, static_cast<int64_t>(idx));
-}
-inline std::string meme_index(std::string &&s, size_t idx) {
-    return meme_index(static_cast<const std::string &>(s), static_cast<int64_t>(idx));
 }
 inline std::string meme_index(const std::string &s, const MemeValue &idx) {
     return meme_index(s, idx.as_int());
@@ -2243,13 +2364,8 @@ inline std::string meme_index(std::string &&s, MemeValue &idx) {
     return meme_index(static_cast<const std::string &>(s), idx.as_int());
 }
 
-inline std::string meme_index(const char *s, int64_t idx) {
-    return meme_index(std::string(s ? s : ""), idx);
-}
-inline std::string meme_index(const char *s, int idx) {
-    return meme_index(std::string(s ? s : ""), static_cast<int64_t>(idx));
-}
-inline std::string meme_index(const char *s, size_t idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline std::string meme_index(const char *s, IntT idx) {
     return meme_index(std::string(s ? s : ""), static_cast<int64_t>(idx));
 }
 inline std::string meme_index(const char *s, const MemeValue &idx) {
@@ -2260,8 +2376,9 @@ inline std::string meme_index(const char *s, MemeValue &idx) {
 }
 
 // Vector
-template <typename T>
-inline T &meme_index(std::vector<T> &v, int64_t idx) {
+template <typename T, typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline T &meme_index(std::vector<T> &v, IntT rawIdx) {
+    int64_t idx = static_cast<int64_t>(rawIdx);
 #if defined(MEME_NO_DEPTH_GUARD) || defined(NDEBUG)
     if (__builtin_expect(idx < 0, 0)) idx += static_cast<int64_t>(v.size());
     return v[static_cast<size_t>(idx)];
@@ -2277,8 +2394,9 @@ inline T &meme_index(std::vector<T> &v, int64_t idx) {
 #endif
 }
 
-template <typename T>
-inline const T &meme_index(const std::vector<T> &v, int64_t idx) {
+template <typename T, typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline const T &meme_index(const std::vector<T> &v, IntT rawIdx) {
+    int64_t idx = static_cast<int64_t>(rawIdx);
 #if defined(MEME_NO_DEPTH_GUARD) || defined(NDEBUG)
     if (__builtin_expect(idx < 0, 0)) idx += static_cast<int64_t>(v.size());
     return v[static_cast<size_t>(idx)];
@@ -2292,23 +2410,6 @@ inline const T &meme_index(const std::vector<T> &v, int64_t idx) {
     }
     return v[static_cast<size_t>(idx)];
 #endif
-}
-
-template <typename T>
-inline T &meme_index(std::vector<T> &v, int idx) {
-    return meme_index(v, static_cast<int64_t>(idx));
-}
-template <typename T>
-inline const T &meme_index(const std::vector<T> &v, int idx) {
-    return meme_index(v, static_cast<int64_t>(idx));
-}
-template <typename T>
-inline T &meme_index(std::vector<T> &v, size_t idx) {
-    return meme_index(v, static_cast<int64_t>(idx));
-}
-template <typename T>
-inline const T &meme_index(const std::vector<T> &v, size_t idx) {
-    return meme_index(v, static_cast<int64_t>(idx));
 }
 template <typename T>
 inline T &meme_index(std::vector<T> &v, const MemeValue &idx) {
@@ -2328,23 +2429,13 @@ inline const T &meme_index(const std::vector<T> &v, MemeValue &idx) {
 }
 
 // MemeValue
-inline MemeValue &meme_index(MemeValue &val, int64_t idx) {
-    return val[idx];
-}
-inline MemeValue &meme_index(const MemeValue &val, int64_t idx) {
-    return const_cast<MemeValue &>(val)[idx];
-}
-inline MemeValue &meme_index(MemeValue &val, int idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue &meme_index(MemeValue &val, IntT idx) {
     return val[static_cast<long long>(idx)];
 }
-inline MemeValue &meme_index(const MemeValue &val, int idx) {
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline MemeValue &meme_index(const MemeValue &val, IntT idx) {
     return const_cast<MemeValue &>(val)[static_cast<long long>(idx)];
-}
-inline MemeValue &meme_index(MemeValue &val, size_t idx) {
-    return val[idx];
-}
-inline MemeValue &meme_index(const MemeValue &val, size_t idx) {
-    return const_cast<MemeValue &>(val)[idx];
 }
 inline MemeValue &meme_index(MemeValue &val, const std::string &key) {
     return val[key];
@@ -2372,23 +2463,13 @@ inline MemeValue &meme_index(const MemeValue &val, MemeValue &key) {
 }
 
 // MemeStringList
-inline std::string &meme_index(MemeStringList &list, int64_t idx) {
-    return list[idx];
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline std::string &meme_index(MemeStringList &list, IntT idx) {
+    return list[static_cast<int64_t>(idx)];
 }
-inline const std::string &meme_index(const MemeStringList &list, int64_t idx) {
-    return list[idx];
-}
-inline std::string &meme_index(MemeStringList &list, int idx) {
-    return list[idx];
-}
-inline const std::string &meme_index(const MemeStringList &list, int idx) {
-    return list[idx];
-}
-inline std::string &meme_index(MemeStringList &list, size_t idx) {
-    return list[idx];
-}
-inline const std::string &meme_index(const MemeStringList &list, size_t idx) {
-    return list[idx];
+template <typename IntT, std::enable_if_t<std::is_integral_v<IntT> && !std::is_same_v<IntT, bool>, int> = 0>
+inline const std::string &meme_index(const MemeStringList &list, IntT idx) {
+    return list[static_cast<int64_t>(idx)];
 }
 inline std::string &meme_index(MemeStringList &list, const MemeValue &idx) {
     return list[idx];
@@ -2432,6 +2513,35 @@ template <typename T, typename K>
 inline auto meme_index_read(const T &target, K &&key) {
     return meme_index(target, std::forward<K>(key));
 }
+
+template <typename F1, typename F2>
+inline auto meme_ternary_eval(bool cond, F1 &&fa, F2 &&fb) {
+    using TA = std::decay_t<std::invoke_result_t<F1>>;
+    using TB = std::decay_t<std::invoke_result_t<F2>>;
+    if constexpr (std::is_same_v<TA, TB>) {
+        return cond ? fa() : fb();
+    } else if constexpr (std::is_same_v<TA, MemeValue> || std::is_same_v<TB, MemeValue>) {
+        if constexpr (std::is_constructible_v<MemeValue, TA> && std::is_constructible_v<MemeValue, TB>) {
+            return cond ? MemeValue(fa()) : MemeValue(fb());
+        } else {
+            return cond ? MemeValue(fa()) : MemeValue(fb());
+        }
+    } else if constexpr ((std::is_same_v<TA, const char *> && std::is_same_v<TB, std::string>) ||
+                         (std::is_same_v<TA, std::string> && std::is_same_v<TB, const char *>)) {
+        return cond ? std::string(fa()) : std::string(fb());
+    } else if constexpr (std::is_same_v<TA, std::nullptr_t> && std::is_constructible_v<TB, std::nullptr_t>) {
+        return cond ? ((void)fa(), TB(nullptr)) : fb();
+    } else if constexpr (std::is_same_v<TB, std::nullptr_t> && std::is_constructible_v<TA, std::nullptr_t>) {
+        return cond ? fa() : ((void)fb(), TA(nullptr));
+    } else if constexpr (requires { cond ? fa() : fb(); }) {
+        return cond ? fa() : fb();
+    } else {
+        return cond ? MemeValue(fa()) : MemeValue(fb());
+    }
+}
+
+#define MEME_TERNARY(cond, a, b) \
+    meme_ternary_eval(is_truthy((cond)), [&]() { return (a); }, [&]() { return (b); })
 
 // Map & container membership helper (meme_has)
 template <typename M, typename K>
@@ -3330,7 +3440,7 @@ struct MemeSocket {
     MemeSocket(int fd, std::string ip, int port)
         : fd_ptr(std::shared_ptr<int>(new int(fd), [](int *p) {
             if (p) {
-                if (*p >= 0) ::close(*p);
+                if (*p >= 0) meme_close_sock(*p);
                 delete p;
             }
         })), peer_ip(std::move(ip)), peer_port(port), is_closed(fd < 0) {}
@@ -3340,7 +3450,11 @@ struct MemeSocket {
     int64_t send(const std::string &data) const {
         int fd = get_fd();
         if (fd < 0) return -1LL;
+#ifdef _WIN32
+        int n = ::send(static_cast<SOCKET>(fd), data.data(), static_cast<int>(data.size()), 0);
+#else
         ssize_t n = ::send(fd, data.data(), data.size(), 0);
+#endif
         return static_cast<int64_t>(n);
     }
     int64_t send(const MemeValue &val) const;
@@ -3349,6 +3463,16 @@ struct MemeSocket {
         int fd = get_fd();
         if (fd < 0 || max_bytes <= 0) return "";
         if (timeout_ms >= 0) {
+#ifdef _WIN32
+            fd_set rfds;
+            FD_ZERO(&rfds);
+            FD_SET(static_cast<SOCKET>(fd), &rfds);
+            struct timeval tv;
+            tv.tv_sec = static_cast<long>(timeout_ms / 1000);
+            tv.tv_usec = static_cast<long>((timeout_ms % 1000) * 1000);
+            int ret = ::select(0, &rfds, nullptr, nullptr, &tv);
+            if (ret <= 0) return "";
+#else
             struct pollfd pfd;
             pfd.fd = fd;
             pfd.events = POLLIN;
@@ -3361,8 +3485,19 @@ struct MemeSocket {
             if (!(pfd.revents & POLLIN)) {
                 return "";
             }
+#endif
         }
         std::vector<char> buf(static_cast<size_t>(max_bytes));
+#ifdef _WIN32
+        int n = ::recv(static_cast<SOCKET>(fd), buf.data(), static_cast<int>(buf.size()), 0);
+        if (n <= 0) {
+            int err = WSAGetLastError();
+            if (n == 0 || (err != WSAEWOULDBLOCK && err != WSAEINTR)) {
+                is_closed = true;
+            }
+            return "";
+        }
+#else
         ssize_t n = ::recv(fd, buf.data(), buf.size(), 0);
         if (n <= 0) {
             if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
@@ -3370,6 +3505,7 @@ struct MemeSocket {
             }
             return "";
         }
+#endif
         return std::string(buf.data(), static_cast<size_t>(n));
     }
     std::string recv(const MemeValue &mb) const;
@@ -3377,7 +3513,7 @@ struct MemeSocket {
 
     bool close() const {
         if (!is_closed && fd_ptr && *fd_ptr >= 0) {
-            ::close(*fd_ptr);
+            meme_close_sock(*fd_ptr);
             *fd_ptr = -1;
             is_closed = true;
             return true;
@@ -3397,21 +3533,32 @@ struct MemeSocket {
     void set_nonblocking(bool nb) {
         int fd = get_fd();
         if (fd < 0) return;
+#ifdef _WIN32
+        u_long mode = nb ? 1UL : 0UL;
+        ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &mode);
+#else
         int flags = fcntl(fd, F_GETFL, 0);
         if (flags < 0) return;
         if (nb) flags |= O_NONBLOCK;
         else flags &= ~O_NONBLOCK;
         fcntl(fd, F_SETFL, flags);
+#endif
     }
 
     void set_timeout(int64_t ms) {
         int fd = get_fd();
         if (fd < 0) return;
+#ifdef _WIN32
+        DWORD tv = static_cast<DWORD>(ms);
+        setsockopt(static_cast<SOCKET>(fd), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+        setsockopt(static_cast<SOCKET>(fd), SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+#else
         struct timeval tv;
         tv.tv_sec = ms / 1000;
         tv.tv_usec = (ms % 1000) * 1000;
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
     }
 };
 
@@ -3424,7 +3571,7 @@ struct MemeServerSocket {
     MemeServerSocket(int fd, int p)
         : fd_ptr(std::shared_ptr<int>(new int(fd), [](int *ptr) {
             if (ptr) {
-                if (*ptr >= 0) ::close(*ptr);
+                if (*ptr >= 0) meme_close_sock(*ptr);
                 delete ptr;
             }
         })), port(p), is_closed(fd < 0) {}
@@ -3436,7 +3583,7 @@ struct MemeServerSocket {
 
     bool close() const {
         if (!is_closed && fd_ptr && *fd_ptr >= 0) {
-            ::close(*fd_ptr);
+            meme_close_sock(*fd_ptr);
             *fd_ptr = -1;
             is_closed = true;
             return true;
@@ -3592,6 +3739,18 @@ inline MemeValue MemeServerSocket::accept(int64_t timeout_ms) const {
     int sfd = get_fd();
     if (sfd < 0) return MemeValue();
     if (timeout_ms >= 0) {
+#ifdef _WIN32
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(static_cast<SOCKET>(sfd), &rfds);
+        struct timeval tv;
+        tv.tv_sec = static_cast<long>(timeout_ms / 1000);
+        tv.tv_usec = static_cast<long>((timeout_ms % 1000) * 1000);
+        int ret = ::select(0, &rfds, nullptr, nullptr, &tv);
+        if (ret <= 0) {
+            return MemeValue();
+        }
+#else
         struct pollfd pfd;
         pfd.fd = sfd;
         pfd.events = POLLIN;
@@ -3599,15 +3758,26 @@ inline MemeValue MemeServerSocket::accept(int64_t timeout_ms) const {
         if (ret <= 0 || !(pfd.revents & POLLIN)) {
             return MemeValue();
         }
+#endif
     }
     sockaddr_in csin;
     socklen_t clen = sizeof(csin);
+#ifdef _WIN32
+    SOCKET csock = ::accept(static_cast<SOCKET>(sfd), (sockaddr*)&csin, &clen);
+    if (csock == INVALID_SOCKET) {
+        return MemeValue();
+    }
+    int cfd = static_cast<int>(csock);
+    int flag = 1;
+    setsockopt(csock, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+#else
     int cfd = ::accept(sfd, (sockaddr*)&csin, &clen);
     if (cfd < 0) {
         return MemeValue();
     }
     int flag = 1;
     setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+#endif
 
     char ipStr[INET_ADDRSTRLEN] = "127.0.0.1";
     inet_ntop(AF_INET, &csin.sin_addr, ipStr, sizeof(ipStr));
@@ -3621,6 +3791,16 @@ struct NetModule {
     const NetModule *operator->() const { return this; }
 
     MemeValue listen(const std::string &host, int64_t port, int64_t backlog = 128) {
+        meme_ensure_wsa();
+#ifdef _WIN32
+        SOCKET ssock = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (ssock == INVALID_SOCKET) {
+            throw std::runtime_error("Socket create fail ho gaya!");
+        }
+        int sfd = static_cast<int>(ssock);
+        int opt = 1;
+        setsockopt(ssock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
         int sfd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (sfd < 0) {
             throw std::runtime_error("Socket create fail ho gaya!");
@@ -3629,6 +3809,7 @@ struct NetModule {
         setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 #ifdef SO_REUSEPORT
         setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
 #endif
         sockaddr_in sin;
         std::memset(&sin, 0, sizeof(sin));
@@ -3641,11 +3822,11 @@ struct NetModule {
         }
 
         if (::bind(sfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
-            ::close(sfd);
+            meme_close_sock(sfd);
             throw std::runtime_error("Port " + std::to_string(port) + " bind fail ho gaya!");
         }
         if (::listen(sfd, static_cast<int>(backlog)) != 0) {
-            ::close(sfd);
+            meme_close_sock(sfd);
             throw std::runtime_error("Port " + std::to_string(port) + " listen fail ho gaya!");
         }
 
@@ -3674,12 +3855,23 @@ struct NetModule {
     }
 
     MemeValue connect(const std::string &host, int64_t port, int64_t timeout_ms = 5000) {
+        meme_ensure_wsa();
+#ifdef _WIN32
+        SOCKET csock = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (csock == INVALID_SOCKET) {
+            throw std::runtime_error("Client socket create fail ho gaya!");
+        }
+        int cfd = static_cast<int>(csock);
+        int flag = 1;
+        setsockopt(csock, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+#else
         int cfd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (cfd < 0) {
             throw std::runtime_error("Client socket create fail ho gaya!");
         }
         int flag = 1;
         setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+#endif
 
         sockaddr_in sin;
         std::memset(&sin, 0, sizeof(sin));
@@ -3690,13 +3882,48 @@ struct NetModule {
         if (inet_pton(AF_INET, targetHost.c_str(), &sin.sin_addr) <= 0) {
             struct hostent *he = gethostbyname(targetHost.c_str());
             if (!he || !he->h_addr_list[0]) {
-                ::close(cfd);
+                meme_close_sock(cfd);
                 throw std::runtime_error("Host resolve fail: " + host);
             }
             std::memcpy(&sin.sin_addr, he->h_addr_list[0], he->h_length);
         }
 
         if (timeout_ms > 0) {
+#ifdef _WIN32
+            u_long mode = 1UL;
+            ::ioctlsocket(static_cast<SOCKET>(cfd), FIONBIO, &mode);
+            int res = ::connect(static_cast<SOCKET>(cfd), (sockaddr*)&sin, sizeof(sin));
+            if (res == SOCKET_ERROR) {
+                int werr = WSAGetLastError();
+                if (werr == WSAEWOULDBLOCK || werr == WSAEINPROGRESS) {
+                    fd_set wfds, efds;
+                    FD_ZERO(&wfds);
+                    FD_ZERO(&efds);
+                    FD_SET(static_cast<SOCKET>(cfd), &wfds);
+                    FD_SET(static_cast<SOCKET>(cfd), &efds);
+                    struct timeval tv;
+                    tv.tv_sec = static_cast<long>(timeout_ms / 1000);
+                    tv.tv_usec = static_cast<long>((timeout_ms % 1000) * 1000);
+                    int pret = ::select(0, nullptr, &wfds, &efds, &tv);
+                    if (pret <= 0 || FD_ISSET(static_cast<SOCKET>(cfd), &efds)) {
+                        meme_close_sock(cfd);
+                        throw std::runtime_error("Connect timeout ho gaya: " + host + ":" + std::to_string(port));
+                    }
+                    int err = 0;
+                    socklen_t elen = sizeof(err);
+                    getsockopt(static_cast<SOCKET>(cfd), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &elen);
+                    if (err != 0) {
+                        meme_close_sock(cfd);
+                        throw std::runtime_error("Connection reject ho gaya: " + host + ":" + std::to_string(port));
+                    }
+                } else {
+                    meme_close_sock(cfd);
+                    throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
+                }
+            }
+            mode = 0UL;
+            ::ioctlsocket(static_cast<SOCKET>(cfd), FIONBIO, &mode);
+#else
             int flags = fcntl(cfd, F_GETFL, 0);
             fcntl(cfd, F_SETFL, flags | O_NONBLOCK);
             int res = ::connect(cfd, (sockaddr*)&sin, sizeof(sin));
@@ -3706,24 +3933,25 @@ struct NetModule {
                 pfd.events = POLLOUT;
                 int pret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
                 if (pret <= 0) {
-                    ::close(cfd);
+                    meme_close_sock(cfd);
                     throw std::runtime_error("Connect timeout ho gaya: " + host + ":" + std::to_string(port));
                 }
                 int err = 0;
                 socklen_t elen = sizeof(err);
                 getsockopt(cfd, SOL_SOCKET, SO_ERROR, &err, &elen);
                 if (err != 0) {
-                    ::close(cfd);
+                    meme_close_sock(cfd);
                     throw std::runtime_error("Connection reject ho gaya: " + host + ":" + std::to_string(port));
                 }
             } else if (res < 0) {
-                ::close(cfd);
+                meme_close_sock(cfd);
                 throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
             }
             fcntl(cfd, F_SETFL, flags);
+#endif
         } else {
             if (::connect(cfd, (sockaddr*)&sin, sizeof(sin)) != 0) {
-                ::close(cfd);
+                meme_close_sock(cfd);
                 throw std::runtime_error("Connect fail ho gaya: " + host + ":" + std::to_string(port));
             }
         }
@@ -3982,13 +4210,18 @@ struct EnvModule {
         const char *v = std::getenv(key.c_str());
         return v ? std::string(v) : def;
     }
+    std::string get(const char *key, const char *def = "") const {
+        return get(std::string(key ? key : ""), std::string(def ? def : ""));
+    }
     MemeValue get(const MemeValue &key, const MemeValue &def = MemeValue("")) const {
         return MemeValue(get(key.to_string(), def.to_string()));
     }
     std::string la(const std::string &key, const std::string &def = "") const { return get(key, def); }
+    std::string la(const char *key, const char *def = "") const { return get(key, def); }
     MemeValue la(const MemeValue &key, const MemeValue &def = MemeValue("")) const { return get(key, def); }
 
     std::string operator()(const std::string &key, const std::string &def = "") const { return get(key, def); }
+    std::string operator()(const char *key, const char *def = "") const { return get(key, def); }
     MemeValue operator()(const MemeValue &key, const MemeValue &def = MemeValue("")) const { return get(key, def); }
 
     bool set(const std::string &key, const std::string &val) {
@@ -3998,19 +4231,26 @@ struct EnvModule {
         return setenv(key.c_str(), val.c_str(), 1) == 0;
 #endif
     }
+    bool set(const char *key, const char *val) {
+        return set(std::string(key ? key : ""), std::string(val ? val : ""));
+    }
     bool set(const MemeValue &key, const MemeValue &val) {
         return set(key.to_string(), val.to_string());
     }
     bool rakh(const std::string &key, const std::string &val) { return set(key, val); }
+    bool rakh(const char *key, const char *val) { return set(key, val); }
     bool rakh(const MemeValue &key, const MemeValue &val) { return set(key, val); }
 
     bool has(const std::string &key) const {
         return std::getenv(key.c_str()) != nullptr;
     }
+    bool has(const char *key) const { return has(std::string(key ? key : "")); }
     bool has(const MemeValue &key) const { return has(key.to_string()); }
     bool hai(const std::string &key) const { return has(key); }
+    bool hai(const char *key) const { return has(key); }
     bool hai(const MemeValue &key) const { return has(key); }
     bool contains(const std::string &key) const { return has(key); }
+    bool contains(const char *key) const { return has(key); }
     bool contains(const MemeValue &key) const { return has(key); }
 
     bool del(const std::string &key) {
@@ -4020,12 +4260,16 @@ struct EnvModule {
         return unsetenv(key.c_str()) == 0;
 #endif
     }
+    bool del(const char *key) { return del(std::string(key ? key : "")); }
     bool del(const MemeValue &key) { return del(key.to_string()); }
     bool m_delete(const std::string &key) { return del(key); }
+    bool m_delete(const char *key) { return del(key); }
     bool m_delete(const MemeValue &key) { return del(key); }
     bool hatao(const std::string &key) { return del(key); }
+    bool hatao(const char *key) { return del(key); }
     bool hatao(const MemeValue &key) { return del(key); }
     bool unset(const std::string &key) { return del(key); }
+    bool unset(const char *key) { return del(key); }
     bool unset(const MemeValue &key) { return del(key); }
 
     MemeValue all() const {
@@ -4112,6 +4356,7 @@ struct EnvModule {
         }
     }
 
+    std::string operator[](const char *key) const { return get(std::string(key ? key : "")); }
     std::string operator[](const std::string &key) const { return get(key); }
     MemeValue operator[](const MemeValue &key) const { return get(key); }
 };
@@ -4727,7 +4972,7 @@ inline MemeValue bnot(int64_t a) { return MemeValue(~a); }
 inline MemeValue bnot(const MemeValue &a) { return MemeValue(~a.as_int()); }
 
 inline MemeValue bshl(int64_t a, int64_t n) {
-    if (n < 0 || n >= 64) return MemeValue(0LL);
+    if (n < 0 || n >= 64) return MemeValue(static_cast<int64_t>(0));
     return MemeValue(static_cast<int64_t>(static_cast<uint64_t>(a) << n));
 }
 inline MemeValue bshl(const MemeValue &a, const MemeValue &n) { return bshl(a.as_int(), n.as_int()); }
@@ -4735,7 +4980,7 @@ inline MemeValue bshl(int64_t a, const MemeValue &n) { return bshl(a, n.as_int()
 inline MemeValue bshl(const MemeValue &a, int64_t n) { return bshl(a.as_int(), n); }
 
 inline MemeValue bshr(int64_t a, int64_t n) {
-    if (n < 0 || n >= 64) return MemeValue(a < 0 ? -1LL : 0LL);
+    if (n < 0 || n >= 64) return MemeValue(static_cast<int64_t>(a < 0 ? -1 : 0));
     return MemeValue(a >> n);
 }
 inline MemeValue bshr(const MemeValue &a, const MemeValue &n) { return bshr(a.as_int(), n.as_int()); }
@@ -4820,6 +5065,395 @@ inline bool assert(const T &cond, const std::string &msg = "Assertion failed!") 
         throw std::runtime_error(msg);
     }
     return true;
+}
+
+inline MemeValue meme_fn(std::function<MemeValue(const std::vector<MemeValue> &)> f) {
+    return MemeValue(std::move(f));
+}
+
+struct MemeListPiece {
+    bool isSpread = false;
+    MemeValue val;
+};
+
+inline MemeListPiece meme_list_item(const MemeValue &v) { return {false, v}; }
+inline MemeListPiece meme_list_spread(const MemeValue &v) { return {true, v}; }
+
+inline MemeValue meme_build_list(std::initializer_list<MemeListPiece> pieces) {
+    auto out = std::make_shared<std::vector<MemeValue>>();
+    for (const auto &p : pieces) {
+        if (p.isSpread) {
+            if (p.val.type == MemeValue::TYPE_LIST && p.val.list_data) {
+                out->insert(out->end(), p.val.list_data->begin(), p.val.list_data->end());
+            } else if (p.val.type == MemeValue::TYPE_STRING) {
+                for (char c : p.val.s_val) out->push_back(MemeValue(std::string(1, c)));
+            }
+        } else {
+            out->push_back(p.val);
+        }
+    }
+    return MemeValue(out);
+}
+
+struct MemeMapPiece {
+    bool isSpread = false;
+    std::string key;
+    MemeValue val;
+};
+
+inline MemeMapPiece meme_map_kv(const std::string &k, const MemeValue &v) { return {false, k, v}; }
+inline MemeMapPiece meme_map_kv(const MemeValue &k, const MemeValue &v) { return {false, k.to_string(), v}; }
+inline MemeMapPiece meme_map_spread(const MemeValue &v) { return {true, "", v}; }
+
+inline MemeValue meme_build_map(std::initializer_list<MemeMapPiece> pieces) {
+    auto mdata = std::make_shared<MemeMapData>();
+    auto put = [&](const std::string &k, const MemeValue &v) {
+        if (mdata->map_val.find(k) == mdata->map_val.end()) mdata->map_keys.push_back(k);
+        mdata->map_val[k] = v;
+    };
+    for (const auto &p : pieces) {
+        if (p.isSpread) {
+            if (p.val.type == MemeValue::TYPE_MAP && p.val.map_data) {
+                for (const auto &k : p.val.map_data->map_keys) {
+                    auto it = p.val.map_data->map_val.find(k);
+                    if (it != p.val.map_data->map_val.end()) put(k, it->second);
+                }
+            }
+        } else {
+            put(p.key, p.val);
+        }
+    }
+    MemeValue res;
+    res.type = MemeValue::TYPE_MAP;
+    res.map_data = mdata;
+    return res;
+}
+
+inline MemeValue meme_destructure_get(const MemeValue &listVal, size_t idx) {
+    if (listVal.type == MemeValue::TYPE_LIST && listVal.list_data && idx < listVal.list_data->size()) {
+        return (*listVal.list_data)[idx];
+    }
+    return MemeValue();
+}
+
+inline MemeValue meme_destructure_rest(const MemeValue &listVal, size_t startIdx) {
+    auto out = std::make_shared<std::vector<MemeValue>>();
+    if (listVal.type == MemeValue::TYPE_LIST && listVal.list_data && startIdx < listVal.list_data->size()) {
+        out->insert(out->end(), listVal.list_data->begin() + static_cast<ptrdiff_t>(startIdx), listVal.list_data->end());
+    }
+    return MemeValue(out);
+}
+
+inline MemeValue meme_map_destruct_get(const MemeValue &mapVal, const std::string &key, const MemeValue &def = MemeValue()) {
+    if (mapVal.type == MemeValue::TYPE_MAP && mapVal.map_data) {
+        auto it = mapVal.map_data->map_val.find(key);
+        if (it != mapVal.map_data->map_val.end()) return it->second;
+    }
+    return def;
+}
+
+inline MemeValue meme_call_method(MemeValue &obj, const std::string &method, std::vector<MemeValue> args) {
+    // 1. Dynamic module / object map with callable entries
+    if (obj.type == MemeValue::TYPE_MAP) {
+        if (obj.map_data) {
+            auto it = obj.map_data->map_val.find(method);
+            if (it != obj.map_data->map_val.end() && it->second.is_callable()) {
+                return it->second.call_args(args);
+            }
+        }
+        if (method == "keys" || method == "chaabi") return obj.keys();
+        if (method == "values" || method == "maal") return obj.values();
+        if (method == "entries") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            if (obj.map_data) {
+                for (const auto &k : obj.map_data->map_keys) {
+                    auto it = obj.map_data->map_val.find(k);
+                    if (it != obj.map_data->map_val.end()) {
+                        out->push_back(MemeValue(std::vector<MemeValue>{MemeValue(k), it->second}));
+                    }
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "has" || method == "contains" || method == "hai_kya") {
+            return MemeValue(args.empty() ? false : obj.has(args[0]));
+        }
+        if (method == "get" || method == "la") {
+            return args.empty() ? MemeValue() : obj.get(args[0], args.size() > 1 ? args[1] : MemeValue());
+        }
+        if (method == "set" || method == "rakh") {
+            if (args.size() >= 2) obj[args[0].to_string()] = args[1];
+            return obj;
+        }
+        if (method == "remove" || method == "hata") {
+            return MemeValue(args.empty() ? false : obj.remove(args[0]));
+        }
+        if (method == "clear" || method == "saaf_kar") {
+            if (obj.map_data) { obj.map_data->map_val.clear(); obj.map_data->map_keys.clear(); }
+            return MemeValue();
+        }
+        if (method == "size" || method == "lambai" || method == "length") {
+            return MemeValue(static_cast<int64_t>(obj.size()));
+        }
+    }
+
+    // 2. List / Array methods (JS/React parity + MEMElang parity)
+    if (obj.type == MemeValue::TYPE_LIST) {
+        obj.ensure_list();
+        auto &vec = *obj.list_data;
+
+        if (method == "map" || method == "badal_sab") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            if (!args.empty() && args[0].is_callable()) {
+                out->reserve(vec.size());
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    out->push_back(args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}));
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "filter" || method == "chhaan") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    if (args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}).is_truthy()) {
+                        out->push_back(vec[i]);
+                    }
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "reduce" || method == "jod_sab") {
+            if (args.empty() || !args[0].is_callable()) return MemeValue();
+            size_t start = 0;
+            MemeValue acc;
+            if (args.size() > 1) {
+                acc = args[1];
+            } else if (!vec.empty()) {
+                acc = vec[0];
+                start = 1;
+            } else {
+                return MemeValue();
+            }
+            for (size_t i = start; i < vec.size(); ++i) {
+                acc = args[0].call_args({acc, vec[i], MemeValue(static_cast<int64_t>(i)), obj});
+            }
+            return acc;
+        }
+        if (method == "find" || method == "dhund_pehla") {
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    if (args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}).is_truthy()) return vec[i];
+                }
+            }
+            return MemeValue();
+        }
+        if (method == "findIndex" || method == "find_index") {
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    if (args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}).is_truthy()) return MemeValue(static_cast<int64_t>(i));
+                }
+            }
+            return MemeValue(static_cast<int64_t>(-1));
+        }
+        if (method == "some" || method == "koi_ek") {
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    if (args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}).is_truthy()) return MemeValue(true);
+                }
+            }
+            return MemeValue(false);
+        }
+        if (method == "every" || method == "har_ek") {
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    if (!args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj}).is_truthy()) return MemeValue(false);
+                }
+            }
+            return MemeValue(true);
+        }
+        if (method == "forEach" || method == "for_each" || method == "sab_pe") {
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj});
+                }
+            }
+            return MemeValue();
+        }
+        if (method == "includes" || method == "contains" || method == "has") {
+            if (args.empty()) return MemeValue(false);
+            for (const auto &v : vec) if (v == args[0]) return MemeValue(true);
+            return MemeValue(false);
+        }
+        if (method == "indexOf" || method == "index_of") {
+            if (args.empty()) return MemeValue(static_cast<int64_t>(-1));
+            for (size_t i = 0; i < vec.size(); ++i) if (vec[i] == args[0]) return MemeValue(static_cast<int64_t>(i));
+            return MemeValue(static_cast<int64_t>(-1));
+        }
+        if (method == "join" || method == "jod") {
+            std::string sep = args.empty() ? "," : args[0].to_string();
+            std::string out;
+            for (size_t i = 0; i < vec.size(); ++i) {
+                if (i > 0) out += sep;
+                out += vec[i].to_string();
+            }
+            return MemeValue(out);
+        }
+        if (method == "slice" || method == "kaat") {
+            int64_t s = args.empty() ? 0 : args[0].as_int();
+            int64_t e = (args.size() > 1) ? args[1].as_int() : INT64_MIN;
+            return obj.slice(s, e);
+        }
+        if (method == "concat" || method == "jod_list") {
+            auto out = std::make_shared<std::vector<MemeValue>>(vec);
+            for (const auto &a : args) {
+                if (a.type == MemeValue::TYPE_LIST && a.list_data) {
+                    out->insert(out->end(), a.list_data->begin(), a.list_data->end());
+                } else {
+                    out->push_back(a);
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "reverse" || method == "ulta") {
+            auto out = std::make_shared<std::vector<MemeValue>>(vec.rbegin(), vec.rend());
+            return MemeValue(out);
+        }
+        if (method == "sort" || method == "saja") {
+            auto out = std::make_shared<std::vector<MemeValue>>(vec);
+            if (!args.empty() && args[0].is_callable()) {
+                std::sort(out->begin(), out->end(), [&](const MemeValue &a, const MemeValue &b) {
+                    return args[0].call_args({a, b}).as_double() < 0.0;
+                });
+            } else {
+                std::sort(out->begin(), out->end(), [](const MemeValue &a, const MemeValue &b) {
+                    return a < b;
+                });
+            }
+            return MemeValue(out);
+        }
+        if (method == "flatten") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            for (const auto &el : vec) {
+                if (el.type == MemeValue::TYPE_LIST && el.list_data) {
+                    out->insert(out->end(), el.list_data->begin(), el.list_data->end());
+                } else {
+                    out->push_back(el);
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "flatMap" || method == "flat_map") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            if (!args.empty() && args[0].is_callable()) {
+                for (size_t i = 0; i < vec.size(); ++i) {
+                    MemeValue res = args[0].call_args({vec[i], MemeValue(static_cast<int64_t>(i)), obj});
+                    if (res.type == MemeValue::TYPE_LIST && res.list_data) {
+                        out->insert(out->end(), res.list_data->begin(), res.list_data->end());
+                    } else {
+                        out->push_back(res);
+                    }
+                }
+            }
+            return MemeValue(out);
+        }
+        if (method == "unique") {
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            for (const auto &v : vec) {
+                if (std::find(out->begin(), out->end(), v) == out->end()) out->push_back(v);
+            }
+            return MemeValue(out);
+        }
+        if (method == "push" || method == "dhal" || method == "push_back") {
+            for (const auto &a : args) vec.push_back(a);
+            return MemeValue(static_cast<int64_t>(vec.size()));
+        }
+        if (method == "pop") {
+            if (vec.empty()) return MemeValue();
+            MemeValue v = vec.back();
+            vec.pop_back();
+            return v;
+        }
+        if (method == "shift") {
+            if (vec.empty()) return MemeValue();
+            MemeValue v = vec.front();
+            vec.erase(vec.begin());
+            return v;
+        }
+        if (method == "unshift") {
+            vec.insert(vec.begin(), args.begin(), args.end());
+            return MemeValue(static_cast<int64_t>(vec.size()));
+        }
+        if (method == "first" || method == "pehla") return vec.empty() ? MemeValue() : vec.front();
+        if (method == "last" || method == "aakhiri") return vec.empty() ? MemeValue() : vec.back();
+        if (method == "empty" || method == "is_empty") return MemeValue(vec.empty());
+        if (method == "clear") { vec.clear(); return MemeValue(); }
+        if (method == "length" || method == "lambai" || method == "size" || method == "count") {
+            return MemeValue(static_cast<int64_t>(vec.size()));
+        }
+    }
+
+    // 3. String methods when invoked on dynamic MemeValue
+    if (obj.type == MemeValue::TYPE_STRING) {
+        if (method == "split" || method == "tod") return obj.split(args.empty() ? "" : args[0].to_string());
+        if (method == "trim" || method == "saaf") return obj.trim();
+        if (method == "to_upper" || method == "toUpperCase" || method == "upper") return obj.to_upper();
+        if (method == "to_lower" || method == "toLowerCase" || method == "lower") return obj.to_lower();
+        if (method == "includes" || method == "contains") {
+            return MemeValue(!args.empty() && obj.s_val.find(args[0].to_string()) != std::string::npos);
+        }
+        if (method == "indexOf" || method == "find") {
+            size_t p = args.empty() ? std::string::npos : obj.s_val.find(args[0].to_string());
+            return MemeValue(p == std::string::npos ? static_cast<int64_t>(-1) : static_cast<int64_t>(p));
+        }
+        if (method == "replace" || method == "badal") {
+            return obj.replace(args.size() > 0 ? args[0].to_string() : "", args.size() > 1 ? args[1].to_string() : "");
+        }
+        if (method == "slice" || method == "kaat" || method == "substring") {
+            int64_t s = args.empty() ? 0 : args[0].as_int();
+            int64_t e = (args.size() > 1) ? args[1].as_int() : INT64_MIN;
+            return obj.slice(s, e);
+        }
+        if (method == "starts_with" || method == "startsWith") {
+            std::string p = args.empty() ? "" : args[0].to_string();
+            return MemeValue(obj.s_val.rfind(p, 0) == 0);
+        }
+        if (method == "ends_with" || method == "endsWith") {
+            std::string p = args.empty() ? "" : args[0].to_string();
+            return MemeValue(obj.s_val.size() >= p.size() && obj.s_val.compare(obj.s_val.size() - p.size(), p.size(), p) == 0);
+        }
+        if (method == "length" || method == "lambai" || method == "size") {
+            return MemeValue(static_cast<int64_t>(obj.s_val.size()));
+        }
+    }
+
+    if (obj.type == MemeValue::TYPE_OBJECT && obj.th_val && method == "join") {
+        return obj.join();
+    }
+
+    return MemeValue();
+}
+
+inline MemeValue meme_call_method(const MemeValue &obj, const std::string &method, std::vector<MemeValue> args) {
+    MemeValue copy = obj;
+    return meme_call_method(copy, method, std::move(args));
+}
+
+inline MemeValue meme_call_method(std::vector<MemeValue> &vec, const std::string &method, std::vector<MemeValue> args) {
+    MemeValue tmp(std::make_shared<std::vector<MemeValue>>(vec));
+    MemeValue res = meme_call_method(tmp, method, std::move(args));
+    if (tmp.list_data) vec = *tmp.list_data;
+    return res;
+}
+
+inline MemeValue meme_call_method(const std::vector<MemeValue> &vec, const std::string &method, std::vector<MemeValue> args) {
+    MemeValue tmp(vec);
+    return meme_call_method(tmp, method, std::move(args));
+}
+
+inline MemeValue meme_call_method(const std::string &str, const std::string &method, std::vector<MemeValue> args) {
+    MemeValue tmp(str);
+    return meme_call_method(tmp, method, std::move(args));
 }
 
 #endif // MEME_RUNTIME_H

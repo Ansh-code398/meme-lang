@@ -1,0 +1,52 @@
+// apps/showcase/src/EguiTelemetry.meme
+// Pure Immediate-Mode egui-style Telemetry & Control Panel in MEMElang
+
+bula "egui";
+bula "math";
+
+pakad g_gain = { "current": 65.0 };
+pakad g_enabled = { "current": sach };
+pakad g_phase = { "current": 0.5 };
+pakad g_clicks = 0;
+
+kaam onEguiFrame(ctx) {
+    ctx.top_panel("top_bar", 42, (ui) => {
+        ui.horizontal((row) => {
+            row.heading("MEME-egui Immediate Mode");
+            row.add_space(16);
+            row.checkbox("chk_live", g_enabled, "Live Telemetry");
+            row.slider("sld_gain", g_gain, 0, 100, "%");
+            pakad btn = row.button("Step Phase");
+            agar (btn.clicked) {
+                g_clicks = g_clicks + 1;
+                g_phase.current = g_phase.current + 0.5;
+            }
+        });
+    });
+
+    ctx.left_panel("nav_panel", 220, (ui) => {
+        ui.strong("Immediate Widgets");
+        ui.separator();
+        ui.label("Clicks: " + g_clicks);
+        ui.progress_bar(g_gain.current / 100.0, "Signal Gain");
+    });
+
+    ctx.central_panel((ui) => {
+        pakad p = ui.painter();
+        pakad w = ui.available_width();
+        pakad h = ui.available_height();
+        p.rect_filled(8, 8, w - 16, h - 16, 8, "#020617", 1.0);
+        pakad pts = [];
+        pakad i = 0;
+        jabtak (i < 24) {
+            pakad x = 24 + (i * (w - 48)) / 23.0;
+            pakad y = h * 0.5 - math.sin(i * 0.35 + g_phase.current) * (h * 0.3 * (g_gain.current / 100.0));
+            pts.push([x, y]);
+            i = i + 1;
+        }
+        p.polyline(pts, 2.5, "#38bdf8", 1.0);
+        p.text(20, 28, "Immediate Frame | Gain=" + g_gain.current + "% | Clicks=" + g_clicks, 13, "#e2e8f0", 600, sach, 1.0);
+    });
+}
+
+egui.app("MEME-egui Telemetry", onEguiFrame);

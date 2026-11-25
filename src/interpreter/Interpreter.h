@@ -61,11 +61,20 @@ public:
     // React Runtime & Fiber State
     Value rootUiComponent = Value(std::monostate{});
     Value rootCallable = Value(std::monostate{});
+    std::string rootComponentName = "App";
     std::unordered_map<std::string, Value> hookSlots;
     std::vector<std::string> componentPathStack;
     std::unordered_map<std::string, int> componentInstanceCounters;
     std::unordered_map<std::string, int> componentHookCursors;
     std::unordered_map<int, TailwindEngine::HitRegion> interactiveRegions;
+    MemeUI::UiSession uiSession;
+    std::unordered_map<std::string, std::vector<Value>> effectDepsSlots;
+    std::unordered_map<std::string, bool> effectHasDeps;
+    std::unordered_map<std::string, Value> effectCleanupSlots;
+    std::vector<std::function<void()>> pendingEffects;
+    std::unordered_map<std::string, std::pair<Value, std::vector<Value>>> memoSlots;
+    std::unordered_map<std::string, bool> memoHasDeps;
+    MemeUI::UiSession &getUiSession() { return uiSession; }
     std::unordered_map<std::string, std::vector<Value>> contextStacks;
     std::string currentRouterPath = "/";
     std::vector<std::string> routerHistory;

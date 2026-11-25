@@ -1,0 +1,465 @@
+// apps/showcase/src/App.meme
+// Write Once, Run Everywhere (WORE) MEME-UI Showcase Application
+// Zero platform checks • 100% Native GPU/2D Rendering • Full Dual-Engine Parity
+
+bula "math";
+bula "ui:shadcn" jaise {
+    Card, Button, Badge, Input, Textarea, Checkbox, Switch,
+    Slider, Progress, Combobox, Popover, Tooltip, Toast, Dialog,
+    Tabs, TabsList, TabsTrigger, TabsContent,
+    ResizablePanelGroup, ResizablePanel, ResizableHandle, Canvas
+};
+bula "ui:primitives" jaise { createVirtualizer, createTypeahead, createReorder };
+bula "./telemetry" jaise { drawTelemetryCanvas };
+
+kaam App() {
+    [activeTab, setActiveTab] = useState("chat");
+    [isRtl, setIsRtl] = useState(jhooth);
+    [modalOpen, setModalOpen] = useState(jhooth);
+    [popoverOpen, setPopoverOpen] = useState(jhooth);
+    [tooltipOpen, setTooltipOpen] = useState(jhooth);
+    [toastMsg, setToastMsg] = useState("");
+
+    // Tab 1: Realtime Chat + 10k-row Virtualizer state
+    [chatMessages, setChatMessages] = useState([
+        { "id": 1, "user": "sys", "text": "MEME-UI Native Core initialized (0ms DOM overhead)." },
+        { "id": 2, "user": "alice", "text": "Single codebase running natively across macOS, Win, Linux, APK, IPA, IPK, and Web!" },
+        { "id": 3, "user": "bob", "text": "Try scrolling the 10,000-row virtualized event feed or switching tabs." }
+    ]);
+    [chatDraft, setChatDraft] = useState("");
+    [feedScrollPx, setFeedScrollPx] = useState(0);
+
+    // Tab 2: Interactive Controls, Combobox + Typeahead, Split Panes, Reorder
+    [selectedTheme, setSelectedTheme] = useState("Midnight Slate");
+    [typeQuery, setTypeQuery] = useState("");
+    [liveSync, setLiveSync] = useState(sach);
+    [agreeCheck, setAgreeCheck] = useState(sach);
+    [indeterminateCheck, setIndeterminateCheck] = useState(sach);
+    [gainVal, setGainVal] = useState(65);
+    [splitLeftWidth, setSplitLeftWidth] = useState(260);
+    [reorderItems, setReorderItems] = useState(["Metal/GL Tessellator", "Layout Engine", "Text Engine", "Vercel Primitives"]);
+
+    // Tab 3: Immediate-Mode Canvas Telemetry
+    [canvasPhase, setCanvasPhase] = useState(0.4);
+
+    // Tab 4: Multi-Input & Textarea Editor
+    [apiToken, setApiToken] = useState("meme_live_98421");
+    [notesText, setNotesText] = useState("Multi-line native editor:\n- Ctrl/Cmd+C, X, V clipboard\n- Undo/Redo & Word selection\n- Zero OS stock widget bloat");
+
+    // Headless virtualizer over 10,000 rows (O(visible) layout + O(log N) Fenwick scroll)
+    pakad virtualizer = useMemo(() => createVirtualizer({
+        "itemCount": 10000,
+        "estimateSize": 42,
+        "viewportSize": 252,
+        "overscan": 3
+    }), []);
+    virtualizer.setScrollOffset(feedScrollPx);
+    pakad vSnap = virtualizer.getVirtualItems();
+    pakad startIdx = vSnap.lambai() > 0 ? vSnap[0].index : 0;
+    pakad endIdx = vSnap.lambai() > 0 ? vSnap[vSnap.lambai() - 1].index : 0;
+
+    pakad presets = ["Midnight Slate", "Solar Amber", "Emerald Matrix", "Cobalt Crisp", "Crimson High-Contrast"];
+    pakad typeahead = useMemo(() => createTypeahead({ "items": presets }), []);
+
+    pakad reorderCtrl = useMemo(() => createReorder({ "items": reorderItems }), []);
+
+    kaam sendChat() {
+        agar (chatDraft != "") {
+            pakad nextId = chatMessages.lambai() + 1;
+            setChatMessages([...chatMessages, {
+                "id": nextId,
+                "user": "you",
+                "text": chatDraft
+            }]);
+            setChatDraft("");
+            setToastMsg("Dispatched message #" + nextId + " to native feed");
+        }
+    }
+
+    kaam handleScrollStep(deltaPx) {
+        pakad nextOff = feedScrollPx + deltaPx;
+        agar (nextOff < 0) {
+            nextOff = 0;
+        }
+        agar (nextOff > 419700) {
+            nextOff = 419700;
+        }
+        setFeedScrollPx(nextOff);
+    }
+
+    kaam handleMoveItem(idx, dir) {
+        pakad cur = [...reorderItems];
+        pakad targetIdx = idx + dir;
+        agar (targetIdx >= 0 && targetIdx < cur.lambai()) {
+            pakad tmp = cur[idx];
+            cur[idx] = cur[targetIdx];
+            cur[targetIdx] = tmp;
+            setReorderItems(cur);
+            setToastMsg("Reordered '" + cur[targetIdx] + "' to slot " + (targetIdx + 1));
+        }
+    }
+
+    kaam handleTypeaheadSearch(q) {
+        setTypeQuery(q);
+        agar (q != "") {
+            pakad hitId = typeahead.matchQuery(q, selectedTheme);
+            agar (hitId != "") {
+                setSelectedTheme(hitId);
+            }
+        }
+    }
+
+    de (
+        <div rtl={isRtl} class="p-4 bg-slate-950 min-h-screen flex flex-col gap-3 text-slate-100 overflow-y-auto">
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+                    <h1 class="text-lg font-bold text-white">MEME-UI Universal Showcase</h1>
+                    <Badge class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                        {"Theme: " + selectedTheme}
+                    </Badge>
+                </div>
+                <div class="flex items-center gap-2">
+                    <Button
+                        testId="toggle_rtl"
+                        variant="outline"
+                        class="px-3 py-1.5 text-xs"
+                        onClick={() => setIsRtl(!isRtl)}
+                    >
+                        {isRtl ? "Direction: RTL" : "Direction: LTR"}
+                    </Button>
+                    <Button
+                        testId="trigger_toast"
+                        variant="secondary"
+                        class="px-3 py-1.5 text-xs"
+                        onClick={() => setToastMsg("WORE Snapshot verified at " + gainVal + "% gain")}
+                    >
+                        Notify Toast
+                    </Button>
+                    <Button
+                        testId="open_modal"
+                        class="px-3 py-1.5 text-xs"
+                        onClick={() => setModalOpen(sach)}
+                    >
+                        Open Dialog
+                    </Button>
+                </div>
+            </div>
+
+            <Tabs value={activeTab} class="flex-1 flex flex-col gap-3">
+                <TabsList class="self-start max-w-full flex-wrap">
+                    <TabsTrigger
+                        testId="tab_chat"
+                        selected={activeTab == "chat"}
+                        class={activeTab == "chat" ? "bg-indigo-600 text-white" : ""}
+                        onClick={() => setActiveTab("chat")}
+                    >
+                        Realtime Chat + 10k Feed
+                    </TabsTrigger>
+                    <TabsTrigger
+                        testId="tab_explorer"
+                        selected={activeTab == "explorer"}
+                        class={activeTab == "explorer" ? "bg-indigo-600 text-white" : ""}
+                        onClick={() => setActiveTab("explorer")}
+                    >
+                        Widget Explorer
+                    </TabsTrigger>
+                    <TabsTrigger
+                        testId="tab_telemetry"
+                        selected={activeTab == "telemetry"}
+                        class={activeTab == "telemetry" ? "bg-indigo-600 text-white" : ""}
+                        onClick={() => setActiveTab("telemetry")}
+                    >
+                        Immediate Canvas
+                    </TabsTrigger>
+                    <TabsTrigger
+                        testId="tab_editor"
+                        selected={activeTab == "editor"}
+                        class={activeTab == "editor" ? "bg-indigo-600 text-white" : ""}
+                        onClick={() => setActiveTab("editor")}
+                    >
+                        Multi-Input Editor
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent hidden={activeTab != "chat"} class="flex-1 flex flex-col gap-3">
+                    <div class="flex flex-col md:flex-row gap-3 flex-1">
+                        <Card class="flex-1 p-4 flex flex-col gap-2">
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span class="text-xs font-bold text-slate-300">
+                                    {"Live Room Messages (" + chatMessages.lambai() + ")"}
+                                </span>
+                                <span class="text-xs text-emerald-400 font-mono">Zero-WebView 60FPS</span>
+                            </div>
+                            <div class="flex-1 flex flex-col gap-2 overflow-y-auto">
+                                {chatMessages.map(msg => (
+                                    <div key={msg.id} class="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/50 flex flex-col gap-1">
+                                        <span class="text-xs font-bold text-amber-400">{"@" + msg.user}</span>
+                                        <p class="text-sm text-slate-200">{msg.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <div class="flex items-center gap-2 pt-2 border-t border-slate-800">
+                                <Input
+                                    testId="chat_input"
+                                    class="flex-1"
+                                    placeholder="Broadcast native message..."
+                                    value={chatDraft}
+                                    onChange={(e) => setChatDraft(e.target.value)}
+                                />
+                                <Button testId="chat_send_btn" onClick={sendChat}>
+                                    Send
+                                </Button>
+                            </div>
+                        </Card>
+
+                        <Card class="w-full md:w-96 p-4 flex flex-col gap-2">
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span class="text-xs font-bold text-indigo-300">
+                                    {"10k Virtual Feed [" + startIdx + ".." + endIdx + "]"}
+                                </span>
+                                <div class="flex items-center gap-1">
+                                    <Button testId="scroll_top_btn" variant="ghost" class="px-2 py-1 text-xs" onClick={() => setFeedScrollPx(0)}>
+                                        Top
+                                    </Button>
+                                    <Button testId="scroll_next_btn" variant="secondary" class="px-2 py-1 text-xs" onClick={() => handleScrollStep(21000)}>
+                                        +500 Rows
+                                    </Button>
+                                </div>
+                            </div>
+                            <div class="flex-1 flex flex-col gap-1.5 overflow-hidden">
+                                {vSnap.map(vRow => (
+                                    <div key={vRow.index} class="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                        <span class="text-xs font-mono text-sky-400">{"#event-" + vRow.index}</span>
+                                        <span class="text-xs text-slate-400">{"offset " + vRow.offset + "px"}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    </div>
+                </TabsContent>
+
+                <TabsContent hidden={activeTab != "explorer"} class="flex-1 flex flex-col gap-3">
+                    <ResizablePanelGroup class="flex-col md:flex-row flex-1 gap-2">
+                        <ResizablePanel class={"w-full md:flex-none md:w-[" + splitLeftWidth + "px] bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3"}>
+                            <h3 class="text-sm font-bold text-white">Interactive Controls</h3>
+
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <Checkbox
+                                    testId="agree_checkbox"
+                                    label="Native GPU Acceleration"
+                                    checked={agreeCheck}
+                                    onChange={(e) => setAgreeCheck(e.checked)}
+                                />
+                                <Checkbox
+                                    testId="tri_checkbox"
+                                    label="Tri-state Filter"
+                                    checked={jhooth}
+                                    indeterminate={indeterminateCheck}
+                                    onChange={() => setIndeterminateCheck(!indeterminateCheck)}
+                                />
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-slate-300">Realtime Sync</span>
+                                <Switch
+                                    testId="live_switch"
+                                    label={liveSync ? "Enabled" : "Paused"}
+                                    checked={liveSync}
+                                    onChange={(e) => setLiveSync(e.checked)}
+                                />
+                            </div>
+
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-slate-400">{"Render Gain: " + gainVal + "%"}</span>
+                                <Slider
+                                    testId="gain_slider"
+                                    accessibleName="Render Gain Slider"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={gainVal}
+                                    onChange={(e) => setGainVal(e.numValue)}
+                                />
+                                <Progress value={gainVal} max={100} />
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <span class="text-xs text-slate-400">Theme Combobox (Typeahead)</span>
+                                <Input
+                                    testId="combobox_input"
+                                    placeholder="Type preset name (e.g. sol, eme)..."
+                                    value={typeQuery}
+                                    onChange={(e) => handleTypeaheadSearch(e.target.value)}
+                                />
+                                <div class="flex gap-1.5 flex-wrap">
+                                    {presets.map(pName => (
+                                        <Button
+                                            key={pName}
+                                            variant={selectedTheme == pName ? "default" : "outline"}
+                                            class="px-2.5 py-1 text-xs"
+                                            onClick={() => setSelectedTheme(pName)}
+                                        >
+                                            {pName}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        </ResizablePanel>
+
+                        <ResizableHandle
+                            testId="split_handle"
+                            accessibleName="Resize Split Panels"
+                            onClick={() => setSplitLeftWidth(splitLeftWidth == 260 ? 340 : 260)}
+                        />
+
+                        <ResizablePanel class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-white">Reorderable Pipeline & Popovers</h3>
+                                <div class="flex items-center gap-2">
+                                    <Button
+                                        testId="popover_trigger"
+                                        variant="secondary"
+                                        class="px-3 py-1 text-xs"
+                                        onClick={() => setPopoverOpen(!popoverOpen)}
+                                    >
+                                        {popoverOpen ? "Hide Popover" : "Inspect Popover"}
+                                    </Button>
+                                    <Button
+                                        testId="tooltip_trigger"
+                                        variant="ghost"
+                                        class="px-2.5 py-1 text-xs"
+                                        onClick={() => setTooltipOpen(!tooltipOpen)}
+                                    >
+                                        ? Info
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <Tooltip testId="info_tooltip" hidden={!tooltipOpen}>
+                                Anchored Tooltip: collision-aware placement across all viewports
+                            </Tooltip>
+
+                            <Popover testId="inspector_popover" hidden={!popoverOpen} class="flex flex-col gap-2">
+                                <span class="text-xs font-bold text-indigo-300">Anchored Popover Collision Inspector</span>
+                                <p class="text-xs text-slate-300">Supports flip, shift, escape dismiss, and focus restoration.</p>
+                                <Button testId="popover_close" variant="outline" class="self-end px-2.5 py-1 text-xs" onClick={() => setPopoverOpen(jhooth)}>
+                                    Close Popover
+                                </Button>
+                            </Popover>
+
+                            <div class="flex flex-col gap-2">
+                                {reorderItems.map((item, idx) => (
+                                    <div key={item} class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                        <span class="text-xs font-medium text-slate-200">{(idx + 1) + ". " + item}</span>
+                                        <div class="flex items-center gap-1">
+                                            <Button
+                                                testId={"reorder_up_" + idx}
+                                                variant="ghost"
+                                                class="px-2 py-0.5 text-xs"
+                                                onClick={() => handleMoveItem(idx, -1)}
+                                            >
+                                                Up
+                                            </Button>
+                                            <Button
+                                                testId={"reorder_down_" + idx}
+                                                variant="ghost"
+                                                class="px-2 py-0.5 text-xs"
+                                                onClick={() => handleMoveItem(idx, 1)}
+                                            >
+                                                Down
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </ResizablePanel>
+                    </ResizablePanelGroup>
+                </TabsContent>
+
+                <TabsContent hidden={activeTab != "telemetry"} class="flex-1 flex flex-col gap-3">
+                    <Card class="p-4 flex-1 flex flex-col gap-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-white">Immediate-Mode 2D Oscilloscope & Telemetry</span>
+                            <Button
+                                testId="step_phase_btn"
+                                class="px-3 py-1.5 text-xs"
+                                onClick={() => setCanvasPhase(canvasPhase + 0.7)}
+                            >
+                                Advance Waveform
+                            </Button>
+                        </div>
+                        <Canvas
+                            testId="telemetry_canvas"
+                            class="w-full h-56 rounded-xl bg-slate-950 border border-slate-800"
+                            onPaint={(painter, bounds) => drawTelemetryCanvas(
+                                painter,
+                                bounds,
+                                canvasPhase,
+                                gainVal / 100.0,
+                                "MEME-UI Immediate Canvas | Gain=" + gainVal + "% | Phase=" + canvasPhase
+                            )}
+                        />
+                    </Card>
+                </TabsContent>
+
+                <TabsContent hidden={activeTab != "editor"} class="flex-1 flex flex-col gap-3">
+                    <Card class="p-4 flex flex-col gap-3">
+                        <span class="text-sm font-bold text-white">Native Text Engine & Clipboard Workspace</span>
+                        <Input
+                            testId="secret_input"
+                            type="password"
+                            placeholder="Cluster token (masked native input)"
+                            value={apiToken}
+                            onChange={(e) => setApiToken(e.target.value)}
+                        />
+                        <Textarea
+                            testId="notes_textarea"
+                            placeholder="Write platform-independent notes..."
+                            value={notesText}
+                            onChange={(e) => setNotesText(e.target.value)}
+                        />
+                        <Button
+                            testId="append_note_btn"
+                            variant="secondary"
+                            class="self-start px-3 py-1.5 text-xs"
+                            onClick={() => setNotesText(notesText + "\n[Added] WORE Check OK")}
+                        >
+                            Append Verification Line
+                        </Button>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+
+            <Dialog
+                testId="settings_dialog"
+                hidden={!modalOpen}
+                class="w-96 flex flex-col gap-3"
+            >
+                <h2 class="text-base font-bold text-white">Workspace Modal Dialog</h2>
+                <p class="text-xs text-slate-300">
+                    Focus-trapped native dialog rendered directly onto GPU surfaces with zero HTML DOM overlays.
+                </p>
+                <div class="flex items-center justify-end gap-2">
+                    <Button testId="modal_close_btn" onClick={() => setModalOpen(jhooth)}>
+                        Close Dialog
+                    </Button>
+                </div>
+            </Dialog>
+
+            <Toast
+                testId="active_toast"
+                hidden={toastMsg == ""}
+                class="flex items-center justify-between gap-3"
+            >
+                <span class="text-xs text-emerald-300">{toastMsg}</span>
+                <Button testId="toast_close_btn" variant="ghost" class="px-2 py-0.5 text-xs" onClick={() => setToastMsg("")}>
+                    Dismiss
+                </Button>
+            </Toast>
+        </div>
+    );
+}
+
+ui.mount(<App />);
+ui.show("MEME-UI WORE Showcase");

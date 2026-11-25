@@ -1,0 +1,6 @@
+{
+  "name": "meme-showcase",
+  "version": "1.0.0",
+  "entry": "src/App.meme",
+  "output": "bin/meme-showcase"
+}

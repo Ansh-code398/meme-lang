@@ -1,0 +1,50 @@
+// apps/showcase/src/telemetry.meme
+// Platform-agnostic immediate-mode telemetry helpers for <canvas onPaint={...} />
+
+bula "math";
+
+kaam buildTelemetrySeries(sampleCount, phase, gain) {
+    pakad pts = [];
+    pakad i = 0;
+    jabtak (i < sampleCount) {
+        pakad xNorm = i / 24.0;
+        pakad wave = math.sin(xNorm * 6.283 + phase) * gain;
+        pakad harmonic = math.cos(xNorm * 12.566 - phase * 0.5) * (gain * 0.35);
+        pts.push(0.5 + (wave + harmonic) * 0.38);
+        i = i + 1;
+    }
+    de pts;
+}
+
+kaam drawTelemetryCanvas(p, bounds, phase, gain, labelText) {
+    pakad w = bounds.width > 0 ? bounds.width : 520;
+    pakad h = bounds.height > 0 ? bounds.height : 180;
+
+    p.rect_filled(0, 0, w, h, 8, "#020617", 1.0);
+    p.rect_stroke(1, 1, w - 2, h - 2, 8, 1.0, "#1e293b", 1.0);
+
+    // Subtle horizontal oscilloscope grid lines
+    pakad g = 1;
+    jabtak (g <= 3) {
+        pakad gy = (h * g) / 4.0;
+        p.line(12, gy, w - 12, gy, 1.0, "#0f172a", 1.0);
+        g = g + 1;
+    }
+
+    pakad series = buildTelemetrySeries(25, phase, gain);
+    pakad polyPts = [];
+    pakad idx = 0;
+    jabtak (idx < series.lambai()) {
+        pakad px = 16 + (idx * (w - 32)) / 24.0;
+        pakad py = 28 + (1.0 - series[idx]) * (h - 48);
+        polyPts.push([px, py]);
+        idx = idx + 1;
+    }
+
+    p.polyline(polyPts, 2.5, "#38bdf8", 1.0);
+
+    // Highlight latest telemetry cursor marker
+    pakad lastPt = polyPts[polyPts.lambai() - 1];
+    p.circle_filled(lastPt[0], lastPt[1], 4.5, "#10b981", 1.0);
+    p.text(14, 18, labelText, 12, "#e2e8f0", 600, sach, 1.0);
+}

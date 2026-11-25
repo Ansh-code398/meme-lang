@@ -1056,6 +1056,36 @@ public:
 
 #include "../bridge/EcosystemBridge.h"
 #include "../ui/ShadcnComponents.h"
+#include "../ui/MemePrimitivesModule.h"
+#include "../ui/MemeEguiModule.h"
+
+static bool memeHookValueEqual(const Value &a, const Value &b) {
+    Value da = a.deref();
+    Value db = b.deref();
+    if (da.data.index() != db.data.index()) {
+        if (da.isNumeric() && db.isNumeric()) return da.asDouble() == db.asDouble();
+        return false;
+    }
+    if (da.isNil()) return true;
+    if (std::holds_alternative<bool>(da.data)) return std::get<bool>(da.data) == std::get<bool>(db.data);
+    if (da.isNumeric()) return da.asDouble() == db.asDouble();
+    if (da.isString()) return da.toString() == db.toString();
+    if (da.isList() && db.isList()) return da.getList().get() == db.getList().get();
+    if (da.isMap() && db.isMap()) return da.getMap().get() == db.getMap().get();
+    if (da.isCallable() && db.isCallable()) return da.getCallable().get() == db.getCallable().get();
+    return da.toString() == db.toString();
+}
+
+static bool memeDepsChanged(const std::vector<Value> &prev, const Value &depsListVal) {
+    Value dl = depsListVal.deref();
+    if (!dl.isList()) return true;
+    const auto &cur = dl.getList()->elements;
+    if (prev.size() != cur.size()) return true;
+    for (size_t i = 0; i < cur.size(); ++i) {
+        if (!memeHookValueEqual(prev[i], cur[i])) return true;
+    }
+    return false;
+}
 
 static std::shared_ptr<MemeMap> createHisabModule()
 {
@@ -4322,6 +4352,7 @@ static std::shared_ptr<MemeMap> createJaalModule()
     return m;
 }
 
+#if !defined(__EMSCRIPTEN__)
 struct MemeSocketHandle {
     int fd = -1;
     bool isClosed = false;
@@ -4630,6 +4661,20 @@ static std::shared_ptr<MemeMap> createNetModule()
 
     return m;
 }
+#else
+static std::shared_ptr<MemeMap> createNetModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+    m->set("listen", Value(std::make_shared<NativeMethodCallable>("listen", 1, 3, [](Interpreter &, const std::vector<Value> &) -> Value {
+        throw std::runtime_error("TCP server sockets are not supported in WebAssembly!");
+    })));
+    m->set("connect", Value(std::make_shared<NativeMethodCallable>("connect", 2, 3, [](Interpreter &, const std::vector<Value> &) -> Value {
+        throw std::runtime_error("TCP client sockets are not supported in WebAssembly!");
+    })));
+    return m;
+}
+#endif
 
 static std::string repeatU8(const std::string &ch, size_t n)
 {
@@ -6725,7 +6770,9 @@ struct HttpMiddleware {
 
 struct ClientConnection {
     int cfd = -1;
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
     sockaddr_in csin{};
+#endif
 };
 
 class HttpServerState : public std::enable_shared_from_this<HttpServerState> {
@@ -8719,16 +8766,34 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
     m->set("render", dikhaVal);
     m->set("mount", Value(std::make_shared<NativeMethodCallable>("mount", 1, [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         if (!args.empty()) {
-            if (std::holds_alternative<std::shared_ptr<Callable>>(args[0].deref().data)) {
-                interpreter.rootCallable = args[0];
+            Value arg = args[0].deref();
+            if (std::holds_alternative<std::shared_ptr<Callable>>(arg.data)) {
+                interpreter.rootCallable = arg;
+                interpreter.rootComponentName = "App";
+                interpreter.setRootUiComponent(Value(std::monostate{}));
+            } else if (arg.isMap() && arg.getMap()->has("__rootCallable") &&
+                       std::holds_alternative<std::shared_ptr<Callable>>(arg.getMap()->entries["__rootCallable"].deref().data)) {
+                auto am = arg.getMap();
+                std::string nextName = am->has("__componentName") ? am->entries["__componentName"].deref().toString() : "App";
+                if (nextName != interpreter.rootComponentName) {
+                    interpreter.uiSession.interaction = MemeUI::UiInteractionState();
+                    interpreter.uiSession.popups.stack.clear();
+                    interpreter.uiSession.focusScopes.scopes.clear();
+                }
+                interpreter.rootCallable = am->entries["__rootCallable"];
+                interpreter.rootComponentName = nextName;
+                interpreter.setRootUiComponent(Value(std::monostate{}));
             } else {
-                interpreter.setRootUiComponent(args[0]);
+                interpreter.rootCallable = Value(std::monostate{});
+                interpreter.rootComponentName = "App";
+                interpreter.setRootUiComponent(arg);
                 auto env = interpreter.getEnvironment();
                 for (const auto &name : {"App", "Main", "Root", "ShellApp", "POSApp", "Counter"}) {
                     auto slot = env ? env->findSlot(name) : nullptr;
                     if (!slot && interpreter.getGlobals()) slot = interpreter.getGlobals()->findSlot(name);
                     if (slot && std::holds_alternative<std::shared_ptr<Callable>>(slot->value.deref().data)) {
                         interpreter.rootCallable = slot->value;
+                        interpreter.rootComponentName = name;
                         break;
                     }
                 }
@@ -8753,10 +8818,15 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
         static auto s_state = std::make_shared<DevServerState>();
         s_state->appName = winTitle;
         s_state->interpreter = &interpreter;
+        s_state->uiSession = &interpreter.uiSession;
+        s_state->onRenderFrame = [&interpreter]() { interpreter.triggerUiRerender(); };
         s_state->running = true;
         MemeUI::showNativeDesktopWindow(*s_state);
         while (s_state->running && MemeUI::isNativeDesktopWindowOpen()) {
             MemeUI::pumpNativeDesktopEvents(0.016);
+            if (interpreter.uiSession.tick(16.0) || interpreter.uiSession.needsRender) {
+                interpreter.triggerUiRerender();
+            }
         }
         return Value(true);
 #else
@@ -8816,6 +8886,38 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
     auto clickVal = Value(std::make_shared<NativeMethodCallable>("click", 1, 2, clickFn));
     m->set("click", clickVal);
     m->set("dabao", clickVal);
+
+    auto primsMod = MemePrimitivesModule::createPrimitivesModule();
+    if (primsMod->has("createAgent")) {
+        m->set("agent", primsMod->entries["createAgent"]);
+        m->set("createAgent", primsMod->entries["createAgent"]);
+    }
+    m->set("primitives", Value(primsMod));
+
+    auto dispatchKeyFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        MemeUI::UiKeyEvent kev;
+        kev.key = args[0].deref().toString();
+        if (args.size() > 1 && args[1].deref().isMap()) {
+            auto opts = args[1].deref().getMap();
+            if (opts->has("ctrl")) kev.ctrl = opts->entries["ctrl"].deref().isTruthy();
+            if (opts->has("shift")) kev.shift = opts->entries["shift"].deref().isTruthy();
+            if (opts->has("alt")) kev.alt = opts->entries["alt"].deref().isTruthy();
+            if (opts->has("meta")) kev.meta = opts->entries["meta"].deref().isTruthy();
+            if (opts->has("text")) kev.text = opts->entries["text"].deref().toString();
+        }
+        if (kev.text.empty() && kev.key.size() == 1 && !kev.ctrl && !kev.meta) kev.text = kev.key;
+        bool ok = interpreter.uiSession.handleKeyEvent(kev);
+        if (ok) interpreter.triggerUiRerender();
+        return Value(ok);
+    };
+    m->set("dispatch_key", Value(std::make_shared<NativeMethodCallable>("dispatch_key", 1, 2, dispatchKeyFn)));
+    m->set("dispatchKey", Value(std::make_shared<NativeMethodCallable>("dispatchKey", 1, 2, dispatchKeyFn)));
+
+    m->set("tick", Value(std::make_shared<NativeMethodCallable>("tick", 1, 1, [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        bool changed = interpreter.uiSession.tick(args[0].deref().asDouble());
+        if (changed || interpreter.uiSession.needsRender) interpreter.triggerUiRerender();
+        return Value(changed);
+    })));
 
     return m;
 }
@@ -11615,10 +11717,48 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("state_bana", useStateVal);
 
     auto useEffectFn = [](Interpreter &interp, const std::vector<Value> &args) -> Value {
-        if (!args.empty()) {
-            Value fnVal = args[0].deref();
-            if (std::holds_alternative<std::shared_ptr<Callable>>(fnVal.data)) {
-                std::get<std::shared_ptr<Callable>>(fnVal.data)->call(interp, {});
+        if (args.empty()) return Value(std::monostate{});
+        Value fnVal = args[0].deref();
+        if (!std::holds_alternative<std::shared_ptr<Callable>>(fnVal.data)) {
+            return Value(std::monostate{});
+        }
+
+        std::string compPath = interp.getCurrentComponentPath();
+        int cursor = interp.getNextHookCursor(compPath);
+        std::string slotKey = compPath + "@effect@" + std::to_string(cursor);
+
+        bool hasDeps = (args.size() >= 2 && args[1].deref().isList());
+        bool shouldRun = false;
+        if (interp.effectDepsSlots.find(slotKey) == interp.effectDepsSlots.end() &&
+            interp.effectHasDeps.find(slotKey) == interp.effectHasDeps.end()) {
+            shouldRun = true;
+        } else if (!hasDeps) {
+            shouldRun = true;
+        } else {
+            shouldRun = memeDepsChanged(interp.effectDepsSlots[slotKey], args[1]);
+        }
+
+        if (shouldRun) {
+            interp.effectHasDeps[slotKey] = hasDeps;
+            if (hasDeps) {
+                interp.effectDepsSlots[slotKey] = args[1].deref().getList()->elements;
+            }
+            auto runEffect = [&interp, fnVal, slotKey]() {
+                auto cit = interp.effectCleanupSlots.find(slotKey);
+                if (cit != interp.effectCleanupSlots.end() && cit->second.deref().isCallable()) {
+                    MemePrimitivesModule::invokeCallableSafe(interp, cit->second, {});
+                }
+                Value cleanup = MemePrimitivesModule::invokeCallableSafe(interp, fnVal, {});
+                if (cleanup.deref().isCallable()) {
+                    interp.effectCleanupSlots[slotKey] = cleanup;
+                } else {
+                    interp.effectCleanupSlots.erase(slotKey);
+                }
+            };
+            if (!interp.componentPathStack.empty()) {
+                interp.pendingEffects.push_back(std::move(runEffect));
+            } else {
+                runEffect();
             }
         }
         return Value(std::monostate{});
@@ -11631,22 +11771,80 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
         int cursor = interp.getNextHookCursor(compPath);
         std::string slotKey = compPath + "@memo@" + std::to_string(cursor);
 
-        if (interp.hookSlots.find(slotKey) == interp.hookSlots.end()) {
+        bool hasDeps = (args.size() >= 2 && args[1].deref().isList());
+        bool needRecompute = (interp.memoSlots.find(slotKey) == interp.memoSlots.end());
+        if (!needRecompute && hasDeps) {
+            needRecompute = memeDepsChanged(interp.memoSlots[slotKey].second, args[1]);
+        }
+
+        if (needRecompute) {
+            Value computed(std::monostate{});
             if (!args.empty()) {
                 Value fnVal = args[0].deref();
                 if (std::holds_alternative<std::shared_ptr<Callable>>(fnVal.data)) {
-                    interp.hookSlots[slotKey] = std::get<std::shared_ptr<Callable>>(fnVal.data)->call(interp, {});
+                    computed = std::get<std::shared_ptr<Callable>>(fnVal.data)->call(interp, {});
                 } else {
-                    interp.hookSlots[slotKey] = fnVal;
+                    computed = fnVal;
                 }
-            } else {
-                interp.hookSlots[slotKey] = Value(std::monostate{});
             }
+            std::vector<Value> depsCopy = hasDeps ? args[1].deref().getList()->elements : std::vector<Value>{};
+            interp.memoSlots[slotKey] = {computed, std::move(depsCopy)};
+            interp.memoHasDeps[slotKey] = hasDeps;
+            interp.hookSlots[slotKey] = computed;
         }
-        return interp.hookSlots[slotKey];
+        return interp.memoSlots[slotKey].first;
     };
     auto useMemoVal = Value(std::make_shared<NativeMethodCallable>("useMemo", 1, 2, useMemoFn));
     globals->define("useMemo", useMemoVal);
+
+    auto useCallbackFn = [](Interpreter &interp, const std::vector<Value> &args) -> Value {
+        std::string compPath = interp.getCurrentComponentPath();
+        int cursor = interp.getNextHookCursor(compPath);
+        std::string slotKey = compPath + "@cb@" + std::to_string(cursor);
+
+        bool hasDeps = (args.size() >= 2 && args[1].deref().isList());
+        bool needUpdate = (interp.memoSlots.find(slotKey) == interp.memoSlots.end());
+        if (!needUpdate && hasDeps) {
+            needUpdate = memeDepsChanged(interp.memoSlots[slotKey].second, args[1]);
+        }
+        if (needUpdate) {
+            Value fnVal = args.empty() ? Value(std::monostate{}) : args[0];
+            std::vector<Value> depsCopy = hasDeps ? args[1].deref().getList()->elements : std::vector<Value>{};
+            interp.memoSlots[slotKey] = {fnVal, std::move(depsCopy)};
+            interp.hookSlots[slotKey] = fnVal;
+        }
+        return interp.memoSlots[slotKey].first;
+    };
+    auto useCallbackVal = Value(std::make_shared<NativeMethodCallable>("useCallback", 1, 2, useCallbackFn));
+    globals->define("useCallback", useCallbackVal);
+
+    auto useReducerFn = [this](Interpreter &interp, const std::vector<Value> &args) -> Value {
+        std::string compPath = interp.getCurrentComponentPath();
+        int cursor = interp.getNextHookCursor(compPath);
+        std::string slotKey = compPath + "@reducer@" + std::to_string(cursor);
+
+        Value reducerFn = args[0].deref();
+        if (interp.hookSlots.find(slotKey) == interp.hookSlots.end()) {
+            Value initArg = (args.size() > 1) ? args[1] : Value(std::monostate{});
+            if (args.size() > 2 && args[2].deref().isCallable()) {
+                initArg = MemePrimitivesModule::invokeCallableSafe(interp, args[2], {initArg});
+            }
+            interp.hookSlots[slotKey] = initArg;
+        }
+        auto resList = std::make_shared<MemeList>();
+        resList->elements.push_back(interp.hookSlots[slotKey]);
+        auto dispatch = [this, slotKey, reducerFn](Interpreter &it, const std::vector<Value> &dArgs) -> Value {
+            Value action = dArgs.empty() ? Value(std::monostate{}) : dArgs[0];
+            Value nextVal = MemePrimitivesModule::invokeCallableSafe(it, reducerFn, {this->hookSlots[slotKey], action});
+            this->hookSlots[slotKey] = nextVal;
+            this->triggerUiRerender();
+            return nextVal;
+        };
+        resList->elements.push_back(Value(std::make_shared<NativeMethodCallable>("dispatch", 1, dispatch)));
+        return Value(resList);
+    };
+    auto useReducerVal = Value(std::make_shared<NativeMethodCallable>("useReducer", 2, 3, useReducerFn));
+    globals->define("useReducer", useReducerVal);
 
     auto useRefFn = [](Interpreter &interp, const std::vector<Value> &args) -> Value {
         std::string compPath = interp.getCurrentComponentPath();
@@ -11864,12 +12062,14 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("jaanch_kar", Value(std::make_shared<NativeMethodCallable>("jaanch_kar", 2, testFn)));
     globals->define("it", Value(std::make_shared<NativeMethodCallable>("it", 2, testFn)));
 
-    // Also populate ui module with React & Router components
+    // Also populate ui module with React & Router components, and create dedicated egui immediate-mode module
     if (std::holds_alternative<std::shared_ptr<MemeMap>>(uiMod.data)) {
         auto uim = std::get<std::shared_ptr<MemeMap>>(uiMod.data);
         uim->set("useState", useStateVal);
         uim->set("useEffect", useEffectVal);
         uim->set("useMemo", useMemoVal);
+        uim->set("useCallback", useCallbackVal);
+        uim->set("useReducer", useReducerVal);
         uim->set("useRef", useRefVal);
         uim->set("createContext", createContextVal);
         uim->set("useContext", useContextVal);
@@ -11877,6 +12077,115 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
         uim->set("Router", routerCompVal);
         uim->set("Route", routeCompVal);
         uim->set("Link", linkCompVal);
+
+        auto eguiMod = std::make_shared<MemeMap>();
+        eguiMod->isModule = true;
+        eguiMod->entries = uim->entries;
+
+        auto setupImmediateFn = [](Interpreter &interp, const Value &updateFn, float vw, float vh) {
+            interp.uiSession.isImmediateMode = true;
+            Value fnCopy = updateFn.deref();
+            interp.uiSession.eguiUpdateFn = [&interp, fnCopy](MemeUI::EguiContext &ctx) {
+                MemePrimitivesModule::invokeCallableSafe(interp, fnCopy, {MemeEguiModule::wrapEguiContext(&ctx)});
+            };
+            interp.uiSession.renderFrame(vw, vh);
+            interp.lastGpuCommandsJson = MemeUI::gpuDrawCmdsToJson(interp.uiSession.lastCmds);
+            interp.lastHitRegionsJson = MemeUI::hitRegionsToJsonStr(interp.uiSession.lastHits);
+        };
+
+        eguiMod->set("frame", Value(std::make_shared<NativeMethodCallable>("frame", 1, 3, [setupImmediateFn](Interpreter &interp, const std::vector<Value> &a) -> Value {
+            float vw = (a.size() > 1) ? static_cast<float>(a[1].deref().asDouble()) : interp.uiSession.input.viewportW;
+            float vh = (a.size() > 2) ? static_cast<float>(a[2].deref().asDouble()) : interp.uiSession.input.viewportH;
+            setupImmediateFn(interp, a[0], vw, vh);
+            auto list = std::make_shared<MemeList>();
+            for (const auto &c : interp.uiSession.lastCmds) {
+                auto cmdMap = std::make_shared<MemeMap>();
+                cmdMap->set("type", Value(c.type));
+                cmdMap->set("x", Value(static_cast<double>(c.x)));
+                cmdMap->set("y", Value(static_cast<double>(c.y)));
+                cmdMap->set("width", Value(static_cast<double>(c.width)));
+                cmdMap->set("height", Value(static_cast<double>(c.height)));
+                cmdMap->set("color", Value(c.color));
+                cmdMap->set("text", Value(c.text));
+                list->elements.push_back(Value(cmdMap));
+            }
+            return Value(list);
+        })));
+
+        eguiMod->set("step", Value(std::make_shared<NativeMethodCallable>("step", 0, 4, [](Interpreter &interp, const std::vector<Value> &a) -> Value {
+            double dt = (a.size() > 0) ? a[0].deref().asDouble() : 16.0;
+            if (a.size() > 2) {
+                interp.uiSession.input.prevPointerX = interp.uiSession.input.pointerX;
+                interp.uiSession.input.prevPointerY = interp.uiSession.input.pointerY;
+                interp.uiSession.input.pointerX = static_cast<float>(a[1].deref().asDouble());
+                interp.uiSession.input.pointerY = static_cast<float>(a[2].deref().asDouble());
+            }
+            if (a.size() > 3 && a[3].deref().isTruthy()) {
+                interp.uiSession.input.mousePressed[0] = true;
+                interp.uiSession.input.mouseDown[0] = true;
+                interp.uiSession.input.mouseReleased[0] = false;
+            }
+            interp.uiSession.tick(dt);
+            interp.triggerUiRerender();
+            if (a.size() > 3 && a[3].deref().isTruthy()) {
+                interp.uiSession.input.mousePressed[0] = false;
+                interp.uiSession.input.mouseDown[0] = false;
+                interp.uiSession.input.mouseReleased[0] = true;
+                interp.triggerUiRerender();
+                interp.uiSession.input.mouseReleased[0] = false;
+            }
+            return Value(static_cast<int64_t>(interp.uiSession.lastCmds.size()));
+        })));
+
+        Value legacyShow = uim->entries["show"];
+        auto eguiRunFn = [setupImmediateFn, legacyShow](Interpreter &interp, const std::vector<Value> &a) -> Value {
+            if (a.empty() || (a.size() == 1 && !a[0].deref().isCallable())) {
+                return MemePrimitivesModule::invokeCallableSafe(interp, legacyShow, a);
+            }
+            std::string title = "MEME-UI Immediate Mode";
+            float vw = 1040.0f, vh = 720.0f;
+            Value cb = a[0];
+            if (a.size() >= 2 && a[1].deref().isCallable()) {
+                title = a[0].deref().toString();
+                cb = a[1];
+                if (a.size() > 2) vw = static_cast<float>(a[2].deref().asDouble());
+                if (a.size() > 3) vh = static_cast<float>(a[3].deref().asDouble());
+            } else if (a.size() == 1 && a[0].deref().isCallable()) {
+                cb = a[0];
+            }
+            setupImmediateFn(interp, cb, vw, vh);
+            if (std::getenv("MEME_HEADLESS") != nullptr) {
+                return Value(true);
+            }
+#if defined(__APPLE__)
+            static auto s_eguiState = std::make_shared<DevServerState>();
+            s_eguiState->appName = title;
+            s_eguiState->interpreter = &interp;
+            s_eguiState->uiSession = &interp.uiSession;
+            s_eguiState->viewportWidth = static_cast<int>(vw);
+            s_eguiState->viewportHeight = static_cast<int>(vh);
+            s_eguiState->onRenderFrame = [&interp]() { interp.triggerUiRerender(); };
+            s_eguiState->running = true;
+            MemeUI::showNativeDesktopWindow(*s_eguiState);
+            while (s_eguiState->running && MemeUI::isNativeDesktopWindowOpen()) {
+                MemeUI::pumpNativeDesktopEvents(0.016);
+                interp.uiSession.tick(16.0);
+                interp.triggerUiRerender();
+            }
+            return Value(true);
+#else
+            return Value(false);
+#endif
+        };
+        auto eguiRunVal = Value(std::make_shared<NativeMethodCallable>("run", 0, 4, eguiRunFn));
+        eguiMod->set("run", eguiRunVal);
+        eguiMod->set("app", eguiRunVal);
+        eguiMod->set("show", eguiRunVal);
+
+        Value eguiModVal(eguiMod);
+        globals->define("egui", eguiModVal);
+        importedModules["egui"] = eguiModVal;
+        importedModules["ui:primitives"] = Value(MemePrimitivesModule::createPrimitivesModule());
     }
 
     // Bridge module
@@ -12440,7 +12749,13 @@ Value Interpreter::importModule(const std::string &path, int line)
         return mod;
     }
 
-    // 4. UI:shadcn & UI components (ui:shadcn)
+    // 4. UI:shadcn & UI components (ui:shadcn, ui:primitives)
+    if (path == "ui:primitives" || path == "primitives" || path == "vercel:ui")
+    {
+        Value mod = Value(MemePrimitivesModule::createPrimitivesModule());
+        importedModules[path] = mod;
+        return mod;
+    }
     if (path == "ui:shadcn" || path.rfind("ui:", 0) == 0)
     {
         Value mod = Value(ShadcnComponents::createShadcnModule());
@@ -15391,6 +15706,15 @@ Value Interpreter::evaluate(const Expr *expr)
                     popComponentCall();
                     throw;
                 }
+                if (compRes.deref().isMap()) {
+                    auto rm = compRes.deref().getMap();
+                    std::string tagCopy = jsx->tag;
+                    Value renderThunk(std::make_shared<NativeMethodCallable>("__root_render_" + tagCopy, 0, 0, [callable, propsMap](Interpreter &it, const std::vector<Value> &) -> Value {
+                        return callable->call(it, {Value(propsMap)});
+                    }));
+                    rm->set("__rootCallable", renderThunk);
+                    rm->set("__componentName", Value(tagCopy));
+                }
                 return compRes;
             }
             throw std::runtime_error("'<" + jsx->tag + ">' koi component ya function nahi hai!");
@@ -15798,6 +16122,35 @@ void Interpreter::setRouterPath(const std::string &path)
 
 void Interpreter::triggerUiRerender()
 {
+    if (uiSession.isImmediateMode && uiSession.eguiUpdateFn)
+    {
+        float vw = uiSession.input.viewportW > 0.0f ? uiSession.input.viewportW : 800.0f;
+        float vh = uiSession.input.viewportH > 0.0f ? uiSession.input.viewportH : 600.0f;
+        uiSession.renderFrame(vw, vh);
+        lastGpuCommandsJson = MemeUI::gpuDrawCmdsToJson(uiSession.lastCmds);
+        lastHitRegionsJson = MemeUI::hitRegionsToJsonStr(uiSession.lastHits);
+        interactiveRegions.clear();
+        for (const auto &uh : uiSession.lastHits)
+        {
+            TailwindEngine::HitRegion hr;
+            hr.id = uh.id;
+            hr.nodeKey = uh.nodeKey;
+            hr.x = uh.x; hr.y = uh.y; hr.width = uh.width; hr.height = uh.height;
+            hr.clipRect = uh.clipRect; hr.zIndex = uh.zIndex;
+            hr.tag = uh.tag; hr.role = uh.role; hr.accessibleName = uh.accessibleName;
+            hr.testId = uh.testId; hr.cursor = uh.cursor;
+            hr.disabled = uh.disabled; hr.readOnly = uh.readOnly;
+            hr.focused = uh.focused; hr.hovered = uh.hovered;
+            hr.focusable = uh.focusable; hr.tabIndex = uh.tabIndex;
+            hr.hasClick = uh.hasClick; hr.hasChange = uh.hasChange;
+            hr.hasKeyDown = uh.hasKeyDown; hr.hasScroll = uh.hasScroll;
+            hr.isScrollContainer = uh.isScrollContainer;
+            hr.inputValue = uh.inputValue;
+            interactiveRegions[hr.id] = hr;
+        }
+        return;
+    }
+
     if (rootUiComponent.isNil() && rootCallable.isNil())
         return;
 
@@ -15809,7 +16162,7 @@ void Interpreter::triggerUiRerender()
     if (!rootCallable.isNil() && std::holds_alternative<std::shared_ptr<Callable>>(rootCallable.deref().data))
     {
         auto callable = std::get<std::shared_ptr<Callable>>(rootCallable.deref().data);
-        pushComponentCall("App");
+        pushComponentCall(rootComponentName.empty() ? "App" : rootComponentName);
         try
         {
             renderedTree = callable->call(*this, {});
@@ -15831,7 +16184,7 @@ void Interpreter::triggerUiRerender()
     else if (std::holds_alternative<std::shared_ptr<Callable>>(rootUiComponent.deref().data))
     {
         auto callable = std::get<std::shared_ptr<Callable>>(rootUiComponent.deref().data);
-        pushComponentCall("App");
+        pushComponentCall(rootComponentName.empty() ? "App" : rootComponentName);
         try
         {
             renderedTree = callable->call(*this, {});
@@ -15857,14 +16210,74 @@ void Interpreter::triggerUiRerender()
 
     rootUiComponent = renderedTree;
 
-    std::vector<TailwindEngine::HitRegion> hitRegions;
-    auto cmds = TailwindEngine::computeNativeLayout(renderedTree, 800.0f, 600.0f, &hitRegions);
-    lastGpuCommandsJson = TailwindEngine::gpuCommandsToJson(cmds);
-    lastHitRegionsJson = TailwindEngine::hitRegionsToJson(hitRegions);
+    auto paintInvoker = [this](const Value &paintFn, MemeUI::UiPainter &p, MemeUI::UiRect r, const MemeUI::UiInputState &) {
+        Value pVal = MemeEguiModule::wrapUiPainter(p, r.x, r.y, r.width, r.height);
+        auto bMap = std::make_shared<MemeMap>();
+        bMap->set("x", Value(static_cast<double>(r.x)));
+        bMap->set("y", Value(static_cast<double>(r.y)));
+        bMap->set("width", Value(static_cast<double>(r.width)));
+        bMap->set("height", Value(static_cast<double>(r.height)));
+        MemePrimitivesModule::invokeCallableSafe(*this, paintFn, {pVal, Value(bMap)});
+    };
+
+    auto eventInvoker = [this](const Value &cbFn, const MemeUI::UiEvent &ev) {
+        auto evMap = std::make_shared<MemeMap>();
+        evMap->set("type", Value(ev.type));
+        evMap->set("targetId", Value(static_cast<int64_t>(ev.targetId)));
+        evMap->set("value", Value(ev.value));
+        evMap->set("checked", Value(ev.boolValue));
+        evMap->set("numValue", Value(ev.numValue));
+        evMap->set("key", Value(ev.key));
+        auto targetMap = std::make_shared<MemeMap>();
+        targetMap->set("value", Value(ev.value));
+        targetMap->set("checked", Value(ev.boolValue));
+        evMap->set("target", Value(targetMap));
+        MemePrimitivesModule::invokeCallableSafe(*this, cbFn, {Value(evMap)});
+    };
+
+    std::vector<TailwindEngine::ValueCallbackRecord> callbacks;
+    uiSession.isImmediateMode = false;
+    uiSession.cachedRoot = TailwindEngine::valueToUiNode(renderedTree, &callbacks, paintInvoker, eventInvoker);
+
+    float vw = uiSession.input.viewportW > 0.0f ? uiSession.input.viewportW : 800.0f;
+    float vh = uiSession.input.viewportH > 0.0f ? uiSession.input.viewportH : 600.0f;
+    uiSession.renderFrame(vw, vh);
+
+    lastGpuCommandsJson = MemeUI::gpuDrawCmdsToJson(uiSession.lastCmds);
+    lastHitRegionsJson = MemeUI::hitRegionsToJsonStr(uiSession.lastHits);
     lastTerminalUi = renderUiScreen(renderedTree, "");
+
     interactiveRegions.clear();
-    for (const auto &hr : hitRegions)
+    for (size_t i = 0; i < uiSession.lastHits.size(); ++i)
     {
+        const auto &uh = uiSession.lastHits[i];
+        TailwindEngine::HitRegion hr;
+        hr.id = uh.id;
+        hr.nodeKey = uh.nodeKey;
+        hr.x = uh.x; hr.y = uh.y; hr.width = uh.width; hr.height = uh.height;
+        hr.clipRect = uh.clipRect; hr.zIndex = uh.zIndex;
+        hr.tag = uh.tag; hr.role = uh.role; hr.accessibleName = uh.accessibleName;
+        hr.testId = uh.testId; hr.cursor = uh.cursor;
+        hr.disabled = uh.disabled; hr.readOnly = uh.readOnly;
+        hr.focused = uh.focused; hr.hovered = uh.hovered;
+        hr.focusable = uh.focusable; hr.tabIndex = uh.tabIndex;
+        hr.hasClick = uh.hasClick; hr.hasChange = uh.hasChange;
+        hr.hasKeyDown = uh.hasKeyDown; hr.hasScroll = uh.hasScroll;
+        hr.isScrollContainer = uh.isScrollContainer;
+        hr.scrollY = uh.scrollY; hr.maxScrollY = uh.maxScrollY;
+        hr.inputValue = uh.inputValue; hr.placeholder = uh.placeholder;
+        hr.isPassword = uh.isPassword; hr.isMultiline = uh.isMultiline;
+        hr.checked = uh.checked; hr.indeterminate = uh.indeterminate;
+        hr.selected = uh.selected; hr.expanded = uh.expanded;
+        hr.numValue = uh.numValue; hr.numMin = uh.numMin; hr.numMax = uh.numMax; hr.numStep = uh.numStep;
+        hr.isRtl = uh.isRtl;
+        if (i < callbacks.size())
+        {
+            hr.onClick = callbacks[i].onClick;
+            hr.onChange = callbacks[i].onChange;
+            hr.onKeyDown = callbacks[i].onKeyDown;
+            hr.onPaint = callbacks[i].onPaint;
+        }
         interactiveRegions[hr.id] = hr;
     }
 
@@ -15873,7 +16286,35 @@ void Interpreter::triggerUiRerender()
     lastHtml = renderUiHtmlTree(renderedTree, htmlNodeId, htmlHitRegions);
     for (const auto &p : htmlHitRegions)
     {
-        interactiveRegions[p.first] = p.second;
+        if (interactiveRegions.find(p.first) == interactiveRegions.end())
+        {
+            interactiveRegions[p.first] = p.second;
+        }
+    }
+
+    if (!pendingEffects.empty())
+    {
+        static thread_local int tl_fxDepth = 0;
+        if (tl_fxDepth < 8)
+        {
+            tl_fxDepth++;
+            auto effects = std::move(pendingEffects);
+            pendingEffects.clear();
+            try
+            {
+                for (auto &ef : effects) ef();
+            }
+            catch (...)
+            {
+                tl_fxDepth--;
+                throw;
+            }
+            tl_fxDepth--;
+        }
+        else
+        {
+            pendingEffects.clear();
+        }
     }
 }
 
@@ -15882,6 +16323,11 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
     auto it = interactiveRegions.find(nodeId);
     if (it == interactiveRegions.end())
     {
+        if (uiSession.dispatchEventOnNode(nodeId, eventType, value))
+        {
+            triggerUiRerender();
+            return true;
+        }
         return false;
     }
     auto region = it->second;
@@ -15915,6 +16361,10 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
                     ev->set("value", Value(value));
                     callable->call(*this, {Value(ev)});
                 }
+                else
+                {
+                    uiSession.dispatchEventOnNode(targetInputId, "change", value);
+                }
             }
         }
 
@@ -15926,6 +16376,11 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
             ev->set("type", Value("click"));
             ev->set("targetId", Value(static_cast<long long>(nodeId)));
             callable->call(*this, {Value(ev)});
+            triggerUiRerender();
+            return true;
+        }
+        if (uiSession.dispatchEventOnNode(nodeId, "click", value))
+        {
             triggerUiRerender();
             return true;
         }
@@ -15947,6 +16402,11 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
             triggerUiRerender();
             return true;
         }
+        if (uiSession.dispatchEventOnNode(nodeId, eventType, value))
+        {
+            triggerUiRerender();
+            return true;
+        }
     }
     else if (eventType == "enter")
     {
@@ -15962,6 +16422,10 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
             ev->set("target", Value(target));
             ev->set("value", Value(value));
             callable->call(*this, {Value(ev)});
+        }
+        else
+        {
+            uiSession.dispatchEventOnNode(nodeId, "change", value);
         }
         int targetBtnId = 0;
         for (const auto &p : interactiveRegions)
@@ -15986,7 +16450,16 @@ bool Interpreter::dispatchUiEvent(int nodeId, const std::string &eventType, cons
                 ev->set("targetId", Value(static_cast<long long>(targetBtnId)));
                 callable->call(*this, {Value(ev)});
             }
+            else
+            {
+                uiSession.dispatchEventOnNode(targetBtnId, "click", value);
+            }
         }
+        triggerUiRerender();
+        return true;
+    }
+    else if (uiSession.dispatchEventOnNode(nodeId, eventType, value))
+    {
         triggerUiRerender();
         return true;
     }
