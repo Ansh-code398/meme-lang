@@ -3019,6 +3019,57 @@ void testNativeUiPrimitivesTextEngineAndTessellator()
     auto badAudit = sess.agentAssertAccessible();
     assert(!badAudit.ok && badAudit.violations.size() >= 3);
 
+    // Mobile (393x852 w/ safe area) root scrollability + scroll-chaining + click-after-scroll
+    MemeUI::UiSession mobSess;
+    mobSess.input.safeTop = 59.0f;
+    mobSess.input.safeBottom = 34.0f;
+    bool mobBottomClicked = false;
+    MemeUI::UiNode mobRoot;
+    mobRoot.tag = "div"; mobRoot.testId = "mob_root";
+    mobRoot.classStr = "min-h-screen w-full p-4 flex flex-col gap-4 overflow-y-auto";
+    MemeUI::UiNode innerNonOverflow;
+    innerNonOverflow.tag = "div"; innerNonOverflow.testId = "inner_scroll";
+    innerNonOverflow.classStr = "p-3 flex flex-col gap-2 overflow-y-auto";
+    MemeUI::UiNode innerLbl; innerLbl.tag = "p";
+    MemeUI::UiNode innerTxt; innerTxt.isText = true; innerTxt.text = "Inner non-overflowing panel";
+    innerLbl.children.push_back(innerTxt);
+    innerNonOverflow.children.push_back(innerLbl);
+    mobRoot.children.push_back(innerNonOverflow);
+    for (int bi = 0; bi < 6; ++bi) {
+        MemeUI::UiNode spacer;
+        spacer.tag = "div"; spacer.classStr = "h-36 w-full bg-slate-800 rounded-xl";
+        mobRoot.children.push_back(spacer);
+    }
+    MemeUI::UiNode bottomBtn;
+    bottomBtn.tag = "button"; bottomBtn.testId = "mob_bottom_btn";
+    bottomBtn.classStr = "px-4 py-2 bg-indigo-600 text-white rounded-xl";
+    bottomBtn.handlers["click"] = [&](const MemeUI::UiEvent &) { mobBottomClicked = true; };
+    MemeUI::UiNode bbTxt; bbTxt.isText = true; bbTxt.text = "Bottom Action";
+    bottomBtn.children.push_back(bbTxt);
+    mobRoot.children.push_back(bottomBtn);
+
+    mobSess.cachedRoot = mobRoot;
+    mobSess.renderFrame(393.0f, 852.0f);
+    auto mr = mobSess.agentQuery("", "", "mob_root");
+    auto ir = mobSess.agentQuery("", "", "inner_scroll");
+    auto bbBefore = mobSess.agentQuery("", "", "mob_bottom_btn");
+    assert(mr.size() == 1 && mr[0].isScrollContainer && mr[0].maxScrollY > 50.0f);
+    assert(ir.size() == 1 && ir[0].maxScrollY <= 1.0f);
+    assert(bbBefore.size() == 1 && bbBefore[0].y > 800.0f);
+
+    // Swipe up while pointer is inside non-overflowing inner container -> chains to root and reveals bottom button!
+    assert(mobSess.handleScroll(ir[0].x + 20.0f, ir[0].y + 10.0f, 0.0f, -20.0f));
+    mobSess.renderFrame(393.0f, 852.0f);
+    auto mrAfter = mobSess.agentQuery("", "", "mob_root");
+    auto bbAfter = mobSess.agentQuery("", "", "mob_bottom_btn");
+    assert(mrAfter[0].scrollY > 250.0f);
+    assert(bbAfter[0].y < bbBefore[0].y - 250.0f);
+    assert(bbAfter[0].y + bbAfter[0].height <= 818.5f);
+    float bbx = bbAfter[0].x + bbAfter[0].width * 0.5f;
+    float bby = bbAfter[0].y + bbAfter[0].height * 0.5f;
+    assert(mobSess.handlePointerDown(bbx, bby, 0, 1));
+    assert(mobSess.handlePointerUp(bbx, bby, 0) && mobBottomClicked);
+
     std::cout << "PASSED\n";
 }
 

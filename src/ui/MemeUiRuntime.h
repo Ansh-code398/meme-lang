@@ -136,7 +136,14 @@ public:
         bool hasChange = (node.tag == "input" || node.tag == "textarea" || node.tag == "select" || node.tag == "combobox" ||
                           node.tag == "slider" || node.tag == "checkbox" || node.tag == "switch" || node.tag == "radio" ||
                           node.handlers.count("change") > 0 || node.handlers.count("input") > 0);
-        bool isScroll = (node.tag == "scrollarea" || node.classStr.find("overflow-auto") != std::string::npos || node.classStr.find("overflow-scroll") != std::string::npos);
+        bool isScroll = (node.tag == "scrollarea" ||
+                         node.classStr.find("overflow-auto") != std::string::npos ||
+                         node.classStr.find("overflow-scroll") != std::string::npos ||
+                         node.classStr.find("overflow-y-auto") != std::string::npos ||
+                         node.classStr.find("overflow-y-scroll") != std::string::npos ||
+                         node.classStr.find("overflow-x-auto") != std::string::npos ||
+                         node.classStr.find("overflow-x-scroll") != std::string::npos ||
+                         (nKey == "root" && node.classStr.find("overflow-hidden") == std::string::npos));
         if (hasClick || hasChange || isScroll || node.handlers.count("keydown") > 0 || node.handlers.count("pointerdown") > 0 || !node.testId.empty()) {
             int id = ++idCounter;
             outMap[id] = &node;
@@ -201,6 +208,30 @@ public:
         }
         lastHits.clear();
         lastCmds = computeUiLayout(cachedRoot, vw, vh, &lastHits, &interaction, &input);
+        bool clampedScroll = false;
+        for (const auto &hr : lastHits) {
+            if (!hr.isScrollContainer || hr.nodeKey.empty()) continue;
+            auto ity = interaction.scrollOffsetsY.find(hr.nodeKey);
+            if (ity != interaction.scrollOffsetsY.end()) {
+                float c = std::clamp(ity->second, 0.0f, std::max(0.0f, hr.maxScrollY));
+                if (std::abs(c - ity->second) > 0.5f) {
+                    ity->second = c;
+                    clampedScroll = true;
+                }
+            }
+            auto itx = interaction.scrollOffsetsX.find(hr.nodeKey);
+            if (itx != interaction.scrollOffsetsX.end()) {
+                float c = std::clamp(itx->second, 0.0f, std::max(0.0f, hr.maxScrollX));
+                if (std::abs(c - itx->second) > 0.5f) {
+                    itx->second = c;
+                    clampedScroll = true;
+                }
+            }
+        }
+        if (clampedScroll) {
+            lastHits.clear();
+            lastCmds = computeUiLayout(cachedRoot, vw, vh, &lastHits, &interaction, &input);
+        }
         lastMesh = Tessellator::tessellate(lastCmds, vw, vh);
         needsRender = false;
     }
@@ -375,21 +406,54 @@ public:
             input.wheelDeltaX = 0; input.wheelDeltaY = 0;
             return true;
         }
-        const UiHitRegion *scrollTarget = nullptr;
+        if (interaction.draggingSlider) return false;
+
+        int modalBlockZ = -999999;
         for (const auto &hr : lastHits) {
-            if (hr.isScrollContainer && hr.clipRect.contains(x, y) &&
+            if (hr.tag == "backdrop" && hr.clipRect.contains(x, y) &&
                 x >= hr.x && x <= hr.x + hr.width && y >= hr.y && y <= hr.y + hr.height) {
-                if (!scrollTarget || hr.zIndex >= scrollTarget->zIndex) {
-                    scrollTarget = &hr;
-                }
+                modalBlockZ = std::max(modalBlockZ, hr.zIndex);
             }
         }
-        if (scrollTarget) {
-            float &sy = interaction.scrollOffsetsY[scrollTarget->nodeKey];
-            sy = std::clamp(sy - dy * 28.0f, 0.0f, std::max(0.0f, scrollTarget->maxScrollY));
-            needsRender = true;
-            version++;
-            return true;
+
+        std::vector<const UiHitRegion *> candidates;
+        for (const auto &hr : lastHits) {
+            if (!hr.isScrollContainer || hr.disabled || hr.zIndex < modalBlockZ) continue;
+            bool inside = (hr.nodeKey == "root")
+                ? (x >= 0.0f && x <= input.viewportW && y >= 0.0f && y <= input.viewportH)
+                : (hr.clipRect.contains(x, y) &&
+                   x >= hr.x && x <= hr.x + hr.width && y >= hr.y && y <= hr.y + hr.height);
+            if (inside && (hr.maxScrollY > 0.5f || hr.maxScrollX > 0.5f)) {
+                candidates.push_back(&hr);
+            }
+        }
+        std::stable_sort(candidates.begin(), candidates.end(), [](const UiHitRegion *a, const UiHitRegion *b) {
+            return a->zIndex < b->zIndex;
+        });
+        for (auto it = candidates.rbegin(); it != candidates.rend(); ++it) {
+            const UiHitRegion *hr = *it;
+            bool moved = false;
+            if (hr->maxScrollY > 0.5f && std::abs(dy) > 1e-5f) {
+                float &sy = interaction.scrollOffsetsY[hr->nodeKey];
+                float nextY = std::clamp(sy - dy * 28.0f, 0.0f, hr->maxScrollY);
+                if (std::abs(nextY - sy) > 1e-4f) {
+                    sy = nextY;
+                    moved = true;
+                }
+            }
+            if (hr->maxScrollX > 0.5f && std::abs(dx) > 1e-5f) {
+                float &sx = interaction.scrollOffsetsX[hr->nodeKey];
+                float nextX = std::clamp(sx - dx * 28.0f, 0.0f, hr->maxScrollX);
+                if (std::abs(nextX - sx) > 1e-4f) {
+                    sx = nextX;
+                    moved = true;
+                }
+            }
+            if (moved) {
+                needsRender = true;
+                version++;
+                return true;
+            }
         }
         return false;
     }
@@ -513,7 +577,7 @@ public:
         struct Walker {
             int counter = 0;
             const UiNode *found = nullptr;
-            void walk(const UiNode &n, int target) {
+            void walk(const UiNode &n, int target, bool isRoot = true) {
                 if (found || n.isText) return;
                 bool hasClick = (n.tag == "button" || n.tag == "a" || n.tag == "checkbox" || n.tag == "switch" ||
                                  n.tag == "radio" || n.tag == "tab" || n.tag == "select" || n.tag == "combobox" ||
@@ -521,12 +585,19 @@ public:
                 bool hasChange = (n.tag == "input" || n.tag == "textarea" || n.tag == "select" || n.tag == "combobox" ||
                                   n.tag == "slider" || n.tag == "checkbox" || n.tag == "switch" || n.tag == "radio" ||
                                   n.handlers.count("change") > 0 || n.handlers.count("input") > 0);
-                bool isScroll = (n.tag == "scrollarea" || n.classStr.find("overflow-auto") != std::string::npos || n.classStr.find("overflow-scroll") != std::string::npos);
+                bool isScroll = (n.tag == "scrollarea" ||
+                                 n.classStr.find("overflow-auto") != std::string::npos ||
+                                 n.classStr.find("overflow-scroll") != std::string::npos ||
+                                 n.classStr.find("overflow-y-auto") != std::string::npos ||
+                                 n.classStr.find("overflow-y-scroll") != std::string::npos ||
+                                 n.classStr.find("overflow-x-auto") != std::string::npos ||
+                                 n.classStr.find("overflow-x-scroll") != std::string::npos ||
+                                 (isRoot && n.classStr.find("overflow-hidden") == std::string::npos));
                 if (hasClick || hasChange || isScroll || n.handlers.count("keydown") > 0 || n.handlers.count("pointerdown") > 0 || !n.testId.empty()) {
                     ++counter;
                     if (counter == target) { found = &n; return; }
                 }
-                for (const auto &c : n.children) walk(c, target);
+                for (const auto &c : n.children) walk(c, target, false);
             }
         } w;
         w.walk(root, targetId);

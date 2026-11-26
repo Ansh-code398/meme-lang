@@ -114,8 +114,12 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
     id<MTLRenderPipelineState> _pipeline;
     id<MTLTexture> _atlasTex;
     CAMetalLayer *_metalLayer;
+    UITouch *_activeTouch;
     CGPoint _touchStartPt;
+    CGPoint _lastTouchPt;
     BOOL _touchScrolled;
+    float _scrollVelX;
+    float _scrollVelY;
 }
 
 + (Class)layerClass {
@@ -299,9 +303,13 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
     if (!_session) return;
     UITouch *t = [touches anyObject];
     if (!t) return;
+    _activeTouch = t;
     CGPoint pt = [t locationInView:self];
     _touchStartPt = pt;
+    _lastTouchPt = pt;
     _touchScrolled = NO;
+    _scrollVelX = 0.0f;
+    _scrollVelY = 0.0f;
     _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 0, static_cast<int>(t.tapCount));
     const auto *hr = _session->hitTestTopmost(static_cast<float>(pt.x), static_cast<float>(pt.y));
     if (hr && (hr->tag == "input" || hr->tag == "textarea")) [self becomeFirstResponder];
@@ -313,23 +321,28 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
     if (!_session) return;
-    UITouch *t = [touches anyObject];
+    UITouch *t = (_activeTouch && [touches containsObject:_activeTouch]) ? _activeTouch : [touches anyObject];
     if (!t) return;
     CGPoint pt = [t locationInView:self];
-    CGPoint prev = [t previousLocationInView:self];
-    float dy = static_cast<float>(pt.y - prev.y);
-    float dx = static_cast<float>(pt.x - prev.x);
+    float dy = static_cast<float>(pt.y - _lastTouchPt.y);
+    float dx = static_cast<float>(pt.x - _lastTouchPt.x);
+    _lastTouchPt = pt;
     float totalDist = std::hypot(static_cast<float>(pt.x - _touchStartPt.x), static_cast<float>(pt.y - _touchStartPt.y));
     bool scrolled = false;
-    if (totalDist > 8.0f && !_session->interaction.draggingSlider) {
+    if (totalDist > 6.0f && !_session->interaction.draggingSlider) {
         _touchScrolled = YES;
         _session->interaction.activeId = 0;
         _session->interaction.activeKey.clear();
-        if (std::abs(dy) > 0.3f || std::abs(dx) > 0.3f) {
+        for (auto &kv : _session->interaction.textFields) kv.second.dragging = false;
+        if (dx != 0.0f || dy != 0.0f) {
             scrolled = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx / 28.0f, dy / 28.0f);
+            if (scrolled) {
+                _scrollVelX = _scrollVelX * 0.55f + dx * 0.45f;
+                _scrollVelY = _scrollVelY * 0.55f + dy * 0.45f;
+            }
         }
     }
-    bool moved = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
+    bool moved = !_touchScrolled && _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
     if (scrolled || moved) {
         meme_host_rerender();
         [self renderFrameNow];
@@ -339,16 +352,49 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
     if (!_session) return;
-    UITouch *t = [touches anyObject];
+    UITouch *t = (_activeTouch && [touches containsObject:_activeTouch]) ? _activeTouch : [touches anyObject];
     if (!t) return;
+    _activeTouch = nil;
     CGPoint pt = [t locationInView:self];
-    _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 0);
+    if (_touchScrolled) {
+        _session->handlePointerUp(-9999.0f, -9999.0f, 0);
+        if (std::hypot(_scrollVelX, _scrollVelY) <= 1.2f) {
+            _scrollVelX = 0.0f;
+            _scrollVelY = 0.0f;
+        }
+    } else {
+        _scrollVelX = 0.0f;
+        _scrollVelY = 0.0f;
+        _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 0);
+    }
+    _touchScrolled = NO;
     meme_host_rerender();
     [self renderFrameNow];
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    _scrollVelX = 0.0f;
+    _scrollVelY = 0.0f;
+    _touchScrolled = YES;
     [self touchesEnded:touches withEvent:event];
+}
+
+- (BOOL)stepScrollInertia {
+    if (!_session || _activeTouch) return NO;
+    if (std::abs(_scrollVelX) <= 0.25f && std::abs(_scrollVelY) <= 0.25f) {
+        _scrollVelX = 0.0f;
+        _scrollVelY = 0.0f;
+        return NO;
+    }
+    bool scrolled = _session->handleScroll(static_cast<float>(_lastTouchPt.x), static_cast<float>(_lastTouchPt.y), _scrollVelX / 28.0f, _scrollVelY / 28.0f);
+    if (scrolled) {
+        _scrollVelX *= 0.92f;
+        _scrollVelY *= 0.92f;
+        return YES;
+    }
+    _scrollVelX = 0.0f;
+    _scrollVelY = 0.0f;
+    return NO;
 }
 
 @end
@@ -399,7 +445,8 @@ void bindIosClipboard(MemeUI::UiSession *sess) {
 - (void)onTick:(CADisplayLink *)link {
     (void)link;
     if (auto *s = meme_host_get_session()) {
-        if (s->tick(16.0) || s->isImmediateMode || s->needsRender) {
+        bool inertiaMoved = [self.renderView stepScrollInertia] ? true : false;
+        if (inertiaMoved || s->tick(16.0) || s->isImmediateMode || s->needsRender) {
             meme_host_rerender();
             [self.renderView renderFrameNow];
         }

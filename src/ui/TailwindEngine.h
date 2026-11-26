@@ -257,7 +257,13 @@ inline MemeUI::UiNode valueToUiNode(
     bool hasChange = (node.tag == "input" || node.tag == "textarea" || node.tag == "select" || node.tag == "combobox" ||
                       node.tag == "slider" || node.tag == "checkbox" || node.tag == "switch" || node.tag == "radio" ||
                       !changeHandler.deref().isNil());
-    bool isScroll = (node.tag == "scrollarea" || node.classStr.find("overflow-auto") != std::string::npos || node.classStr.find("overflow-scroll") != std::string::npos);
+    bool isScroll = (node.tag == "scrollarea" ||
+                     node.classStr.find("overflow-auto") != std::string::npos ||
+                     node.classStr.find("overflow-scroll") != std::string::npos ||
+                     node.classStr.find("overflow-y-auto") != std::string::npos ||
+                     node.classStr.find("overflow-y-scroll") != std::string::npos ||
+                     node.classStr.find("overflow-x-auto") != std::string::npos ||
+                     node.classStr.find("overflow-x-scroll") != std::string::npos);
 
     auto attachHandler = [&](const std::string &evName, const Value &cbVal) {
         if (cbVal.deref().isNil()) return;

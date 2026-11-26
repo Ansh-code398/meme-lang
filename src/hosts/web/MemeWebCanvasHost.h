@@ -235,16 +235,58 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
     const r = canvas.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   };
+  const touchDrag = { active: false, id: -1, startX: 0, startY: 0, lastX: 0, lastY: 0, scrolled: false, vx: 0, vy: 0, raf: 0 };
+  const stopInertia = () => {
+    if (touchDrag.raf) { cancelAnimationFrame(touchDrag.raf); touchDrag.raf = 0; }
+    touchDrag.vx = 0; touchDrag.vy = 0;
+  };
+  const stepInertia = () => {
+    touchDrag.raf = 0;
+    if (!Mod || touchDrag.active) return;
+    if (Math.abs(touchDrag.vx) <= 0.25 && Math.abs(touchDrag.vy) <= 0.25) return;
+    if (Mod._meme_web_scroll(touchDrag.lastX, touchDrag.lastY, touchDrag.vx / 28.0, touchDrag.vy / 28.0)) {
+      renderFrame();
+      touchDrag.vx *= 0.92;
+      touchDrag.vy *= 0.92;
+      touchDrag.raf = requestAnimationFrame(stepInertia);
+    } else {
+      touchDrag.vx = 0; touchDrag.vy = 0;
+    }
+  };
   canvas.addEventListener("pointermove", (e) => {
     if (!Mod) return;
     const [px, py] = pt(e);
+    if (touchDrag.active && e.pointerId === touchDrag.id) {
+      const dx = px - touchDrag.lastX;
+      const dy = py - touchDrag.lastY;
+      touchDrag.lastX = px;
+      touchDrag.lastY = py;
+      if (Math.hypot(px - touchDrag.startX, py - touchDrag.startY) > 6) {
+        if (Mod._meme_web_scroll(px, py, dx / 28.0, dy / 28.0)) {
+          touchDrag.scrolled = true;
+          touchDrag.vx = touchDrag.vx * 0.55 + dx * 0.45;
+          touchDrag.vy = touchDrag.vy * 0.55 + dy * 0.45;
+          renderFrame();
+          return;
+        }
+      }
+      if (touchDrag.scrolled) return;
+    }
     if (Mod._meme_web_pointer_move(px, py)) renderFrame();
   });
   canvas.addEventListener("pointerdown", (e) => {
     if (!Mod) return;
+    stopInertia();
     canvas.focus();
     if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (_) {} }
     const [px, py] = pt(e);
+    if (e.pointerType !== "mouse") {
+      touchDrag.active = true;
+      touchDrag.id = e.pointerId;
+      touchDrag.startX = touchDrag.lastX = px;
+      touchDrag.startY = touchDrag.lastY = py;
+      touchDrag.scrolled = false;
+    }
     Mod._meme_web_pointer_down(px, py, e.button, e.detail || 1);
     renderFrame();
   });
@@ -252,11 +294,31 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
     if (!Mod) return;
     if (canvas.releasePointerCapture) { try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} }
     const [px, py] = pt(e);
+    if (touchDrag.active && e.pointerId === touchDrag.id) {
+      touchDrag.active = false;
+      if (touchDrag.scrolled) {
+        Mod._meme_web_pointer_up(-9999, -9999, e.button);
+        touchDrag.scrolled = false;
+        renderFrame();
+        if (Math.hypot(touchDrag.vx, touchDrag.vy) > 1.2) {
+          touchDrag.raf = requestAnimationFrame(stepInertia);
+        }
+        return;
+      }
+    }
     Mod._meme_web_pointer_up(px, py, e.button);
     renderFrame();
   });
   canvas.addEventListener("pointercancel", (e) => {
     if (!Mod) return;
+    if (touchDrag.active && e.pointerId === touchDrag.id) {
+      touchDrag.active = false;
+      touchDrag.scrolled = false;
+      stopInertia();
+      Mod._meme_web_pointer_up(-9999, -9999, e.button);
+      renderFrame();
+      return;
+    }
     const [px, py] = pt(e);
     Mod._meme_web_pointer_up(px, py, e.button);
     renderFrame();
@@ -264,8 +326,10 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
   canvas.addEventListener("wheel", (e) => {
     if (!Mod) return;
     e.preventDefault();
+    stopInertia();
     const [px, py] = pt(e);
-    if (Mod._meme_web_scroll(px, py, -e.deltaX * 0.1, -e.deltaY * 0.1)) renderFrame();
+    const unitScale = e.deltaMode === 1 ? 28.0 : (e.deltaMode === 2 ? Math.max(120, canvas.clientHeight) : 1.0);
+    if (Mod._meme_web_scroll(px, py, (-e.deltaX * unitScale) / 28.0, (-e.deltaY * unitScale) / 28.0)) renderFrame();
   }, { passive: false });
   canvas.addEventListener("keydown", async (e) => {
     if (!Mod) return;

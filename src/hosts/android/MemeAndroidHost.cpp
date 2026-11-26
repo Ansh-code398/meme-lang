@@ -76,6 +76,15 @@ struct AndroidAppState {
     GLuint vbo = 0;
     GLuint ibo = 0;
     GLint locPos = -1, locUv = -1, locCol = -1, locVp = -1, locAtlas = -1;
+
+    bool touchActive = false;
+    bool touchScrolled = false;
+    float touchStartX = 0.0f;
+    float touchStartY = 0.0f;
+    float lastTouchX = 0.0f;
+    float lastTouchY = 0.0f;
+    float scrollVelX = 0.0f;
+    float scrollVelY = 0.0f;
 };
 
 GLuint compileShader(GLenum type, const char *src) {
@@ -155,6 +164,7 @@ void drawGlesFrame(AndroidAppState *st, MemeUI::UiSession *sess) {
 
     sess->input.dpiScale = scale;
     sess->input.safeTop = 24.0f;
+    sess->input.safeBottom = 16.0f;
     if (sess->needsRender || sess->lastMesh.vertices.empty()) {
         sess->renderFrame(vw, vh);
     }
@@ -212,20 +222,50 @@ void processAndroidInput(AndroidAppState *st, AInputEvent *ev, MemeUI::UiSession
         float px = AMotionEvent_getX(ev, 0) / scale;
         float py = AMotionEvent_getY(ev, 0) / scale;
         if (action == AMOTION_EVENT_ACTION_DOWN) {
+            st->touchActive = true;
+            st->touchScrolled = false;
+            st->touchStartX = st->lastTouchX = px;
+            st->touchStartY = st->lastTouchY = py;
+            st->scrollVelX = 0.0f;
+            st->scrollVelY = 0.0f;
             sess->handlePointerDown(px, py, 0, 1);
             meme_host_rerender();
         } else if (action == AMOTION_EVENT_ACTION_MOVE) {
-            float dy = (sess->input.pointerY >= 0) ? (py - sess->input.pointerY) : 0.0f;
-            float dx = (sess->input.pointerX >= 0) ? (px - sess->input.pointerX) : 0.0f;
-            if (!sess->interaction.draggingSlider && (std::abs(dy) > 4.0f || std::abs(dx) > 4.0f)) {
+            float dx = px - st->lastTouchX;
+            float dy = py - st->lastTouchY;
+            st->lastTouchX = px;
+            st->lastTouchY = py;
+            float totalDist = std::hypot(px - st->touchStartX, py - st->touchStartY);
+            bool scrolled = false;
+            if (totalDist > 6.0f && !sess->interaction.draggingSlider) {
+                st->touchScrolled = true;
                 sess->interaction.activeId = 0;
                 sess->interaction.activeKey.clear();
-                sess->handleScroll(px, py, dx / 28.0f, dy / 28.0f);
+                for (auto &kv : sess->interaction.textFields) kv.second.dragging = false;
+                if (dx != 0.0f || dy != 0.0f) {
+                    scrolled = sess->handleScroll(px, py, dx / 28.0f, dy / 28.0f);
+                    if (scrolled) {
+                        st->scrollVelX = st->scrollVelX * 0.55f + dx * 0.45f;
+                        st->scrollVelY = st->scrollVelY * 0.55f + dy * 0.45f;
+                    }
+                }
             }
-            sess->handlePointerMove(px, py);
-            meme_host_rerender();
+            bool moved = !st->touchScrolled && sess->handlePointerMove(px, py);
+            if (scrolled || moved) meme_host_rerender();
         } else if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
-            sess->handlePointerUp(px, py, 0);
+            st->touchActive = false;
+            if (st->touchScrolled) {
+                sess->handlePointerUp(-9999.0f, -9999.0f, 0);
+                if (action == AMOTION_EVENT_ACTION_CANCEL || std::hypot(st->scrollVelX, st->scrollVelY) <= 1.2f) {
+                    st->scrollVelX = 0.0f;
+                    st->scrollVelY = 0.0f;
+                }
+            } else {
+                st->scrollVelX = 0.0f;
+                st->scrollVelY = 0.0f;
+                sess->handlePointerUp(px, py, 0);
+            }
+            st->touchScrolled = false;
             meme_host_rerender();
         }
     } else if (type == AINPUT_EVENT_TYPE_KEY) {
@@ -297,7 +337,18 @@ void *androidMainLoop(void *arg) {
         }
 
         if (st->window && sess) {
-            if (sess->tick(16.0) || sess->isImmediateMode || sess->needsRender) {
+            bool inertiaMoved = false;
+            if (!st->touchActive && (std::abs(st->scrollVelX) > 0.25f || std::abs(st->scrollVelY) > 0.25f)) {
+                if (sess->handleScroll(st->lastTouchX, st->lastTouchY, st->scrollVelX / 28.0f, st->scrollVelY / 28.0f)) {
+                    st->scrollVelX *= 0.92f;
+                    st->scrollVelY *= 0.92f;
+                    inertiaMoved = true;
+                } else {
+                    st->scrollVelX = 0.0f;
+                    st->scrollVelY = 0.0f;
+                }
+            }
+            if (inertiaMoved || sess->tick(16.0) || sess->isImmediateMode || sess->needsRender) {
                 meme_host_rerender();
             }
             drawGlesFrame(st, sess);

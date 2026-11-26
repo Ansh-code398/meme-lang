@@ -489,7 +489,7 @@ public:
             return customHostRunner(title, session, width, height);
         }
 #if defined(__APPLE__) && defined(__OBJC__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
-        return MemeUI::runMacNativeApp(title, session, width, height);
+        return MemeUI::runMacNativeApp(title, session, width, height, [this]() { triggerUiRerender(); });
 #elif defined(_WIN32)
         return MemeUI::runWindowsNativeApp(title, session, width, height, [this]() { triggerUiRerender(); });
 #elif defined(__linux__) && !defined(__ANDROID__)

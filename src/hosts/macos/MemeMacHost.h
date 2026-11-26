@@ -511,9 +511,9 @@ fragment float4 meme_ui_fragment(
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
     float dx = static_cast<float>([event scrollingDeltaX]);
     float dy = static_cast<float>([event scrollingDeltaY]);
-    if (![event hasPreciseScrollingDeltas]) { dx *= 6.0f; dy *= 6.0f; }
+    float scaleDiv = [event hasPreciseScrollingDeltas] ? (1.0f / 28.0f) : 0.5f;
     if (_sessionMutex) _sessionMutex->lock();
-    bool ch = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx * 0.12f, dy * 0.12f);
+    bool ch = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx * scaleDiv, dy * scaleDiv);
     if (_sessionMutex) _sessionMutex->unlock();
     if (ch) {
         if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
@@ -585,7 +585,7 @@ inline void bindMacClipboard(UiSession &session) {
     };
 }
 
-inline int runMacNativeApp(const std::string &title, UiSession &session, int width = 1040, int height = 720) {
+inline int runMacNativeApp(const std::string &title, UiSession &session, int width = 1040, int height = 720, std::function<void()> customRenderFn = nullptr) {
     if (std::getenv("MEME_HEADLESS") != nullptr) {
         session.renderFrame(static_cast<float>(width), static_cast<float>(height));
         return 0;
@@ -608,7 +608,11 @@ inline int runMacNativeApp(const std::string &title, UiSession &session, int wid
         del.openFlag = &isOpen;
         [win setDelegate:del];
 
-        std::function<void()> onRender = [&session, width, height]() {
+        std::function<void()> onRender = [&session, width, height, customRenderFn]() {
+            if (customRenderFn) {
+                customRenderFn();
+                return;
+            }
             float vw = session.input.viewportW > 0 ? session.input.viewportW : static_cast<float>(width);
             float vh = session.input.viewportH > 0 ? session.input.viewportH : static_cast<float>(height);
             session.renderFrame(vw, vh);

@@ -883,9 +883,12 @@ inline void solveUiNode(
     bool hasChange = (node.tag == "input" || node.tag == "textarea" || node.tag == "select" || node.tag == "combobox" ||
                       node.tag == "slider" || node.tag == "checkbox" || node.tag == "switch" || node.tag == "radio" ||
                       node.handlers.count("change") > 0 || node.handlers.count("input") > 0);
-    bool isScroll = (style.overflowY == OverflowMode::AUTO || style.overflowY == OverflowMode::SCROLL ||
-                     style.overflowX == OverflowMode::AUTO || style.overflowX == OverflowMode::SCROLL ||
-                     node.tag == "scrollarea");
+    bool isRoot = (nodeKey == "root");
+    bool hasExplicitScroll = (style.overflowY == OverflowMode::AUTO || style.overflowY == OverflowMode::SCROLL ||
+                              style.overflowX == OverflowMode::AUTO || style.overflowX == OverflowMode::SCROLL ||
+                              node.tag == "scrollarea");
+    bool isScroll = (hasExplicitScroll ||
+                     (isRoot && style.overflowY != OverflowMode::HIDDEN && style.height <= 0));
     bool isFocusable = hasClick || hasChange || node.tabIndex >= 0;
 
     int nodeId = 0;
@@ -905,24 +908,33 @@ inline void solveUiNode(
         scrollX = ctx.interaction->scrollOffsetsX[nodeKey];
     }
 
+    bool boundedScrollH = (node.tag == "scrollarea" || style.height > 0 || style.maxHeight > 0 ||
+                           (style.heightPercent > 0 && parentH > 0) || stretchTargetH > 0);
     bool emitOverflowClip = (style.overflowY == OverflowMode::HIDDEN || style.overflowX == OverflowMode::HIDDEN ||
-                             (isScroll && (node.tag == "scrollarea" || style.height > 0 || style.maxHeight > 0)));
+                             (!isRoot && hasExplicitScroll && boundedScrollH));
 
     size_t bgIndex = cmds.size();
+    size_t clipCmdIndex = static_cast<size_t>(-1);
     size_t hitBgIndex = hitRegions ? hitRegions->size() : 0;
-    UiRect childClip = clipRect;
+    UiRect childClip = isRoot && parentH > 0 ? clipRect.intersect({nodeX, nodeY, nodeW, parentH}) : clipRect;
     if (emitOverflowClip) {
-        float estClipH = style.height > 0 ? style.height : (stretchTargetH > 0 ? stretchTargetH : (style.maxHeight > 0 ? style.maxHeight : parentH));
+        float estClipH = style.height > 0
+            ? style.height
+            : (stretchTargetH > 0 ? stretchTargetH
+                                  : ((style.heightPercent > 0 && parentH > 0) ? parentH * (style.heightPercent / 100.0f)
+                                                                              : (style.maxHeight > 0 ? style.maxHeight : parentH)));
         if (style.maxHeight > 0 && estClipH > style.maxHeight) estClipH = style.maxHeight;
         if (estClipH <= 0) estClipH = ctx.viewportH;
         childClip = clipRect.intersect({nodeX, nodeY, nodeW, estClipH});
         GpuDrawCmd pc;
         pc.type = "PUSH_CLIP";
         pc.x = nodeX; pc.y = nodeY; pc.width = nodeW; pc.height = estClipH; pc.zIndex = effZ;
+        clipCmdIndex = cmds.size();
         cmds.push_back(pc);
     }
 
     float contentH = 0.0f;
+    float contentW = innerW;
     bool rowFlex = (style.display == DisplayMode::FLEX || style.display == DisplayMode::INLINE_FLEX) &&
                    (style.flexDirection == FlexDir::ROW || style.flexDirection == FlexDir::ROW_REVERSE);
 
@@ -1101,20 +1113,23 @@ inline void solveUiNode(
         if (style.height > 0) targetBoxH = style.height;
         else {
             if (style.heightPercent > 0 && parentH > 0) targetBoxH = std::max(targetBoxH, parentH * (style.heightPercent / 100.0f));
-            if (style.minHScreen) targetBoxH = std::max(targetBoxH, ctx.viewportH);
+            if (style.minHScreen) targetBoxH = std::max(targetBoxH, (isRoot && parentH > 0) ? parentH : ctx.viewportH);
             if (style.minHeight > 0) targetBoxH = std::max(targetBoxH, style.minHeight);
             if (stretchTargetH > 0) targetBoxH = std::max(targetBoxH, stretchTargetH);
         }
-        if (style.maxHeight > 0 && targetBoxH > style.maxHeight) targetBoxH = style.maxHeight;
+        if (style.maxHeight > 0 && (targetBoxH <= 0 || targetBoxH > style.maxHeight)) targetBoxH = style.maxHeight;
         float targetInnerH = (targetBoxH > 0.0f) ? std::max(0.0f, targetBoxH - style.padding[0] - style.padding[2]) : 0.0f;
 
         std::vector<float> childStretchH(node.children.size(), -1.0f);
         if (targetInnerH > 0.0f && (style.display == DisplayMode::FLEX || style.display == DisplayMode::INLINE_FLEX)) {
             std::vector<float> natH(node.children.size(), 0.0f);
             std::vector<float> grows(node.children.size(), 0.0f);
+            std::vector<bool> canShrinkToFit(node.children.size(), false);
             std::vector<bool> vis(node.children.size(), false);
             float sumH = 0.0f;
+            float fixedUnshrinkableH = 0.0f;
             float totalGrow = 0.0f;
+            float totalShrinkGrow = 0.0f;
             int visCount = 0;
             for (size_t i = 0; i < node.children.size(); ++i) {
                 std::string cKey = resolveNodeKey(node.children[i], nodeKey, static_cast<int>(i));
@@ -1126,15 +1141,28 @@ inline void solveUiNode(
                 natH[i] = ch;
                 grows[i] = cs.flexGrow;
                 totalGrow += cs.flexGrow;
+                bool childBoundedScroll = (!node.children[i].isText &&
+                    (cs.overflowY != OverflowMode::VISIBLE || node.children[i].tag == "scrollarea"));
+                canShrinkToFit[i] = (cs.flexGrow > 0.0f && childBoundedScroll);
+                if (canShrinkToFit[i]) totalShrinkGrow += cs.flexGrow;
+                else fixedUnshrinkableH += ch;
                 if (visCount > 0) sumH += style.gapY;
                 sumH += ch;
                 visCount++;
             }
+            float totalGaps = (visCount > 1) ? style.gapY * (visCount - 1) : 0.0f;
             if (totalGrow > 0.0f && targetInnerH > sumH) {
                 float extra = targetInnerH - sumH;
                 for (size_t i = 0; i < node.children.size(); ++i) {
                     if (vis[i] && grows[i] > 0.0f) {
                         childStretchH[i] = natH[i] + extra * (grows[i] / totalGrow);
+                    }
+                }
+            } else if (totalShrinkGrow > 0.0f && sumH > targetInnerH) {
+                float availShrink = std::max(0.0f, targetInnerH - fixedUnshrinkableH - totalGaps);
+                for (size_t i = 0; i < node.children.size(); ++i) {
+                    if (vis[i] && canShrinkToFit[i]) {
+                        childStretchH[i] = std::max(1.0f, availShrink * (grows[i] / totalShrinkGrow));
                     }
                 }
             }
@@ -1390,24 +1418,54 @@ inline void solveUiNode(
         cmds.push_back(pop);
     }
 
-    float finalH = contentH + style.padding[0] + style.padding[2];
-    if (style.height > 0) finalH = style.height;
-    if (style.heightPercent > 0 && parentH > 0) finalH = std::max(finalH, parentH * (style.heightPercent / 100.0f));
-    if (style.minHScreen) finalH = std::max(finalH, ctx.viewportH);
+    float rawContentH = contentH + style.padding[0] + style.padding[2];
+    float rawContentW = contentW + style.padding[1] + style.padding[3];
+    float finalH = rawContentH;
+    if (style.height > 0) {
+        finalH = style.height;
+    } else if (stretchTargetH > 0 && (isScroll || style.overflowY == OverflowMode::HIDDEN)) {
+        finalH = stretchTargetH;
+    } else if (style.heightPercent > 0 && parentH > 0) {
+        float pctH = parentH * (style.heightPercent / 100.0f);
+        finalH = (isScroll || style.overflowY == OverflowMode::HIDDEN) ? pctH : std::max(finalH, pctH);
+    }
+    if (style.minHScreen) {
+        float screenMinH = (isRoot && parentH > 0) ? parentH : ctx.viewportH;
+        finalH = std::max(finalH, screenMinH);
+    }
     if (style.minHeight > 0 && finalH < style.minHeight) finalH = style.minHeight;
-    if (style.height <= 0 && stretchTargetH > finalH) finalH = stretchTargetH;
+    if (style.height <= 0 && !isScroll && style.overflowY != OverflowMode::HIDDEN && stretchTargetH > finalH) {
+        finalH = stretchTargetH;
+    }
+    if (isRoot && isScroll && parentH > 0 && style.height <= 0 && finalH > parentH) {
+        finalH = parentH;
+    }
     if (style.maxHeight > 0 && finalH > style.maxHeight) finalH = style.maxHeight;
+    if (clipCmdIndex != static_cast<size_t>(-1) && clipCmdIndex < cmds.size()) {
+        cmds[clipCmdIndex].height = finalH;
+    }
 
     // Draw scrollbar thumb when scroll container overflows vertically
-    float rawContentH = contentH + style.padding[0] + style.padding[2];
-    float maxScrollY = std::max(0.0f, rawContentH - finalH);
+    float maxScrollY = isScroll ? std::max(0.0f, rawContentH - finalH) : 0.0f;
+    float maxScrollX = (style.overflowX == OverflowMode::AUTO || style.overflowX == OverflowMode::SCROLL)
+        ? std::max(0.0f, rawContentW - nodeW) : 0.0f;
+    if (isRoot && !emitOverflowClip && (maxScrollY > 0.5f || scrollY > 0.5f)) {
+        GpuDrawCmd pc;
+        pc.type = "PUSH_CLIP";
+        pc.x = nodeX; pc.y = nodeY; pc.width = nodeW; pc.height = finalH; pc.zIndex = effZ;
+        cmds.insert(cmds.begin() + static_cast<std::ptrdiff_t>(bgIndex), pc);
+        GpuDrawCmd pop;
+        pop.type = "POP_CLIP"; pop.zIndex = effZ;
+        cmds.push_back(pop);
+    }
     if (isScroll && maxScrollY > 2.0f && finalH > 16.0f) {
+        float clampedScrollY = std::clamp(scrollY, 0.0f, maxScrollY);
         float thumbH = std::max(20.0f, finalH * (finalH / rawContentH));
-        float thumbY = nodeY + (scrollY / maxScrollY) * (finalH - thumbH);
+        float thumbY = nodeY + (clampedScrollY / maxScrollY) * (finalH - thumbH);
         GpuDrawCmd sb;
         sb.type = "FILL_ROUND_RECT";
         sb.x = nodeX + nodeW - 6.0f; sb.y = thumbY; sb.width = 4.0f; sb.height = thumbH;
-        sb.radius = 2.0f; sb.color = "#64748b"; sb.alpha = 0.65f; sb.zIndex = effZ;
+        sb.radius = 2.0f; sb.color = "#64748b"; sb.alpha = 0.72f; sb.zIndex = effZ;
         cmds.push_back(sb);
     }
 
@@ -1439,9 +1497,11 @@ inline void solveUiNode(
         hr.hasPointerDown = node.handlers.count("pointerdown") > 0;
         hr.hasScroll = isScroll;
         hr.isScrollContainer = isScroll;
+        hr.scrollX = scrollX;
         hr.scrollY = scrollY;
+        hr.maxScrollX = maxScrollX;
         hr.maxScrollY = maxScrollY;
-        hr.contentW = innerW;
+        hr.contentW = rawContentW;
         hr.contentH = rawContentH;
         hr.inputValue = node.getProp("value");
         hr.placeholder = node.getProp("placeholder");

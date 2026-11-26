@@ -339,20 +339,50 @@ function loadWasmModule(jsFile) {
     appMod._meme_web_pointer_up(x, y, 0);
     appMod._meme_web_render(appMod._vw || 1040, appMod._vh || 720);
   };
+  // Switch back to Chat tab on mobile viewport (393x852) and test raw scroll + scroll-chaining + click-after-scroll!
   appMod._vw = 393; appMod._vh = 852;
   appMod._meme_web_render(393, 852);
+  let snapInitMob = getSnap();
+  let tabChatMob = snapInitMob.nodes.find(n => n.testId === 'tab_chat');
+  assert(tabChatMob && tabChatMob.width > 20, 'Mobile tab_chat bounds missing');
+  clickAt(tabChatMob.x + tabChatMob.width * 0.5, tabChatMob.y + tabChatMob.height * 0.5);
   let snapMob = getSnap();
-  let tabExp = snapMob.nodes.find(n => n.testId === 'tab_explorer');
+  let mobRoot = snapMob.nodes.find(n => n.key === 'root');
+  assert(mobRoot && mobRoot.maxScrollY > 20.0, 'Mobile Showcase Chat root must overflow and be scrollable: ' + JSON.stringify(mobRoot));
+  let sNextBefore = snapMob.nodes.find(n => n.testId === 'scroll_next_btn');
+  assert(sNextBefore, 'scroll_next_btn missing on mobile viewport');
+  let scrolledMob = appMod._meme_web_scroll(180, 420, 0, -4.5);
+  assert(scrolledMob === 1, 'Touch scroll inside Showcase Chat failed to chain to root');
+  appMod._meme_web_render(393, 852);
+  let snapScrolled = getSnap();
+  let mobRootAfter = snapScrolled.nodes.find(n => n.key === 'root');
+  let sNextAfter = snapScrolled.nodes.find(n => n.testId === 'scroll_next_btn');
+  assert(mobRootAfter && mobRootAfter.scrollY > 10.0, 'Mobile scrollY did not increase');
+  assert(sNextAfter && sNextAfter.y < sNextBefore.y - 10.0, 'Child widget y coordinate did not scroll up');
+  clickAt(sNextAfter.x + sNextAfter.width * 0.5, sNextAfter.y + sNextAfter.height * 0.5);
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('#event-1000')), 'Tap on scroll_next_btn after scrolling failed');
+
+  // Switch tab on mobile, verify Explorer also scrolls and returns safely
+  let tabExp = getSnap().nodes.find(n => n.testId === 'tab_explorer');
   assert(tabExp && tabExp.width > 20 && tabExp.height > 15, 'Mobile tab_explorer bounds missing');
   clickAt(tabExp.x + tabExp.width * 0.5, tabExp.y + tabExp.height * 0.5);
   assert(getSnap().nodes.some(n => n.testId === 'agree_checkbox'), 'Raw pointer tap on tab_explorer failed on mobile viewport');
+  let expRoot = getSnap().nodes.find(n => n.key === 'root');
+  assert(expRoot && expRoot.scrollY <= expRoot.maxScrollY + 0.5, 'Mobile scrollY should clamp within active tab bounds');
 
   let chk = getSnap().nodes.find(n => n.testId === 'agree_checkbox');
   let beforeChk = chk.checked;
   clickAt(chk.x + chk.width * 0.5, chk.y + chk.height * 0.5);
   assert(getSnap().nodes.find(n => n.testId === 'agree_checkbox').checked === !beforeChk, 'Raw pointer tap on checkbox failed');
 
-  let openDlgBtn = getSnap().nodes.find(n => n.testId === 'open_modal');
+  // Scroll back up to top of mobile page before tapping header's open_modal button
+  appMod._meme_web_scroll(180, 420, 0, 10.0);
+  appMod._meme_web_render(393, 852);
+  let snapTopAgain = getSnap();
+  let topRoot = snapTopAgain.nodes.find(n => n.key === 'root');
+  assert(topRoot && topRoot.scrollY === 0, 'Scrolling back up did not return root scrollY to 0');
+  let openDlgBtn = snapTopAgain.nodes.find(n => n.testId === 'open_modal');
+  assert(openDlgBtn && openDlgBtn.y >= 0, 'open_modal button not visible after scrolling back up');
   clickAt(openDlgBtn.x + openDlgBtn.width * 0.5, openDlgBtn.y + openDlgBtn.height * 0.5);
   assert(getSnap().nodes.some(n => n.testId === 'settings_dialog'), 'Raw pointer tap did not open dialog');
   let closeDlgBtn = getSnap().nodes.find(n => n.testId === 'modal_close_btn');
