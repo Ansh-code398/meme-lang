@@ -827,7 +827,7 @@ inline PackageResult packageForTarget(
         std::string cmdDev = "xcrun --sdk iphoneos clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                              "-arch arm64 -miphoneos-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
-                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation "
+                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
                              "-o \"" + devBin.string() + "\"";
         if (verbose) std::cout << "[package:ipa] " << cmdDev << "\n";
         std::string out;
@@ -857,7 +857,7 @@ inline PackageResult packageForTarget(
         std::string cmdSim = "xcrun --sdk iphonesimulator clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                              "-arch " + simArch + " -mios-simulator-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
-                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation "
+                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
                              "-o \"" + simBin.string() + "\"";
         if (detail::execCmd(cmdSim, out) == 0) {
             writeIosIcons(simApp);

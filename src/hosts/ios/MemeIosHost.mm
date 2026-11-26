@@ -7,6 +7,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <UserNotifications/UserNotifications.h>
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
@@ -250,6 +251,33 @@ static MemeIosPickerHelper *g_iosPickerHelper = nil;
     MemeNative::resolveAsyncCallback(rid, res);
 }
 @end
+
+@interface MemeIosNotifDelegate : NSObject <UNUserNotificationCenterDelegate>
+@end
+
+@implementation MemeIosNotifDelegate
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+       willPresentNotification:(UNNotification *)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler
+{
+    (void)center;
+    (void)notification;
+    if (completionHandler) {
+        completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionList | UNNotificationPresentationOptionSound | UNNotificationPresentationOptionBadge);
+    }
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+didReceiveNotificationResponse:(UNNotificationResponse *)response
+         withCompletionHandler:(void (^)(void))completionHandler
+{
+    (void)center;
+    (void)response;
+    if (completionHandler) completionHandler();
+}
+@end
+
+static MemeIosNotifDelegate *g_iosNotifDelegate = nil;
 
 namespace {
 
@@ -536,44 +564,85 @@ void bindIosNativeHooks() {
             }
             return b;
         };
+        if (!g_iosNotifDelegate) {
+            g_iosNotifDelegate = [[MemeIosNotifDelegate alloc] init];
+        }
+        [UNUserNotificationCenter currentNotificationCenter].delegate = g_iosNotifDelegate;
+
         h.setBadgeCount = [](int count) -> bool {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [UIApplication sharedApplication].applicationIconBadgeNumber = count;
+                UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+                if (@available(iOS 16.0, *)) {
+                    [center setBadgeCount:static_cast<NSInteger>(std::max(0, count)) withCompletionHandler:nil];
+                } else {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+                    [UIApplication sharedApplication].applicationIconBadgeNumber = std::max(0, count);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+                }
             });
             return true;
         };
         h.notifyRequestPermissionAsync = [](MemeNative::AsyncCallback cb) {
             int rid = MemeNative::registerAsyncCallback(std::move(cb));
-            void *unLib = dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", RTLD_LAZY);
-            Class unCls = unLib ? NSClassFromString(@"UNUserNotificationCenter") : nil;
-            if (unCls) {
-                id center = ((id (*)(Class, SEL))objc_msgSend)(unCls, NSSelectorFromString(@"currentNotificationCenter"));
-                void (^done)(BOOL, NSError *) = ^(BOOL granted, NSError *err) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+                if (!g_iosNotifDelegate) g_iosNotifDelegate = [[MemeIosNotifDelegate alloc] init];
+                center.delegate = g_iosNotifDelegate;
+                [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+                                      completionHandler:^(BOOL granted, NSError *err) {
                     (void)err;
-                    MemeNative::AsyncResponse r; r.ok = true; r.accepted = (granted != NO);
+                    MemeNative::AsyncResponse r;
+                    r.ok = true;
+                    r.accepted = (granted != NO);
                     MemeNative::resolveAsyncCallback(rid, r);
-                };
-                ((void (*)(id, SEL, NSUInteger, id))objc_msgSend)(center, NSSelectorFromString(@"requestAuthorizationWithOptions:completionHandler:"), 7, done);
-                return;
-            }
-            MemeNative::AsyncResponse r; r.ok = true; r.accepted = true;
-            MemeNative::resolveAsyncCallback(rid, r);
+                }];
+            });
         };
         h.notifySend = [](const std::string &title, const std::string &body) -> bool {
-            void *unLib = dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", RTLD_LAZY);
-            Class cCls = unLib ? NSClassFromString(@"UNMutableNotificationContent") : nil;
-            Class rCls = unLib ? NSClassFromString(@"UNNotificationRequest") : nil;
-            Class uCls = unLib ? NSClassFromString(@"UNUserNotificationCenter") : nil;
-            if (cCls && rCls && uCls) {
-                id content = [[cCls alloc] init];
-                [content setValue:[NSString stringWithUTF8String:title.c_str()] forKey:@"title"];
-                [content setValue:[NSString stringWithUTF8String:body.c_str()] forKey:@"body"];
-                NSString *reqId = [[NSUUID UUID] UUIDString];
-                id req = ((id (*)(Class, SEL, id, id, id))objc_msgSend)(rCls, NSSelectorFromString(@"requestWithIdentifier:content:trigger:"), reqId, content, nil);
-                id center = ((id (*)(Class, SEL))objc_msgSend)(uCls, NSSelectorFromString(@"currentNotificationCenter"));
-                ((void (*)(id, SEL, id, id))objc_msgSend)(center, NSSelectorFromString(@"addNotificationRequest:withCompletionHandler:"), req, nil);
-                MEME_IOS_RELEASE(content);
-            }
+            NSString *nsTitle = [NSString stringWithUTF8String:(title.empty() ? "MEME App" : title.c_str())];
+            NSString *nsBody = [NSString stringWithUTF8String:body.c_str()];
+            if (!nsTitle) nsTitle = @"MEME App";
+            if (!nsBody) nsBody = @"";
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+                if (!g_iosNotifDelegate) g_iosNotifDelegate = [[MemeIosNotifDelegate alloc] init];
+                center.delegate = g_iosNotifDelegate;
+
+                void (^scheduleNotification)(void) = ^{
+                    UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+                    content.title = nsTitle;
+                    content.body = nsBody;
+                    content.sound = [UNNotificationSound defaultSound];
+                    UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.15 repeats:NO];
+                    NSString *reqId = [[NSUUID UUID] UUIDString];
+                    UNNotificationRequest *req = [UNNotificationRequest requestWithIdentifier:reqId content:content trigger:trigger];
+                    [center addNotificationRequest:req withCompletionHandler:^(NSError *err) {
+                        if (err) NSLog(@"[MEME-UI] Notification error: %@", err.localizedDescription);
+                    }];
+                    MEME_IOS_RELEASE(content);
+                };
+
+                [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+                    if (settings.authorizationStatus == UNAuthorizationStatusAuthorized ||
+                        settings.authorizationStatus == UNAuthorizationStatusProvisional ||
+                        settings.authorizationStatus == UNAuthorizationStatusEphemeral) {
+                        scheduleNotification();
+                    } else if (settings.authorizationStatus == UNAuthorizationStatusNotDetermined) {
+                        [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+                                              completionHandler:^(BOOL granted, NSError *err) {
+                            (void)err;
+                            if (granted) scheduleNotification();
+                        }];
+                    } else {
+                        NSLog(@"[MEME-UI] Notifications denied in iOS Settings (status=%ld)", (long)settings.authorizationStatus);
+                    }
+                }];
+            });
             return true;
         };
         h.biometricsAvailable = []() -> bool {

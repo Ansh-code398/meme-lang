@@ -712,8 +712,15 @@ inline void js_notify(const char *titlePtr, const char *bodyPtr) {
     EM_ASM({
         (function(tp, bp) {
             try {
-                if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-                    new Notification(UTF8ToString(tp), { body: UTF8ToString(bp) });
+                if (typeof Notification === "undefined") return;
+                var t = UTF8ToString(tp);
+                var b = UTF8ToString(bp);
+                if (Notification.permission === "granted") {
+                    new Notification(t, { body: b });
+                } else if (Notification.permission === "default" && Notification.requestPermission) {
+                    Notification.requestPermission().then(function(st) {
+                        if (st === "granted") new Notification(t, { body: b });
+                    }).catch(function() {});
                 }
             } catch (e) {}
         })($0, $1);
