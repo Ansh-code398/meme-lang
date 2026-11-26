@@ -17,6 +17,7 @@
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
+#include "../../platform/MemeNativeApis.h"
 
 namespace MemeUI {
 
@@ -261,6 +262,10 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
     auto pXPutImage = reinterpret_cast<int (*)(XDisplay *, XWindow, XGC, XImageRaw *, int, int, int, int, unsigned int, unsigned int)>(dlsym(x11, "XPutImage"));
     auto pXLookupString = reinterpret_cast<int (*)(XKeyEv *, char *, int, unsigned long *, void *)>(dlsym(x11, "XLookupString"));
     auto pXFlush = reinterpret_cast<int (*)(XDisplay *)>(dlsym(x11, "XFlush"));
+    auto pXChangeProperty = reinterpret_cast<int (*)(XDisplay *, XWindow, XAtom, XAtom, int, int, const unsigned char *, int)>(dlsym(x11, "XChangeProperty"));
+    auto pXResizeWindow = reinterpret_cast<int (*)(XDisplay *, XWindow, unsigned int, unsigned int)>(dlsym(x11, "XResizeWindow"));
+    auto pXIconifyWindow = reinterpret_cast<int (*)(XDisplay *, XWindow, int)>(dlsym(x11, "XIconifyWindow"));
+    auto pXRaiseWindow = reinterpret_cast<int (*)(XDisplay *, XWindow)>(dlsym(x11, "XRaiseWindow"));
 
     // Dynamic EGL + GLESv2 probe (Wayland/X11 GPU path with automatic XPutImage software fallback)
     void *eglLib = dlopen("libEGL.so.1", RTLD_LAZY);
@@ -329,6 +334,65 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
     if (pXSelectInput) pXSelectInput(dpy, win, mask);
     XAtom wmDel = pXInternAtom ? pXInternAtom(dpy, "WM_DELETE_WINDOW", 0) : 0;
     if (wmDel && pXSetWMProtocols) pXSetWMProtocols(dpy, win, &wmDel, 1);
+
+    // Apply _NET_WM_ICON (w, h, ARGB unsigned long pixels)
+    if (pXInternAtom && pXChangeProperty) {
+        XAtom netWmIcon = pXInternAtom(dpy, "_NET_WM_ICON", 0);
+        std::vector<uint8_t> rgba;
+        int iw = 0, ih = 0;
+        MemeNative::ensureDefaultAppIconRgba(64, rgba, iw, ih);
+        if (netWmIcon && !rgba.empty() && iw > 0 && ih > 0) {
+            std::vector<unsigned long> data;
+            data.reserve(2 + static_cast<size_t>(iw) * static_cast<size_t>(ih));
+            data.push_back(static_cast<unsigned long>(iw));
+            data.push_back(static_cast<unsigned long>(ih));
+            for (size_t i = 0; i + 3 < rgba.size(); i += 4) {
+                unsigned long px = (static_cast<unsigned long>(rgba[i + 3]) << 24) |
+                                   (static_cast<unsigned long>(rgba[i + 0]) << 16) |
+                                   (static_cast<unsigned long>(rgba[i + 1]) << 8) |
+                                   static_cast<unsigned long>(rgba[i + 2]);
+                data.push_back(px);
+            }
+            pXChangeProperty(dpy, win, netWmIcon, 6 /*XA_CARDINAL*/, 32, 0 /*PropModeReplace*/,
+                             reinterpret_cast<const unsigned char *>(data.data()), static_cast<int>(data.size()));
+        }
+    }
+
+    int curW = width, curH = height;
+    auto &nh = MemeNative::hooks();
+    nh.requestRerender = [&session]() { session.needsRender = true; };
+    nh.getScreenInfo = [&curW, &curH]() -> MemeNative::ScreenInfo {
+        MemeNative::ScreenInfo s;
+        s.width = static_cast<float>(curW);
+        s.height = static_cast<float>(curH);
+        s.scale = 1.0f;
+        return s;
+    };
+    nh.setWindowTitle = [pXStoreName, pXFlush, dpy, win](const std::string &t) -> bool {
+        if (!pXStoreName) return false;
+        pXStoreName(dpy, win, t.c_str());
+        if (pXFlush) pXFlush(dpy);
+        return true;
+    };
+    nh.setWindowSize = [pXResizeWindow, pXFlush, dpy, win](int w, int hSz) -> bool {
+        if (!pXResizeWindow) return false;
+        pXResizeWindow(dpy, win, static_cast<unsigned int>(std::max(160, w)), static_cast<unsigned int>(std::max(120, hSz)));
+        if (pXFlush) pXFlush(dpy);
+        return true;
+    };
+    nh.minimizeWindow = [pXIconifyWindow, pXFlush, dpy, win, scr]() -> bool {
+        if (!pXIconifyWindow) return false;
+        pXIconifyWindow(dpy, win, scr);
+        if (pXFlush) pXFlush(dpy);
+        return true;
+    };
+    nh.focusWindow = [pXRaiseWindow, pXFlush, dpy, win]() -> bool {
+        if (!pXRaiseWindow) return false;
+        pXRaiseWindow(dpy, win);
+        if (pXFlush) pXFlush(dpy);
+        return true;
+    };
+
     if (pXMapWindow) pXMapWindow(dpy, win);
 
     if (eglLib && glLib && pEglSwap && pGlVp && pGlClear && pGlDrawElem) {
@@ -387,7 +451,6 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
     if (onRender) onRender();
     else session.renderFrame(static_cast<float>(width), static_cast<float>(height));
 
-    int curW = width, curH = height;
     std::vector<uint32_t> fb;
     bool open = true;
     while (open) {
@@ -411,6 +474,8 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
                 float px = static_cast<float>(ev.xbutton.x), py = static_cast<float>(ev.xbutton.y);
                 if (ev.xbutton.button == 4) session.handleScroll(px, py, 0.0f, 3.0f);
                 else if (ev.xbutton.button == 5) session.handleScroll(px, py, 0.0f, -3.0f);
+                else if (ev.xbutton.button == 6) session.handleScroll(px, py, 3.0f, 0.0f);
+                else if (ev.xbutton.button == 7) session.handleScroll(px, py, -3.0f, 0.0f);
                 else session.handlePointerDown(px, py, ev.xbutton.button == 3 ? 2 : 0, 1);
                 if (onRender) onRender();
             } else if (ev.type == 5) { // ButtonRelease

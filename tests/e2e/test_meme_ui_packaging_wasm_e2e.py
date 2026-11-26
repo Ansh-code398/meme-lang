@@ -91,6 +91,12 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
     r_cs = run_cmd(["codesign", "--verify", "--strict", str(pkg_dir / f"{app_name_cap}.app")])
     if r_cs.returncode != 0:
         fail_test(f"{prefix}_mac_codesign", r_cs.stderr)
+    icns_path = pkg_dir / f"{app_name_cap}.app" / "Contents" / "Resources" / "AppIcon.icns"
+    if not icns_path.is_file() or icns_path.read_bytes()[:4] != b"icns":
+        fail_test(f"{prefix}_mac_icns", f"Missing/invalid AppIcon.icns at {icns_path}")
+    mac_plist = (pkg_dir / f"{app_name_cap}.app" / "Contents" / "Info.plist").read_text(encoding="utf-8")
+    if "<key>CFBundleIconFile</key><string>AppIcon</string>" not in mac_plist:
+        fail_test(f"{prefix}_mac_plist_icon", "Missing CFBundleIconFile in Info.plist")
     if test_mac_run:
         env = os.environ.copy()
         env["MEME_HEADLESS"] = "1"
@@ -109,6 +115,9 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
     r_win = run_cmd(["file", str(exe_path)])
     if "PE32+" not in r_win.stdout or "x86-64" not in r_win.stdout:
         fail_test(f"{prefix}_win_pe", r_win.stdout)
+    ico_path = pkg_dir / f"{pkg_id}.ico"
+    if not ico_path.is_file() or ico_path.read_bytes()[:4] != b"\x00\x00\x01\x00":
+        fail_test(f"{prefix}_win_ico", f"Missing/invalid ICO file at {ico_path}")
     pass_test(f"T1_{prefix}_win_pe32plus_x64")
 
     # 3. Linux Debian (.deb)
@@ -128,6 +137,9 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
             fail_test(f"{prefix}_deb_elf_entry", str(names))
         elf_bytes = tf.extractfile(elf_member).read()
         check_elf_arch(elf_bytes, 0x3E, f"T1_{prefix}_deb_x64_elf")
+        png_member = next((n for n in names if n.endswith(f"/icons/hicolor/256x256/apps/{pkg_id}.png")), None)
+        if not png_member or tf.extractfile(png_member).read()[:4] != b"\x89PNG":
+            fail_test(f"{prefix}_deb_icon", f"Missing/invalid PNG icon in deb: {names}")
     pass_test(f"T1_{prefix}_deb_archive_and_elf")
 
     # 4. Linux RPM (.rpm)
@@ -141,8 +153,8 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
     if gz_idx < 0:
         fail_test(f"{prefix}_rpm_payload", "Missing gzipped cpio payload in rpm")
     cpio_raw = gzip.decompress(rpm_bytes[gz_idx:])
-    if b"\x7fELF" not in cpio_raw or f"/usr/local/bin/{pkg_id}".encode() not in cpio_raw:
-        fail_test(f"{prefix}_rpm_cpio_elf", "ELF binary missing in RPM cpio payload")
+    if b"\x7fELF" not in cpio_raw or f"/usr/local/bin/{pkg_id}".encode() not in cpio_raw or b"\x89PNG" not in cpio_raw:
+        fail_test(f"{prefix}_rpm_cpio_elf", "ELF binary or PNG icon missing in RPM cpio payload")
     pass_test(f"T1_{prefix}_rpm_header_and_cpio_elf")
 
     # 5. Embedded Linux (.ipk)
@@ -169,6 +181,8 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
         znames = zf.namelist()
         if "lib/arm64-v8a/libmemeapp.so" not in znames or "lib/x86_64/libmemeapp.so" not in znames:
             fail_test(f"{prefix}_apk_abis", str(znames))
+        if not any("ic_launcher" in zn and zn.endswith(".png") for zn in znames):
+            fail_test(f"{prefix}_apk_icons", f"Missing ic_launcher PNGs in APK: {znames}")
         check_elf_arch(zf.read("lib/arm64-v8a/libmemeapp.so"), 0xB7, f"T1_{prefix}_apk_arm64")
         check_elf_arch(zf.read("lib/x86_64/libmemeapp.so"), 0x3E, f"T1_{prefix}_apk_x86_64")
     android_sdk = Path.home() / "Library" / "Android" / "sdk"
@@ -192,8 +206,12 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
         znames = zf.namelist()
         app_bin_rel = f"Payload/{app_name_cap}.app/{app_name_cap}"
         plist_rel = f"Payload/{app_name_cap}.app/Info.plist"
-        if app_bin_rel not in znames or plist_rel not in znames:
+        icon_rel = f"Payload/{app_name_cap}.app/AppIcon60x60@2x.png"
+        if app_bin_rel not in znames or plist_rel not in znames or icon_rel not in znames:
             fail_test(f"{prefix}_ipa_contents", str(znames))
+        ios_plist = zf.read(plist_rel).decode("utf-8", errors="ignore")
+        if "CFBundleIcons" not in ios_plist or "NSFaceIDUsageDescription" not in ios_plist:
+            fail_test(f"{prefix}_ipa_plist_meta", "Missing CFBundleIcons or usage descriptions in iOS Info.plist")
         macho_bytes = zf.read(app_bin_rel)
         if macho_bytes[:4] not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe"):
             fail_test(f"{prefix}_ipa_macho_magic", repr(macho_bytes[:4]))
@@ -204,17 +222,17 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
             fail_test(f"{prefix}_ios_sim_macho", r_sim.stdout)
     pass_test(f"T1_{prefix}_ipa_arm64_and_simulator")
 
-    # 8. Web (.html + .js + .wasm) zero-DOM check
+    # 8. Web (.html + .js + .wasm) zero-DOM check + PWA icons
     web_dir = pkg_dir / "web"
     html_path = web_dir / "index.html"
     js_path = web_dir / f"{pkg_id}.js"
     wasm_path = web_dir / f"{pkg_id}.wasm"
-    for p in (html_path, js_path, wasm_path):
+    for p in (html_path, js_path, wasm_path, web_dir / "favicon.ico", web_dir / "icon-192.png", web_dir / "icon-512.png", web_dir / "manifest.webmanifest"):
         if not p.is_file():
             fail_test(f"{prefix}_web_files", f"Missing {p}")
     html_txt = html_path.read_text(encoding="utf-8")
-    if '<canvas id="meme-canvas"' not in html_txt or "<button" in html_txt or "<input" in html_txt:
-        fail_test(f"{prefix}_web_zero_dom", "HTML shell must only render via <canvas id='meme-canvas'>")
+    if '<canvas id="meme-canvas"' not in html_txt or 'id="meme-splash"' not in html_txt or "<button" in html_txt or "<input" in html_txt:
+        fail_test(f"{prefix}_web_zero_dom", "HTML shell must only render via <canvas id='meme-canvas'> cleanly")
     wasm_bytes = wasm_path.read_bytes()
     if wasm_bytes[:4] != b"\x00asm":
         fail_test(f"{prefix}_web_wasm_magic", repr(wasm_bytes[:8]))
@@ -270,11 +288,16 @@ function loadWasmModule(jsFile) {
   assert(c0.some(c => c.type === 'DRAW_TEXT' && c.text.includes('#event-0')), 'Virtualizer missing #event-0 row');
   console.log('[PASS] T4_wasm_showcase_10k_virtualizer_initial');
 
-  // Scroll +500 rows
+  // Scroll +500 rows + direct mouse wheel on 10k Virtual Feed container
   assert(act('scroll_next_btn', 'click') === 1);
   appMod._meme_web_render(1040, 720);
   let cScroll = getCmds();
   assert(cScroll.some(c => c.type === 'DRAW_TEXT' && c.text.includes('#event-497') || (c.text && c.text.includes('#event-500'))), 'Virtualizer did not scroll +500 rows');
+  const vBox = getSnap().nodes.find(n => n.testId === 'virtual_feed_box');
+  assert(vBox, 'virtual_feed_box missing');
+  appMod._meme_web_scroll(vBox.x + vBox.width * 0.5, vBox.y + vBox.height * 0.5, 0, -5.0);
+  appMod._meme_web_render(1040, 720);
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('#event-5')), 'Virtualizer wheel did not advance rows');
   console.log('[PASS] T4_wasm_showcase_10k_virtualizer_scroll');
 
   // Chat compose + send
@@ -286,10 +309,18 @@ function loadWasmModule(jsFile) {
   assert(cChat.some(c => c.type === 'DRAW_TEXT' && c.text.includes('Dispatched message #4')), 'Toast message missing after send');
   console.log('[PASS] T4_wasm_showcase_chat_compose_and_toast');
 
-  // Switch to Explorer tab & test Checkbox, Switch, Slider, Combobox Typeahead, Split Handle, Popover, Reorder
+  // Switch to Explorer tab & test Checkbox, Switch, Slider, Combobox Typeahead, Inner ScrollArea, Horizontal Presets, Split Handle, Popover, Reorder
   assert(act('tab_explorer', 'click') === 1);
   appMod._meme_web_render(1040, 720);
   let sExp = getSnap();
+  let expScroll = sExp.nodes.find(n => n.testId === 'explorer_scroll');
+  assert(expScroll && expScroll.maxScrollY > 10, 'Explorer inner ScrollArea must overflow vertically: ' + JSON.stringify(expScroll));
+  appMod._meme_web_scroll(expScroll.x + 20, expScroll.y + 20, 0, -2.5);
+  appMod._meme_web_render(1040, 720);
+  let expScrollAfter = getSnap().nodes.find(n => n.testId === 'explorer_scroll');
+  assert(expScrollAfter && expScrollAfter.scrollY > 10, 'Explorer inner ScrollArea did not scroll');
+  let hPresets = sExp.nodes.find(n => n.testId === 'horiz_presets');
+  assert(hPresets && hPresets.maxScrollX > 10, 'Horizontal preset strip must overflow horizontally: ' + JSON.stringify(hPresets));
   assert(sExp.nodes.some(n => n.testId === 'agree_checkbox' && n.checked === true), 'agree_checkbox initial state');
   act('agree_checkbox', 'click');
   appMod._meme_web_render(1040, 720);
@@ -331,6 +362,16 @@ function loadWasmModule(jsFile) {
   act('toggle_rtl', 'click');
   appMod._meme_web_render(1040, 720);
   assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text === 'Direction: RTL'), 'RTL toggle failed');
+
+  // Tab 5: Native APIs tab interactive Wasm test
+  assert(act('tab_native', 'click') === 1);
+  appMod._meme_web_render(1040, 720);
+  act('native_storage_btn', 'click');
+  appMod._meme_web_render(1040, 720);
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('Saved count=1')), 'Native storage button failed in Wasm');
+  act('native_clipboard_btn', 'click');
+  appMod._meme_web_render(1040, 720);
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('Clipboard: MEME-UI-wasm')), 'Native clipboard button failed in Wasm');
   console.log('[PASS] T4_wasm_showcase_canvas_editor_and_rtl');
 
   // Raw pointer coordinate clicks inside overflow-y-auto root container (desktop + mobile viewport!)
@@ -351,13 +392,21 @@ function loadWasmModule(jsFile) {
   assert(mobRoot && mobRoot.maxScrollY > 20.0, 'Mobile Showcase Chat root must overflow and be scrollable: ' + JSON.stringify(mobRoot));
   let sNextBefore = snapMob.nodes.find(n => n.testId === 'scroll_next_btn');
   assert(sNextBefore, 'scroll_next_btn missing on mobile viewport');
-  let scrolledMob = appMod._meme_web_scroll(180, 420, 0, -4.5);
-  assert(scrolledMob === 1, 'Touch scroll inside Showcase Chat failed to chain to root');
+  // First swipe inside Chat messages inner scroll container scrolls chat_messages_scroll, second swipe chains to root
+  let chatMsgBox0 = snapMob.nodes.find(n => n.testId === 'chat_messages_scroll');
+  assert(chatMsgBox0 && chatMsgBox0.maxScrollY > 10.0, 'chat_messages_scroll must overflow inside min-h-[340px] card on mobile');
+  let scrolledMob1 = appMod._meme_web_scroll(180, 420, 0, -5.0);
+  assert(scrolledMob1 === 1, 'Touch scroll inside Showcase Chat failed');
+  appMod._meme_web_render(393, 852);
+  let chatMsgBox1 = getSnap().nodes.find(n => n.testId === 'chat_messages_scroll');
+  assert(chatMsgBox1 && chatMsgBox1.scrollY > 10.0, 'Inner chat_messages_scroll did not scroll on first swipe');
+  let scrolledMob2 = appMod._meme_web_scroll(180, 420, 0, -5.0);
+  assert(scrolledMob2 === 1, 'Touch scroll at bottom of chat_messages_scroll failed to chain to root');
   appMod._meme_web_render(393, 852);
   let snapScrolled = getSnap();
   let mobRootAfter = snapScrolled.nodes.find(n => n.key === 'root');
   let sNextAfter = snapScrolled.nodes.find(n => n.testId === 'scroll_next_btn');
-  assert(mobRootAfter && mobRootAfter.scrollY > 10.0, 'Mobile scrollY did not increase');
+  assert(mobRootAfter && mobRootAfter.scrollY > 10.0, 'Mobile root scrollY did not increase after chaining: ' + JSON.stringify(mobRootAfter));
   assert(sNextAfter && sNextAfter.y < sNextBefore.y - 10.0, 'Child widget y coordinate did not scroll up');
   clickAt(sNextAfter.x + sNextAfter.width * 0.5, sNextAfter.y + sNextAfter.height * 0.5);
   assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('#event-1000')), 'Tap on scroll_next_btn after scrolling failed');
@@ -376,7 +425,8 @@ function loadWasmModule(jsFile) {
   assert(getSnap().nodes.find(n => n.testId === 'agree_checkbox').checked === !beforeChk, 'Raw pointer tap on checkbox failed');
 
   // Scroll back up to top of mobile page before tapping header's open_modal button
-  appMod._meme_web_scroll(180, 420, 0, 10.0);
+  appMod._meme_web_scroll(180, 120, 0, 10.0);
+  appMod._meme_web_scroll(180, 120, 0, 10.0);
   appMod._meme_web_render(393, 852);
   let snapTopAgain = getSnap();
   let topRoot = snapTopAgain.nodes.find(n => n.key === 'root');
@@ -500,6 +550,29 @@ def main():
         verify_target_artifacts(app_dist, "Showcase", "showcase", "showcase")
         verify_live_wasm_and_app_parity(app_dist / "web", egui_dist / "web")
         verify_showcase_dual_engine_parity()
+
+        # Verify custom --icon, --name, --id, --scheme packaging metadata & PNG icon injection
+        custom_dist = WORK_DIR / "custom_cli"
+        custom_icon = WORK_DIR / "custom_icon.png"
+        # Build a clean valid 32x32 solid coral PNG with stored DEFLATE zlib stream via Python zlib
+        w_i, h_i = 32, 32
+        raw_scan = b"".join(b"\x00" + (b"\xef\x44\x44\xff" * w_i) for _ in range(h_i))
+        import zlib
+        def png_chunk(t, d):
+            return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+        ihdr = struct.pack(">IIBBBBB", w_i, h_i, 8, 6, 0, 0, 0)
+        idat = zlib.compress(raw_scan)
+        custom_icon.write_bytes(b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", idat) + png_chunk(b"IEND", b""))
+        r_cust = run_cmd([MEME_BIN, "package", "apps/showcase/src/EguiTelemetry.meme", "--target=mac",
+                          "-o", str(custom_dist), "--name=CustomBrand", "--id=io.example.brand",
+                          f"--icon={custom_icon}", "--scheme=brandapp"], timeout=120)
+        if r_cust.returncode != 0:
+            fail_test("T1_custom_icon_pkg", r_cust.stdout + "\n" + r_cust.stderr)
+        c_plist = (custom_dist / "CustomBrand.app" / "Contents" / "Info.plist").read_text(encoding="utf-8")
+        if "io.example.brand" not in c_plist or "brandapp" not in c_plist:
+            fail_test("T1_custom_plist_meta", c_plist)
+        pass_test("T1_custom_icon_id_and_scheme_packaging")
+
         print("ALL MULTI-PLATFORM PACKAGING, WASM & SHOWCASE DUAL-ENGINE PARITY TESTS PASSED!")
     finally:
         if WORK_DIR.exists():

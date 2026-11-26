@@ -79,6 +79,8 @@ struct HitRegion {
     bool hasKeyDown = false;
     bool hasScroll = false;
     bool isScrollContainer = false;
+    float scrollX = 0;
+    float maxScrollX = 0;
     float scrollY = 0;
     float maxScrollY = 0;
     Value onClick = Value(std::monostate{});
@@ -248,6 +250,10 @@ inline MemeUI::UiNode valueToUiNode(
     if (keyHandler.deref().isNil()) keyHandler = readProp("onkeydown");
     Value submitHandler = readProp("onSubmit");
     if (submitHandler.deref().isNil()) submitHandler = readProp("onsubmit");
+    Value wheelHandler = readProp("onWheel");
+    if (wheelHandler.deref().isNil()) wheelHandler = readProp("onwheel");
+    Value scrollHandler = readProp("onScroll");
+    if (scrollHandler.deref().isNil()) scrollHandler = readProp("onscroll");
     Value paintHandler = readProp("onPaint");
     if (paintHandler.deref().isNil()) paintHandler = readProp("onDraw");
 
@@ -263,7 +269,9 @@ inline MemeUI::UiNode valueToUiNode(
                      node.classStr.find("overflow-y-auto") != std::string::npos ||
                      node.classStr.find("overflow-y-scroll") != std::string::npos ||
                      node.classStr.find("overflow-x-auto") != std::string::npos ||
-                     node.classStr.find("overflow-x-scroll") != std::string::npos);
+                     node.classStr.find("overflow-x-scroll") != std::string::npos ||
+                     !wheelHandler.deref().isNil() ||
+                     !scrollHandler.deref().isNil());
 
     auto attachHandler = [&](const std::string &evName, const Value &cbVal) {
         if (cbVal.deref().isNil()) return;
@@ -280,6 +288,8 @@ inline MemeUI::UiNode valueToUiNode(
     attachHandler("change", changeHandler);
     attachHandler("keydown", keyHandler);
     attachHandler("submit", submitHandler);
+    attachHandler("wheel", wheelHandler);
+    attachHandler("scroll", scrollHandler);
 
     if (!paintHandler.deref().isNil() && paintInvoker) {
         Value pCopy = paintHandler.deref();
@@ -350,6 +360,8 @@ inline std::vector<GpuDrawCmd> computeNativeLayout(
             hr.hasKeyDown = uh.hasKeyDown;
             hr.hasScroll = uh.hasScroll;
             hr.isScrollContainer = uh.isScrollContainer;
+            hr.scrollX = uh.scrollX;
+            hr.maxScrollX = uh.maxScrollX;
             hr.scrollY = uh.scrollY;
             hr.maxScrollY = uh.maxScrollY;
             hr.inputValue = uh.inputValue;

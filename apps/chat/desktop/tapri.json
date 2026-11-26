@@ -1,7 +1,10 @@
 {
   "name": "chat_desktop",
+  "displayName": "MEME Chat",
+  "bundleId": "dev.memelang.chat",
   "version": "1.0.0",
   "description": "Zero-WebView Native Desktop Realtime Chat GUI in MEMElang",
+  "themeColor": "#0f172a",
   "entry": "src/App.meme",
   "dependencies": {}
 }

@@ -387,6 +387,10 @@ public:
                     {"value", MemeValue(ev.value)},
                     {"checked", MemeValue(ev.boolValue)},
                     {"numValue", MemeValue(ev.numValue)},
+                    {"x", MemeValue(static_cast<double>(ev.x))},
+                    {"y", MemeValue(static_cast<double>(ev.y))},
+                    {"deltaX", MemeValue(static_cast<double>(ev.deltaX))},
+                    {"deltaY", MemeValue(static_cast<double>(ev.deltaY))},
                     {"key", MemeValue(ev.key)},
                     {"target", make_map({{"value", MemeValue(ev.value)}, {"checked", MemeValue(ev.boolValue)}})}
                 });
@@ -398,10 +402,14 @@ public:
         MemeValue chg = readProp("onChange"); if (!chg.is_callable()) chg = readProp("onchange"); if (!chg.is_callable()) chg = readProp("onInput");
         MemeValue kd = readProp("onKeyDown"); if (!kd.is_callable()) kd = readProp("onkeydown");
         MemeValue sub = readProp("onSubmit"); if (!sub.is_callable()) sub = readProp("onsubmit");
+        MemeValue whl = readProp("onWheel"); if (!whl.is_callable()) whl = readProp("onwheel");
+        MemeValue scr = readProp("onScroll"); if (!scr.is_callable()) scr = readProp("onscroll");
         attachEv("click", clk);
         attachEv("change", chg);
         attachEv("keydown", kd);
         attachEv("submit", sub);
+        attachEv("wheel", whl);
+        attachEv("scroll", scr);
 
         MemeValue pfn = readProp("onPaint"); if (!pfn.is_callable()) pfn = readProp("onDraw");
         if (pfn.is_callable()) {
@@ -424,6 +432,22 @@ public:
     }
 
     void triggerUiRerender() {
+        if (!MemeNative::hooks().requestRerender) {
+            MemeNative::hooks().requestRerender = [this]() { session.needsRender = true; };
+        }
+        if (!MemeNative::hooks().getScreenInfo) {
+            MemeNative::hooks().getScreenInfo = [this]() {
+                MemeNative::ScreenInfo s;
+                s.width = session.input.viewportW > 0.0f ? session.input.viewportW : 800.0f;
+                s.height = session.input.viewportH > 0.0f ? session.input.viewportH : 600.0f;
+                s.scale = session.input.dpiScale > 0.0f ? session.input.dpiScale : 1.0f;
+                s.safeTop = session.input.safeTop;
+                s.safeBottom = session.input.safeBottom;
+                s.safeLeft = session.input.safeLeft;
+                s.safeRight = session.input.safeRight;
+                return s;
+            };
+        }
         if (session.isImmediateMode && session.eguiUpdateFn) {
             float vw = session.input.viewportW > 0.0f ? session.input.viewportW : 800.0f;
             float vh = session.input.viewportH > 0.0f ? session.input.viewportH : 600.0f;
@@ -1117,8 +1141,11 @@ inline MemeValue hit_region_to_meme(const MemeUI::UiHitRegion &hr) {
         {"placeholder", MemeValue(hr.placeholder)},
         {"isPassword", MemeValue(hr.isPassword)},
         {"isMultiline", MemeValue(hr.isMultiline)},
+        {"scrollX", MemeValue(static_cast<double>(hr.scrollX))},
+        {"maxScrollX", MemeValue(static_cast<double>(hr.maxScrollX))},
         {"scrollY", MemeValue(static_cast<double>(hr.scrollY))},
         {"maxScrollY", MemeValue(static_cast<double>(hr.maxScrollY))},
+        {"isScrollContainer", MemeValue(hr.isScrollContainer)},
         {"isRtl", MemeValue(hr.isRtl)}
     });
 }
@@ -1992,7 +2019,18 @@ inline MemeValue build_ui_module() {
     m["mount"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
         auto &rt = aot_ui();
         if (!a.empty()) {
+            bool wasImmediate = rt.session.isImmediateMode;
+            rt.session.isImmediateMode = false;
+            rt.session.eguiUpdateFn = nullptr;
+            if (wasImmediate) {
+                rt.session.interaction = MemeUI::UiInteractionState();
+                rt.session.popups.stack.clear();
+                rt.session.focusScopes.scopes.clear();
+            }
             if (a[0].is_callable()) {
+                rt.session.interaction = MemeUI::UiInteractionState();
+                rt.session.popups.stack.clear();
+                rt.session.focusScopes.scopes.clear();
                 rt.rootCallable = a[0];
                 rt.rootComponentName = "App";
                 rt.rootTree = MemeValue();

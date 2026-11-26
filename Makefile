@@ -11,7 +11,7 @@ endif
 
 SRCS = src/main.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp src/lsp/LspServer.cpp src/dap/DapServer.cpp
 OBJS = $(SRCS:.cpp=.o) $(MM_OBJS)
-HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h) $(wildcard src/compiler/*.h) $(wildcard src/lsp/*.h) $(wildcard src/dap/*.h)
+HEADERS = $(wildcard src/lexer/*.h) $(wildcard src/parser/*.h) $(wildcard src/interpreter/*.h) $(wildcard src/types/*.h) $(wildcard src/bridge/*.h) $(wildcard src/ui/*.h) $(wildcard src/compiler/*.h) $(wildcard src/platform/*.h) $(wildcard src/packager/*.h) $(wildcard src/lsp/*.h) $(wildcard src/dap/*.h)
 TARGET = meme
 
 all: $(TARGET)

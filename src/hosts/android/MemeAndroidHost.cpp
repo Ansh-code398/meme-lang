@@ -6,8 +6,10 @@
 #include <android/keycodes.h>
 #include <android/looper.h>
 #include <android/configuration.h>
+#include <android/sensor.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <jni.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <algorithm>
@@ -19,6 +21,7 @@
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
+#include "../../platform/MemeNativeApis.h"
 
 extern "C" int meme_user_entrypoint(int argc, char *argv[]);
 extern "C" MemeUI::UiSession *meme_host_get_session();
@@ -302,10 +305,283 @@ void processAndroidInput(AndroidAppState *st, AInputEvent *ev, MemeUI::UiSession
     }
 }
 
+void bindAndroidNativeHooks(AndroidAppState *st) {
+    if (!st || !st->activity) return;
+    static std::mutex sSensorMu;
+    static MemeNative::SensorSnapshot sLatestSensors;
+    static ASensorManager *sSensorMgr = nullptr;
+    static ASensorEventQueue *sSensorQueue = nullptr;
+    static const ASensor *sAccel = nullptr;
+    static const ASensor *sGyro = nullptr;
+
+    auto withJni = [st](const std::function<void(JNIEnv *, jobject)> &fn) {
+        if (!st->activity || !st->activity->vm || !st->activity->clazz) return;
+        JNIEnv *env = nullptr;
+        bool attached = false;
+        jint r = st->activity->vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+        if (r == JNI_EDETACHED) {
+            if (st->activity->vm->AttachCurrentThread(&env, nullptr) == JNI_OK) attached = true;
+        }
+        if (env) {
+            fn(env, st->activity->clazz);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+        }
+        if (attached) st->activity->vm->DetachCurrentThread();
+    };
+
+    auto &h = MemeNative::hooks();
+    h.requestRerender = []() {
+        meme_host_rerender();
+        if (auto *s = meme_host_get_session()) s->needsRender = true;
+    };
+    h.getAppPaths = [st]() -> MemeNative::PathsInfo {
+        MemeNative::PathsInfo p;
+        if (st->activity->internalDataPath) {
+            std::string base = st->activity->internalDataPath;
+            p.appData = base + "/data";
+            p.cache = base + "/cache";
+            p.documents = base + "/docs";
+            p.temp = base + "/tmp";
+        } else {
+            p.appData = "/data/local/tmp/meme";
+            p.cache = "/data/local/tmp/meme_cache";
+            p.documents = p.appData;
+            p.temp = "/data/local/tmp";
+        }
+        std::error_code ec;
+        std::filesystem::create_directories(p.appData, ec);
+        std::filesystem::create_directories(p.cache, ec);
+        return p;
+    };
+    h.getDeviceInfo = [st, withJni]() -> MemeNative::DeviceInfo {
+        MemeNative::DeviceInfo d;
+        d.os = "android";
+        d.arch = MemeNative::defaultArchName();
+        d.isMobile = true; d.isDesktop = false; d.isWeb = false;
+        d.model = "Android Device";
+        if (st->activity && st->activity->assetManager) {
+            AConfiguration *cfg = AConfiguration_new();
+            AConfiguration_fromAssetManager(cfg, st->activity->assetManager);
+            char lang[3] = {0, 0, 0}, ctry[3] = {0, 0, 0};
+            AConfiguration_getLanguage(cfg, lang);
+            AConfiguration_getCountry(cfg, ctry);
+            if (lang[0]) {
+                d.locale = std::string(lang) + (ctry[0] ? ("-" + std::string(ctry)) : "");
+            }
+            int night = AConfiguration_getUiModeNight(cfg);
+            d.isDark = (night != ACONFIGURATION_UI_MODE_NIGHT_NO);
+            d.theme = d.isDark ? "dark" : "light";
+            AConfiguration_delete(cfg);
+        }
+        withJni([&d](JNIEnv *env, jobject) {
+            jclass bCls = env->FindClass("android/os/Build");
+            if (bCls) {
+                jfieldID mf = env->GetStaticFieldID(bCls, "MODEL", "Ljava/lang/String;");
+                if (mf) {
+                    jstring jm = static_cast<jstring>(env->GetStaticObjectField(bCls, mf));
+                    if (jm) {
+                        const char *p = env->GetStringUTFChars(jm, nullptr);
+                        if (p) { d.model = p; env->ReleaseStringUTFChars(jm, p); }
+                        env->DeleteLocalRef(jm);
+                    }
+                }
+                env->DeleteLocalRef(bCls);
+            }
+            jclass vCls = env->FindClass("android/os/Build$VERSION");
+            if (vCls) {
+                jfieldID rf = env->GetStaticFieldID(vCls, "RELEASE", "Ljava/lang/String;");
+                if (rf) {
+                    jstring jv = static_cast<jstring>(env->GetStaticObjectField(vCls, rf));
+                    if (jv) {
+                        const char *p = env->GetStringUTFChars(jv, nullptr);
+                        if (p) { d.osVersion = p; env->ReleaseStringUTFChars(jv, p); }
+                        env->DeleteLocalRef(jv);
+                    }
+                }
+                env->DeleteLocalRef(vCls);
+            }
+        });
+        return d;
+    };
+    h.getScreenInfo = [st]() -> MemeNative::ScreenInfo {
+        MemeNative::ScreenInfo s;
+        float sc = st->densityScale > 0.0f ? st->densityScale : 1.0f;
+        s.scale = sc;
+        if (auto *sess = meme_host_get_session()) {
+            s.width = sess->input.viewportW;
+            s.height = sess->input.viewportH;
+            s.safeTop = sess->input.safeTop;
+            s.safeBottom = sess->input.safeBottom;
+        }
+        return s;
+    };
+    h.hapticVibrate = [withJni](int ms) -> bool {
+        bool ok = false;
+        withJni([ms, &ok](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID gss = env->GetMethodID(actCls, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+            jstring svcName = env->NewStringUTF("vibrator");
+            jobject vib = env->CallObjectMethod(act, gss, svcName);
+            env->DeleteLocalRef(svcName);
+            if (vib && !env->ExceptionCheck()) {
+                jclass vCls = env->GetObjectClass(vib);
+                jmethodID vm = env->GetMethodID(vCls, "vibrate", "(J)V");
+                if (vm && !env->ExceptionCheck()) {
+                    env->CallVoidMethod(vib, vm, static_cast<jlong>(std::max(1, ms)));
+                    ok = !env->ExceptionCheck();
+                }
+                env->DeleteLocalRef(vCls);
+                env->DeleteLocalRef(vib);
+            }
+            env->DeleteLocalRef(actCls);
+        });
+        return ok;
+    };
+    h.hapticImpact = [](const std::string &style) -> bool {
+        return MemeNative::hapticVibrate(style == "heavy" ? 35 : (style == "light" ? 12 : 20));
+    };
+    h.hapticNotify = [](const std::string &type) -> bool {
+        return MemeNative::hapticVibrate(type == "error" ? 50 : 25);
+    };
+    h.hapticSelection = []() -> bool { return MemeNative::hapticVibrate(10); };
+    h.getBatteryInfo = [withJni]() -> MemeNative::BatteryInfo {
+        MemeNative::BatteryInfo b;
+        withJni([&b](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID gss = env->GetMethodID(actCls, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+            jstring svc = env->NewStringUTF("batterymanager");
+            jobject bm = env->CallObjectMethod(act, gss, svc);
+            env->DeleteLocalRef(svc);
+            if (bm && !env->ExceptionCheck()) {
+                jclass bCls = env->GetObjectClass(bm);
+                jmethodID gip = env->GetMethodID(bCls, "getIntProperty", "(I)I");
+                jmethodID ic = env->GetMethodID(bCls, "isCharging", "()Z");
+                if (gip) {
+                    int lvl = env->CallIntMethod(bm, gip, 4 /*BATTERY_PROPERTY_CAPACITY*/);
+                    if (lvl >= 0 && lvl <= 100) { b.level = lvl; b.supported = true; }
+                }
+                if (ic && !env->ExceptionCheck()) b.charging = (env->CallBooleanMethod(bm, ic) != JNI_FALSE);
+                b.state = b.charging ? "charging" : (b.supported ? "discharging" : "unknown");
+                env->DeleteLocalRef(bCls);
+                env->DeleteLocalRef(bm);
+            }
+            env->DeleteLocalRef(actCls);
+        });
+        return b;
+    };
+    h.openUrl = [withJni](const std::string &url) -> bool {
+        bool ok = false;
+        withJni([&url, &ok](JNIEnv *env, jobject act) {
+            jclass uriCls = env->FindClass("android/net/Uri");
+            jclass intCls = env->FindClass("android/content/Intent");
+            jclass actCls = env->GetObjectClass(act);
+            if (uriCls && intCls) {
+                jmethodID parseFn = env->GetStaticMethodID(uriCls, "parse", "(Ljava/lang/String;)Landroid/net/Uri;");
+                jstring jsUrl = env->NewStringUTF(url.c_str());
+                jobject uri = env->CallStaticObjectMethod(uriCls, parseFn, jsUrl);
+                jstring jsAct = env->NewStringUTF("android.intent.action.VIEW");
+                jmethodID ctor = env->GetMethodID(intCls, "<init>", "(Ljava/lang/String;Landroid/net/Uri;)V");
+                jobject intent = env->NewObject(intCls, ctor, jsAct, uri);
+                jmethodID sa = env->GetMethodID(actCls, "startActivity", "(Landroid/content/Intent;)V");
+                if (sa && intent) {
+                    env->CallVoidMethod(act, sa, intent);
+                    ok = !env->ExceptionCheck();
+                }
+                env->DeleteLocalRef(jsUrl);
+                env->DeleteLocalRef(jsAct);
+                if (uri) env->DeleteLocalRef(uri);
+                if (intent) env->DeleteLocalRef(intent);
+            }
+            if (uriCls) env->DeleteLocalRef(uriCls);
+            if (intCls) env->DeleteLocalRef(intCls);
+            env->DeleteLocalRef(actCls);
+        });
+        return ok;
+    };
+    h.getSensorSnapshot = [st]() -> MemeNative::SensorSnapshot {
+        std::lock_guard<std::mutex> lock(sSensorMu);
+        if (!sSensorMgr) {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+            sSensorMgr = ASensorManager_getInstance();
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+            if (sSensorMgr) {
+                ALooper *lp = ALooper_forThread();
+                if (!lp) lp = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+                if (lp) {
+                    sSensorQueue = ASensorManager_createEventQueue(sSensorMgr, lp, 2, nullptr, nullptr);
+                    sAccel = ASensorManager_getDefaultSensor(sSensorMgr, ASENSOR_TYPE_ACCELEROMETER);
+                    sGyro = ASensorManager_getDefaultSensor(sSensorMgr, ASENSOR_TYPE_GYROSCOPE);
+                    if (sSensorQueue && sAccel) ASensorEventQueue_enableSensor(sSensorQueue, sAccel);
+                    if (sSensorQueue && sGyro) ASensorEventQueue_enableSensor(sSensorQueue, sGyro);
+                }
+            }
+        }
+        if (sSensorQueue) {
+            ASensorEvent ev{};
+            while (ASensorEventQueue_getEvents(sSensorQueue, &ev, 1) > 0) {
+                sLatestSensors.available = true;
+                if (ev.type == ASENSOR_TYPE_ACCELEROMETER) {
+                    sLatestSensors.accelX = ev.acceleration.x;
+                    sLatestSensors.accelY = ev.acceleration.y;
+                    sLatestSensors.accelZ = ev.acceleration.z;
+                } else if (ev.type == ASENSOR_TYPE_GYROSCOPE) {
+                    sLatestSensors.gyroX = ev.vector.x;
+                    sLatestSensors.gyroY = ev.vector.y;
+                    sLatestSensors.gyroZ = ev.vector.z;
+                }
+            }
+        }
+        (void)st;
+        return sLatestSensors;
+    };
+    h.hideKeyboard = [withJni]() -> bool {
+        bool ok = false;
+        withJni([&ok](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID gss = env->GetMethodID(actCls, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+            jstring svc = env->NewStringUTF("input_method");
+            jobject imm = env->CallObjectMethod(act, gss, svc);
+            jmethodID gw = env->GetMethodID(actCls, "getWindow", "()Landroid/view/Window;");
+            jobject win = env->CallObjectMethod(act, gw);
+            if (imm && win && !env->ExceptionCheck()) {
+                jclass wCls = env->GetObjectClass(win);
+                jmethodID gd = env->GetMethodID(wCls, "getDecorView", "()Landroid/view/View;");
+                jobject dv = env->CallObjectMethod(win, gd);
+                if (dv) {
+                    jclass vCls = env->GetObjectClass(dv);
+                    jmethodID gwt = env->GetMethodID(vCls, "getWindowToken", "()Landroid/os/IBinder;");
+                    jobject tok = env->CallObjectMethod(dv, gwt);
+                    if (tok) {
+                        jclass immCls = env->GetObjectClass(imm);
+                        jmethodID hk = env->GetMethodID(immCls, "hideSoftInputFromWindow", "(Landroid/os/IBinder;I)Z");
+                        if (hk) ok = (env->CallBooleanMethod(imm, hk, tok, 0) != JNI_FALSE);
+                        env->DeleteLocalRef(immCls);
+                        env->DeleteLocalRef(tok);
+                    }
+                    env->DeleteLocalRef(vCls);
+                    env->DeleteLocalRef(dv);
+                }
+                env->DeleteLocalRef(wCls);
+            }
+            env->DeleteLocalRef(svc);
+            if (win) env->DeleteLocalRef(win);
+            if (imm) env->DeleteLocalRef(imm);
+            env->DeleteLocalRef(actCls);
+        });
+        return ok;
+    };
+}
+
 void *androidMainLoop(void *arg) {
     auto *st = static_cast<AndroidAppState *>(arg);
     ALooper *looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
 
+    bindAndroidNativeHooks(st);
     char arg0[] = "meme_android";
     char *argv[] = {arg0};
     meme_user_entrypoint(1, argv);

@@ -114,9 +114,11 @@ struct EguiContext {
 
     // Deferred popups (combo boxes, tooltips) rendered at top z-order
     std::vector<std::function<void()>> deferredPopups;
+    bool didScroll = false;
 
     void beginFrame(const UiInputState &inState) {
         input = inState;
+        didScroll = false;
         cmds.clear();
         hitRegions.clear();
         deferredPopups.clear();
@@ -133,6 +135,8 @@ struct EguiContext {
         if (input.mouseReleased[0]) {
             for (auto &kv : draggingSlider) kv.second = false;
             for (auto &kv : draggingWindow) kv.second = false;
+            interaction.draggingScrollbar = false;
+            interaction.activeKey.clear();
             for (auto &kv : interaction.textFields) kv.second.handlePointerUp();
         }
 
@@ -146,6 +150,8 @@ struct EguiContext {
 
     void endFrame() {
         for (auto &fn : deferredPopups) fn();
+        input.wheelDeltaX = 0.0f;
+        input.wheelDeltaY = 0.0f;
     }
 
     std::string makeWidgetId(const std::string &labelOrKey) {
@@ -780,6 +786,7 @@ inline void EguiUi::scrollArea(const std::string &id, float maxH, const std::fun
     float h = std::min(maxH, std::max(60.0f, availableHeight()));
     UiRect area = allocateSize(w, h);
     float &offY = ctx->interaction.scrollOffsetsY[id];
+    float prevY = offY;
     if (area.contains(ctx->input.pointerX, ctx->input.pointerY) && std::abs(ctx->input.wheelDeltaY) > 0.01f) {
         offY = std::max(0.0f, offY - ctx->input.wheelDeltaY * 24.0f);
     }
@@ -789,13 +796,49 @@ inline void EguiUi::scrollArea(const std::string &id, float maxH, const std::fun
     if (fn) fn(sub);
     float contentH = std::max(h, sub.maxBottom - (area.y - offY));
     float maxScroll = std::max(0.0f, contentH - h);
+
+    if (maxScroll > 1.0f) {
+        float thumbH = std::max(18.0f, h * (h / contentH));
+        if (ctx->input.mousePressed[0] &&
+            ctx->input.pointerX >= area.x + area.width - 12.0f &&
+            ctx->input.pointerX <= area.x + area.width &&
+            ctx->input.pointerY >= area.y &&
+            ctx->input.pointerY <= area.y + h) {
+            ctx->interaction.draggingScrollbar = true;
+            ctx->interaction.activeKey = id;
+            float thumbY = area.y + (std::clamp(offY, 0.0f, maxScroll) / maxScroll) * (h - thumbH);
+            if (ctx->input.pointerY >= thumbY && ctx->input.pointerY <= thumbY + thumbH) {
+                ctx->interaction.scrollbarDragOffset = ctx->input.pointerY - thumbY;
+            } else {
+                ctx->interaction.scrollbarDragOffset = thumbH * 0.5f;
+            }
+        }
+        if (ctx->input.mouseDown[0] && ctx->interaction.draggingScrollbar && ctx->interaction.activeKey == id) {
+            float denom = std::max(1.0f, h - thumbH);
+            float ratio = std::clamp((ctx->input.pointerY - area.y - ctx->interaction.scrollbarDragOffset) / denom, 0.0f, 1.0f);
+            offY = ratio * maxScroll;
+        }
+    }
+
     offY = std::clamp(offY, 0.0f, maxScroll);
+    if (std::abs(offY - prevY) > 0.01f) ctx->didScroll = true;
     painter().popClip();
 
     if (maxScroll > 1.0f) {
         float thumbH = std::max(18.0f, h * (h / contentH));
         float thumbY = area.y + (offY / maxScroll) * (h - thumbH);
         painter().rectFilled(area.x + area.width - 5.0f, thumbY, 4.0f, thumbH, 2.0f, "#64748b", 0.7f);
+    }
+
+    int sid = ctx->registerHitRegion("egui_sa_" + id, area, "scrollarea", "scrollarea", id, false, false, zIndex);
+    if (!ctx->hitRegions.empty() && ctx->hitRegions.back().id == sid) {
+        auto &hr = ctx->hitRegions.back();
+        hr.hasScroll = true;
+        hr.isScrollContainer = true;
+        hr.scrollY = offY;
+        hr.maxScrollY = maxScroll;
+        hr.contentW = area.width;
+        hr.contentH = contentH;
     }
 }
 

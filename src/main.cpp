@@ -1932,7 +1932,13 @@ static void handleCompile(int argc, char *argv[])
 
 struct TapriManifest {
     std::string name;
+    std::string displayName;
+    std::string bundleId;
     std::string version = "1.0.0";
+    std::string description;
+    std::string icon;
+    std::string scheme;
+    std::string themeColor;
     std::string entry;
     std::string output;
 };
@@ -1983,7 +1989,14 @@ static bool parseTapriJson(const std::string &content, TapriManifest &manifest, 
     };
 
     manifest.name = extractField("name");
+    manifest.displayName = extractField("displayName");
+    manifest.bundleId = extractField("bundleId");
     manifest.version = extractField("version");
+    manifest.description = extractField("description");
+    manifest.icon = extractField("icon");
+    manifest.scheme = extractField("scheme");
+    if (manifest.scheme.empty()) manifest.scheme = extractField("urlScheme");
+    manifest.themeColor = extractField("themeColor");
     manifest.entry = extractField("entry");
     if (manifest.entry.empty()) manifest.entry = extractField("main");
     manifest.output = extractField("output");
@@ -2105,13 +2118,14 @@ static void handlePackage(int argc, char *argv[])
 {
     if (argc < 3)
     {
-        std::cout << formatRichText("[peela]Usage:[/] ./meme package <file.meme> [--target=mac|win|deb|rpm|ipk|apk|ipa|web|all] [-o outdir] [-v]\n");
+        std::cout << formatRichText("[peela]Usage:[/] ./meme package <file.meme> [--target=mac|win|deb|rpm|ipk|apk|ipa|web|all] [-o outdir] [--icon path] [--name name] [--id bundleId] [--version v] [--scheme uri] [-v]\n");
         return;
     }
     std::string file = "";
     std::string target = "mac";
     std::string outDir = "dist";
     bool verbose = false;
+    MemePackager::PackageConfig pkgCfg;
 
     for (int i = 2; i < argc; ++i)
     {
@@ -2127,6 +2141,46 @@ static void handlePackage(int argc, char *argv[])
         else if (a == "--target" && i + 1 < argc)
         {
             target = argv[++i];
+        }
+        else if (a.rfind("--icon=", 0) == 0)
+        {
+            pkgCfg.iconPath = a.substr(7);
+        }
+        else if (a == "--icon" && i + 1 < argc)
+        {
+            pkgCfg.iconPath = argv[++i];
+        }
+        else if (a.rfind("--name=", 0) == 0)
+        {
+            pkgCfg.displayName = a.substr(7);
+        }
+        else if (a == "--name" && i + 1 < argc)
+        {
+            pkgCfg.displayName = argv[++i];
+        }
+        else if (a.rfind("--id=", 0) == 0)
+        {
+            pkgCfg.bundleId = a.substr(5);
+        }
+        else if (a == "--id" && i + 1 < argc)
+        {
+            pkgCfg.bundleId = argv[++i];
+        }
+        else if (a.rfind("--version=", 0) == 0)
+        {
+            pkgCfg.version = a.substr(10);
+        }
+        else if (a == "--version" && i + 1 < argc)
+        {
+            pkgCfg.version = argv[++i];
+        }
+        else if (a.rfind("--scheme=", 0) == 0)
+        {
+            pkgCfg.urlScheme = a.substr(9);
+        }
+        else if (a == "--scheme" && i + 1 < argc)
+        {
+            pkgCfg.urlScheme = argv[++i];
         }
         else if (a == "-v" || a == "--verbose")
         {
@@ -2145,7 +2199,7 @@ static void handlePackage(int argc, char *argv[])
     }
 
     std::cout << formatRichText("[asmani bold]📦 Packaging " + file + " (target=" + target + ") -> " + outDir + "...[/]\n");
-    MemePackager::PackageResult pr = MemePackager::packageForTarget(file, target, outDir, verbose);
+    MemePackager::PackageResult pr = MemePackager::packageForTarget(file, target, outDir, verbose, pkgCfg);
     if (!pr.success)
     {
         std::cerr << formatRichText("[laal bold]❌ Packaging failed:\n" + pr.error + "[/]\n");

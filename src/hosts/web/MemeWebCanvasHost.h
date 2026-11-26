@@ -3,6 +3,7 @@
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
+#include "../../platform/MemeNativeApis.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -30,8 +31,22 @@ inline void bindSession(MemeUI::UiSession *sess, std::function<void()> rerender 
     g_activeSession = sess;
     g_rerenderFn = std::move(rerender);
     if (sess) {
-        sess->clipboardReadFn = []() -> std::string { return g_clipboardBuf; };
-        sess->clipboardWriteFn = [](const std::string &s) { g_clipboardBuf = s; };
+        sess->clipboardReadFn = []() -> std::string { return MemeNative::clipboardGet(); };
+        sess->clipboardWriteFn = [](const std::string &s) { g_clipboardBuf = s; MemeNative::clipboardSet(s); };
+        auto &nh = MemeNative::hooks();
+        nh.requestRerender = []() {
+            if (g_activeSession) g_activeSession->needsRender = true;
+            if (g_rerenderFn) g_rerenderFn();
+        };
+        nh.getScreenInfo = []() -> MemeNative::ScreenInfo {
+            MemeNative::ScreenInfo s;
+            if (g_activeSession) {
+                s.width = g_activeSession->input.viewportW;
+                s.height = g_activeSession->input.viewportH;
+                s.scale = g_activeSession->input.dpiScale > 0 ? g_activeSession->input.dpiScale : 1.0f;
+            }
+            return s;
+        };
     }
 }
 
@@ -51,19 +66,33 @@ inline std::string buildBatchesJson(const MemeUI::UiMesh &mesh) {
     return out;
 }
 
-inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const std::string &title = "MEME-UI Web Native") {
+inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const std::string &title = "MEME-UI Web Native", const std::string &themeColor = "#020617", bool includePwaMeta = false) {
+    std::string pwaHead;
+    if (includePwaMeta) {
+        pwaHead =
+            "<link rel=\"manifest\" href=\"manifest.webmanifest\" />\n"
+            "<link rel=\"icon\" href=\"favicon.ico\" />\n"
+            "<link rel=\"apple-touch-icon\" href=\"apple-touch-icon.png\" />\n"
+            "<meta name=\"theme-color\" content=\"" + themeColor + "\" />\n"
+            "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\" />\n"
+            "<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\" />\n";
+    }
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>)HTML") + title + R"HTML(</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+)HTML") + pwaHead + R"HTML(<title>)HTML" + title + R"HTML(</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: )HTML" + themeColor + R"HTML(; }
   canvas#meme-canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
+  #meme-splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: )HTML" + themeColor + R"HTML(; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; z-index: 9999; pointer-events: none; }
+  #meme-splash .meme-spin { width: 34px; height: 34px; border-radius: 9999px; border: 3px solid #1e293b; border-top-color: #6366f1; animation: memeSpin 0.8s linear infinite; }
+  @keyframes memeSpin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
+<div id="meme-splash"><div class="meme-spin"></div><div>)HTML" + title + R"HTML(</div></div>
 <canvas id="meme-canvas" tabindex="0"></canvas>
 <script>
 (async () => {
@@ -216,6 +245,8 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
   window.Module = {
     onRuntimeInitialized() {
       Mod = window.Module;
+      const splash = document.getElementById("meme-splash");
+      if (splash) splash.remove();
       initGl();
       if (Mod._meme_web_start) Mod._meme_web_start();
       renderFrame();

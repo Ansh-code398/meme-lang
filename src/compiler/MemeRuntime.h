@@ -73,6 +73,8 @@ inline void meme_close_sock(int fd) {
 }
 #endif
 
+#include "../platform/MemeNativeApis.h"
+
 // ==========================================
 // 0. RAII ScopeGuard & Signals
 // ==========================================
@@ -745,6 +747,22 @@ public:
     }
 
     // Arithmetic operators
+    MemeValue operator-() const {
+        if (type == TYPE_INT) return MemeValue(-i_val);
+        if (type == TYPE_FLOAT) return MemeValue(-f_val);
+        return MemeValue(-as_double());
+    }
+
+    MemeValue operator+() const {
+        if (type == TYPE_INT) return MemeValue(i_val);
+        if (type == TYPE_FLOAT) return MemeValue(f_val);
+        return MemeValue(as_double());
+    }
+
+    MemeValue operator~() const {
+        return MemeValue(~as_int());
+    }
+
     MemeValue operator+(const MemeValue &other) const {
         if (type == TYPE_INT && other.type == TYPE_INT) {
             return MemeValue(i_val + other.i_val);
@@ -2547,6 +2565,12 @@ inline auto meme_ternary_eval(bool cond, F1 &&fa, F2 &&fb) {
 template <typename M, typename K>
 inline bool meme_has(const M &map, const K &key) {
     if constexpr (std::is_same_v<std::decay_t<M>, MemeValue>) {
+        if (map.type == MemeValue::TYPE_MAP && map.map_data) {
+            auto it = map.map_data->map_val.find("has");
+            if (it != map.map_data->map_val.end() && it->second.is_callable()) {
+                return it->second.call_args({MemeValue(key)}).is_truthy();
+            }
+        }
         return map.has(key);
     } else if constexpr (std::is_same_v<std::decay_t<K>, MemeValue>) {
         if constexpr (requires { map.contains(key.as_int()); }) {
@@ -2576,21 +2600,33 @@ inline bool meme_has(const M &map, const K &key) {
 }
 
 // Map key removal helper (meme_remove)
-template <typename M, typename K>
-inline auto meme_remove(M &map, const K &key) {
+template <typename M, typename K, typename... Rest>
+inline auto meme_remove(M &&map, const K &key, const Rest &...rest) {
     if constexpr (std::is_same_v<std::decay_t<M>, MemeValue>) {
-        return map.remove(key);
-    } else if constexpr (std::is_same_v<std::decay_t<K>, MemeValue>) {
-        if constexpr (requires { map.erase(key.as_int()); }) {
-            return map.erase(key.as_int());
-        } else if constexpr (requires { map.erase(key.to_string()); }) {
-            return map.erase(key.to_string());
+        if (map.type == MemeValue::TYPE_MAP && map.map_data) {
+            auto it = map.map_data->map_val.find("remove");
+            if (it != map.map_data->map_val.end() && it->second.is_callable()) {
+                return it->second.call_args({MemeValue(key), MemeValue(rest)...}).is_truthy();
+            }
         }
-    } else {
-        if constexpr (requires { map.erase(key); }) {
-            return map.erase(key);
-        } else if constexpr (requires { map.remove(key); }) {
-            return map.remove(key);
+        if constexpr (sizeof...(Rest) == 0) {
+            return const_cast<MemeValue &>(map).remove(key);
+        } else {
+            return false;
+        }
+    } else if constexpr (sizeof...(Rest) == 0) {
+        if constexpr (std::is_same_v<std::decay_t<K>, MemeValue>) {
+            if constexpr (requires { map.erase(key.as_int()); }) {
+                return map.erase(key.as_int());
+            } else if constexpr (requires { map.erase(key.to_string()); }) {
+                return map.erase(key.to_string());
+            }
+        } else {
+            if constexpr (requires { map.erase(key); }) {
+                return map.erase(key);
+            } else if constexpr (requires { map.remove(key); }) {
+                return map.remove(key);
+            }
         }
     }
 }
@@ -3204,19 +3240,23 @@ struct SystummModule {
     std::string kahan() { return cwd(); }
 
     std::string platform() {
-#if defined(__EMSCRIPTEN__)
-        return "wasm";
-#elif defined(_WIN32)
-        return "windows";
-#elif defined(__APPLE__)
-        return "mac";
-#elif defined(__linux__)
-        return "linux";
-#else
-        return "unknown";
-#endif
+        return MemeNative::defaultPlatformName();
     }
     std::string kaun() { return platform(); }
+
+    std::string os_version() {
+        return MemeNative::getDeviceInfo().osVersion;
+    }
+    std::string locale() {
+        return MemeNative::getDeviceInfo().locale;
+    }
+    bool copy(const std::string &txt) {
+        return MemeNative::clipboardSet(txt);
+    }
+    bool copy(const MemeValue &txt) { return copy(txt.to_string()); }
+    std::string paste() {
+        return MemeNative::clipboardGet();
+    }
 
     void exit(int code = 0) {
         std::exit(code);
@@ -5455,5 +5495,426 @@ inline MemeValue meme_call_method(const std::string &str, const std::string &met
     MemeValue tmp(str);
     return meme_call_method(tmp, method, std::move(args));
 }
+
+template <typename T, typename... Args>
+inline auto meme_send_or_call(T &&obj, Args &&...args) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        return meme_call_method(obj, "send", std::vector<MemeValue>{MemeValue(args)...});
+    } else if constexpr (requires { obj.send(args...); }) {
+        return obj.send(std::forward<Args>(args)...);
+    } else {
+        return MemeValue();
+    }
+}
+
+template <typename T, typename... Args>
+inline auto meme_khol_or_call(T &&obj, Args &&...args) {
+    if constexpr (std::is_same_v<std::decay_t<T>, MemeValue>) {
+        return meme_call_method(obj, "khol", std::vector<MemeValue>{MemeValue(args)...});
+    } else if constexpr (requires { obj.khol(args...); }) {
+        return obj.khol(std::forward<Args>(args)...);
+    } else {
+        return MemeValue();
+    }
+}
+
+// ==========================================
+// 19. Unified Cross-Platform Native APIs (`native` / `app`)
+// ==========================================
+
+inline MemeValue meme_async_res_to_value(const MemeNative::AsyncResponse &r) {
+    auto plist = std::make_shared<std::vector<MemeValue>>();
+    for (const auto &p : r.paths) plist->push_back(MemeValue(p));
+    return make_map({
+        {"ok", MemeValue(r.ok)},
+        {"accepted", MemeValue(r.accepted)},
+        {"cancelled", MemeValue(r.cancelled)},
+        {"value", MemeValue(r.value)},
+        {"path", MemeValue(r.path)},
+        {"paths", MemeValue(plist)},
+        {"lat", MemeValue(r.lat)},
+        {"lon", MemeValue(r.lon)},
+        {"accuracy", MemeValue(r.accuracy)},
+        {"error", MemeValue(r.error)}
+    });
+}
+
+inline MemeValue meme_device_info_to_value(const MemeNative::DeviceInfo &d) {
+    return make_map({
+        {"os", MemeValue(d.os)},
+        {"arch", MemeValue(d.arch)},
+        {"model", MemeValue(d.model)},
+        {"osVersion", MemeValue(d.osVersion)},
+        {"locale", MemeValue(d.locale)},
+        {"timezone", MemeValue(d.timezone)},
+        {"theme", MemeValue(d.theme)},
+        {"isDark", MemeValue(d.isDark)},
+        {"isMobile", MemeValue(d.isMobile)},
+        {"isDesktop", MemeValue(d.isDesktop)},
+        {"isWeb", MemeValue(d.isWeb)}
+    });
+}
+
+inline MemeValue meme_battery_info_to_value(const MemeNative::BatteryInfo &b) {
+    return make_map({
+        {"level", MemeValue(b.level)},
+        {"charging", MemeValue(b.charging)},
+        {"state", MemeValue(b.state)},
+        {"supported", MemeValue(b.supported)}
+    });
+}
+
+inline MemeValue meme_network_info_to_value(const MemeNative::NetworkInfo &n) {
+    return make_map({
+        {"online", MemeValue(n.online)},
+        {"type", MemeValue(n.type)}
+    });
+}
+
+inline MemeValue build_native_module() {
+    auto makeCb = [](const std::vector<MemeValue> &a, size_t idx) -> MemeNative::AsyncCallback {
+        if (idx < a.size() && a[idx].is_callable()) {
+            MemeValue cb = a[idx];
+            return [cb](const MemeNative::AsyncResponse &r) {
+                cb.call_args({meme_async_res_to_value(r)});
+            };
+        }
+        return nullptr;
+    };
+    auto findLastCb = [](const std::vector<MemeValue> &a) -> MemeNative::AsyncCallback {
+        if (!a.empty() && a.back().is_callable()) {
+            MemeValue cb = a.back();
+            return [cb](const MemeNative::AsyncResponse &r) {
+                cb.call_args({meme_async_res_to_value(r)});
+            };
+        }
+        return nullptr;
+    };
+    auto readOptTitle = [](const std::vector<MemeValue> &a, const std::string &defTitle) -> std::string {
+        if (a.empty() || a[0].is_callable()) return defTitle;
+        if (a[0].type == MemeValue::TYPE_MAP) return a[0].get("title", MemeValue(defTitle)).to_string();
+        return a[0].to_string();
+    };
+    auto readOptDefName = [](const std::vector<MemeValue> &a) -> std::string {
+        if (!a.empty() && a[0].type == MemeValue::TYPE_MAP) return a[0].get("defaultName", MemeValue("")).to_string();
+        return "";
+    };
+
+    MemeValue clipboardMod = make_map({
+        {"get", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardGet()); })},
+        {"set", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::clipboardSet(a.empty() ? "" : a[0].to_string())); })},
+        {"hasText", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardHasText()); })},
+        {"clear", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardClear()); })}
+    });
+
+    MemeValue dialogMod = make_map({
+        {"alert", meme_fn([makeCb](const std::vector<MemeValue> &a) {
+            std::string title = a.size() > 0 ? a[0].to_string() : "Alert";
+            std::string msg = a.size() > 1 ? a[1].to_string() : "";
+            MemeNative::alertAsync(title, msg, makeCb(a, 2));
+            return MemeValue(true);
+        })},
+        {"confirm", meme_fn([makeCb](const std::vector<MemeValue> &a) {
+            std::string title = a.size() > 0 ? a[0].to_string() : "Confirm";
+            std::string msg = a.size() > 1 ? a[1].to_string() : "";
+            auto accepted = std::make_shared<bool>(true);
+            auto cb = makeCb(a, 2);
+            MemeNative::confirmAsync(title, msg, [cb, accepted](const MemeNative::AsyncResponse &r) {
+                *accepted = r.accepted;
+                if (cb) cb(r);
+            });
+            return MemeValue(*accepted);
+        })},
+        {"prompt", meme_fn([findLastCb](const std::vector<MemeValue> &a) {
+            std::string title = a.size() > 0 ? a[0].to_string() : "Input";
+            std::string msg = a.size() > 1 ? a[1].to_string() : "";
+            std::string def = (a.size() > 2 && !a[2].is_callable()) ? a[2].to_string() : "";
+            auto outVal = std::make_shared<std::string>(def);
+            auto cb = findLastCb(a);
+            MemeNative::promptAsync(title, msg, def, [cb, outVal](const MemeNative::AsyncResponse &r) {
+                *outVal = r.value;
+                if (cb) cb(r);
+            });
+            return MemeValue(*outVal);
+        })},
+        {"pickFile", meme_fn([findLastCb, readOptTitle, readOptDefName](const std::vector<MemeValue> &a) {
+            auto syncRes = std::make_shared<MemeNative::AsyncResponse>();
+            auto cb = findLastCb(a);
+            MemeNative::fileDialogAsync("open", readOptTitle(a, "Open File"), readOptDefName(a), [cb, syncRes](const MemeNative::AsyncResponse &r) {
+                *syncRes = r;
+                if (cb) cb(r);
+            });
+            return meme_async_res_to_value(*syncRes);
+        })},
+        {"saveFile", meme_fn([findLastCb, readOptTitle, readOptDefName](const std::vector<MemeValue> &a) {
+            auto syncRes = std::make_shared<MemeNative::AsyncResponse>();
+            auto cb = findLastCb(a);
+            MemeNative::fileDialogAsync("save", readOptTitle(a, "Save File"), readOptDefName(a), [cb, syncRes](const MemeNative::AsyncResponse &r) {
+                *syncRes = r;
+                if (cb) cb(r);
+            });
+            return meme_async_res_to_value(*syncRes);
+        })},
+        {"pickFolder", meme_fn([findLastCb, readOptTitle, readOptDefName](const std::vector<MemeValue> &a) {
+            auto syncRes = std::make_shared<MemeNative::AsyncResponse>();
+            auto cb = findLastCb(a);
+            MemeNative::fileDialogAsync("folder", readOptTitle(a, "Select Folder"), readOptDefName(a), [cb, syncRes](const MemeNative::AsyncResponse &r) {
+                *syncRes = r;
+                if (cb) cb(r);
+            });
+            return meme_async_res_to_value(*syncRes);
+        })}
+    });
+
+    MemeValue hapticsMod = make_map({
+        {"impact", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::hapticImpact(a.empty() ? "medium" : a[0].to_string())); })},
+        {"notify", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::hapticNotify(a.empty() ? "success" : a[0].to_string())); })},
+        {"selection", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::hapticSelection()); })},
+        {"vibrate", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::hapticVibrate(a.empty() ? 100 : static_cast<int>(a[0].as_int()))); })}
+    });
+
+    MemeValue notifyMod = make_map({
+        {"requestPermission", meme_fn([findLastCb](const std::vector<MemeValue> &a) {
+            auto ok = std::make_shared<bool>(true);
+            auto cb = findLastCb(a);
+            MemeNative::notifyRequestPermissionAsync([cb, ok](const MemeNative::AsyncResponse &r) { *ok = r.accepted; if (cb) cb(r); });
+            return MemeValue(*ok);
+        })},
+        {"send", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::notifySend(a.size() > 0 ? a[0].to_string() : "Notification", a.size() > 1 ? a[1].to_string() : ""));
+        })},
+        {"badge", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::setBadgeCount(a.empty() ? 0 : static_cast<int>(a[0].as_int())));
+        })}
+    });
+
+    auto shareFn = meme_fn([findLastCb](const std::vector<MemeValue> &a) {
+        std::string text, title, url;
+        if (!a.empty() && a[0].type == MemeValue::TYPE_MAP) {
+            text = a[0].get("text", MemeValue("")).to_string();
+            title = a[0].get("title", MemeValue("")).to_string();
+            url = a[0].get("url", MemeValue("")).to_string();
+        } else if (!a.empty() && !a[0].is_callable()) {
+            text = a[0].to_string();
+        }
+        MemeNative::shareAsync(text, title, url, findLastCb(a));
+        return MemeValue(true);
+    });
+
+    MemeValue launcherMod = make_map({
+        {"openUrl", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(a.empty() ? false : MemeNative::openUrl(a[0].to_string())); })},
+        {"canOpenUrl", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(a.empty() ? false : MemeNative::canOpenUrl(a[0].to_string())); })},
+        {"share", shareFn}
+    });
+
+    MemeValue deviceMod = make_map({
+        {"info", meme_fn([](const std::vector<MemeValue> &) { return meme_device_info_to_value(MemeNative::getDeviceInfo()); })},
+        {"platform", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().os); })},
+        {"isMobile", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().isMobile); })},
+        {"isDesktop", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().isDesktop); })},
+        {"isWeb", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().isWeb); })},
+        {"locale", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().locale); })},
+        {"timezone", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().timezone); })},
+        {"theme", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::getDeviceInfo().theme); })},
+        {"safeArea", meme_fn([](const std::vector<MemeValue> &) {
+            auto s = MemeNative::getScreenInfo();
+            return make_map({
+                {"top", MemeValue(static_cast<double>(s.safeTop))},
+                {"bottom", MemeValue(static_cast<double>(s.safeBottom))},
+                {"left", MemeValue(static_cast<double>(s.safeLeft))},
+                {"right", MemeValue(static_cast<double>(s.safeRight))}
+            });
+        })},
+        {"screen", meme_fn([](const std::vector<MemeValue> &) {
+            auto s = MemeNative::getScreenInfo();
+            return make_map({
+                {"width", MemeValue(static_cast<double>(s.width))},
+                {"height", MemeValue(static_cast<double>(s.height))},
+                {"scale", MemeValue(static_cast<double>(s.scale))},
+                {"safeTop", MemeValue(static_cast<double>(s.safeTop))},
+                {"safeBottom", MemeValue(static_cast<double>(s.safeBottom))},
+                {"safeLeft", MemeValue(static_cast<double>(s.safeLeft))},
+                {"safeRight", MemeValue(static_cast<double>(s.safeRight))}
+            });
+        })}
+    });
+
+    auto batteryFn = meme_fn([](const std::vector<MemeValue> &) { return meme_battery_info_to_value(MemeNative::getBatteryInfo()); });
+    auto networkFn = meme_fn([](const std::vector<MemeValue> &) { return meme_network_info_to_value(MemeNative::getNetworkInfo()); });
+    MemeValue powerMod = make_map({{"battery", batteryFn}, {"network", networkFn}});
+
+    auto pathsFn = meme_fn([](const std::vector<MemeValue> &) {
+        auto p = MemeNative::getAppPaths();
+        return make_map({
+            {"appData", MemeValue(p.appData)},
+            {"cache", MemeValue(p.cache)},
+            {"documents", MemeValue(p.documents)},
+            {"temp", MemeValue(p.temp)}
+        });
+    });
+
+    MemeValue storageMod = make_map({
+        {"get", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::storageGet(a.size() > 0 ? a[0].to_string() : "", a.size() > 1 ? a[1].to_string() : ""));
+        })},
+        {"set", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::storageSet(a.size() > 0 ? a[0].to_string() : "", a.size() > 1 ? a[1].to_string() : ""));
+        })},
+        {"remove", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(a.empty() ? false : MemeNative::storageRemove(a[0].to_string()));
+        })},
+        {"keys", meme_fn([](const std::vector<MemeValue> &) {
+            auto ks = MemeNative::storageKeys();
+            auto out = std::make_shared<std::vector<MemeValue>>();
+            for (const auto &k : ks) out->push_back(MemeValue(k));
+            return MemeValue(out);
+        })}
+    });
+
+    MemeValue keychainMod = make_map({
+        {"get", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::keychainGet(a.size() > 0 ? a[0].to_string() : "default", a.size() > 1 ? a[1].to_string() : ""));
+        })},
+        {"set", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::keychainSet(a.size() > 0 ? a[0].to_string() : "default", a.size() > 1 ? a[1].to_string() : "", a.size() > 2 ? a[2].to_string() : ""));
+        })},
+        {"remove", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::keychainRemove(a.size() > 0 ? a[0].to_string() : "default", a.size() > 1 ? a[1].to_string() : ""));
+        })}
+    });
+
+    MemeValue biometricsMod = make_map({
+        {"isAvailable", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::biometricsAvailable()); })},
+        {"authenticate", meme_fn([findLastCb](const std::vector<MemeValue> &a) {
+            std::string reason = (!a.empty() && !a[0].is_callable()) ? a[0].to_string() : "Authenticate";
+            MemeNative::biometricsAuthAsync(reason, findLastCb(a));
+            return MemeValue(true);
+        })}
+    });
+
+    MemeValue audioMod = make_map({
+        {"beep", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(MemeNative::beep(a.size() > 0 ? a[0].as_double() : 440.0, a.size() > 1 ? static_cast<int>(a[1].as_int()) : 150));
+        })},
+        {"speak", meme_fn([](const std::vector<MemeValue> &a) {
+            double rate = 1.0;
+            if (a.size() > 1) {
+                rate = (a[1].type == MemeValue::TYPE_MAP) ? a[1].get("rate", MemeValue(1.0)).as_double() : a[1].as_double();
+            }
+            return MemeValue(MemeNative::speak(a.empty() ? "" : a[0].to_string(), rate));
+        })},
+        {"stopSpeaking", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::stopSpeaking()); })},
+        {"playSound", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(a.empty() ? false : MemeNative::playSound(a[0].to_string())); })}
+    });
+
+    MemeValue locationMod = make_map({
+        {"get", meme_fn([findLastCb](const std::vector<MemeValue> &a) {
+            MemeNative::getLocationAsync(findLastCb(a));
+            return MemeValue(true);
+        })}
+    });
+
+    MemeValue cameraMod = make_map({
+        {"pickPhoto", meme_fn([findLastCb, readOptTitle](const std::vector<MemeValue> &a) {
+            MemeNative::fileDialogAsync("photo", readOptTitle(a, "Pick Photo"), "", findLastCb(a));
+            return MemeValue(true);
+        })},
+        {"capture", meme_fn([findLastCb, readOptTitle](const std::vector<MemeValue> &a) {
+            MemeNative::fileDialogAsync("camera", readOptTitle(a, "Capture Photo"), "", findLastCb(a));
+            return MemeValue(true);
+        })}
+    });
+
+    MemeValue sensorsMod = make_map({
+        {"accelerometer", meme_fn([](const std::vector<MemeValue> &) {
+            auto s = MemeNative::getSensorSnapshot();
+            return make_map({{"x", MemeValue(s.accelX)}, {"y", MemeValue(s.accelY)}, {"z", MemeValue(s.accelZ)}, {"available", MemeValue(s.available)}});
+        })},
+        {"gyroscope", meme_fn([](const std::vector<MemeValue> &) {
+            auto s = MemeNative::getSensorSnapshot();
+            return make_map({{"x", MemeValue(s.gyroX)}, {"y", MemeValue(s.gyroY)}, {"z", MemeValue(s.gyroZ)}, {"available", MemeValue(s.available)}});
+        })},
+        {"poll", meme_fn([](const std::vector<MemeValue> &) {
+            auto s = MemeNative::getSensorSnapshot();
+            return make_map({
+                {"accelX", MemeValue(s.accelX)}, {"accelY", MemeValue(s.accelY)}, {"accelZ", MemeValue(s.accelZ)},
+                {"gyroX", MemeValue(s.gyroX)}, {"gyroY", MemeValue(s.gyroY)}, {"gyroZ", MemeValue(s.gyroZ)},
+                {"available", MemeValue(s.available)}
+            });
+        })}
+    });
+
+    MemeValue windowMod = make_map({
+        {"setTitle", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::setWindowTitle(a.empty() ? "" : a[0].to_string())); })},
+        {"setSize", meme_fn([](const std::vector<MemeValue> &a) {
+            return MemeValue(a.size() >= 2 ? MemeNative::setWindowSize(static_cast<int>(a[0].as_int()), static_cast<int>(a[1].as_int())) : false);
+        })},
+        {"setFullscreen", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::setFullscreen(a.empty() ? true : a[0].is_truthy())); })},
+        {"minimize", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::minimizeWindow()); })},
+        {"focus", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::focusWindow()); })},
+        {"hideKeyboard", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::hideKeyboard()); })}
+    });
+
+    return make_map({
+        {"clipboard", clipboardMod},
+        {"dialog", dialogMod},
+        {"haptics", hapticsMod},
+        {"notify", notifyMod},
+        {"launcher", launcherMod},
+        {"share", shareFn},
+        {"device", deviceMod},
+        {"power", powerMod},
+        {"battery", batteryFn},
+        {"network", networkFn},
+        {"paths", pathsFn},
+        {"storage", storageMod},
+        {"keychain", keychainMod},
+        {"biometrics", biometricsMod},
+        {"biometric", biometricsMod},
+        {"audio", audioMod},
+        {"camera", cameraMod},
+        {"location", locationMod},
+        {"sensors", sensorsMod},
+        {"window", windowMod}
+    });
+}
+
+inline MemeValue native = build_native_module();
+
+inline MemeValue build_app_module() {
+    MemeValue alertFn = meme_index(meme_index(native, "dialog"), "alert");
+    MemeValue confirmFn = meme_index(meme_index(native, "dialog"), "confirm");
+    MemeValue promptFn = meme_index(meme_index(native, "dialog"), "prompt");
+    MemeValue pickFileFn = meme_fn([](const std::vector<MemeValue> &a) {
+        auto res = std::make_shared<MemeNative::AsyncResponse>();
+        MemeNative::fileDialogAsync("open", a.empty() ? "Select File" : a[0].to_string(), "", [res](const MemeNative::AsyncResponse &r) { *res = r; });
+        return MemeValue(res->path);
+    });
+    MemeValue openFn = meme_index(meme_index(native, "launcher"), "openUrl");
+    return make_map({
+        {"alert", alertFn},
+        {"dikha_box", alertFn},
+        {"puch_box", promptFn},
+        {"input_box", promptFn},
+        {"han_na_box", confirmFn},
+        {"confirm_box", confirmFn},
+        {"file_chuno", pickFileFn},
+        {"pick_file", pickFileFn},
+        {"save_file", meme_index(meme_index(native, "dialog"), "saveFile")},
+        {"pick_folder", meme_index(meme_index(native, "dialog"), "pickFolder")},
+        {"notify", meme_index(meme_index(native, "notify"), "send")},
+        {"khol", openFn},
+        {"open", openFn},
+        {"open_url", openFn},
+        {"openUrl", openFn},
+        {"share", meme_index(native, "share")},
+        {"haptic", meme_index(meme_index(native, "haptics"), "impact")},
+        {"device_info", meme_index(meme_index(native, "device"), "info")},
+        {"battery", meme_index(native, "battery")},
+        {"network", meme_index(native, "network")}
+    });
+}
+
+inline MemeValue app = build_app_module();
 
 #endif // MEME_RUNTIME_H

@@ -9,6 +9,7 @@
 #include "../types/TypeChecker.h"
 #include "../utils/StringInterner.h"
 #include "../interpreter/Interpreter.h"
+#include "../packager/IconAssets.h"
 
 // Test helper: runs code in a fresh interpreter and captures stdout
 static std::string runAndCapture(const std::string &code)
@@ -3073,6 +3074,178 @@ void testNativeUiPrimitivesTextEngineAndTessellator()
     std::cout << "PASSED\n";
 }
 
+static void testInnerContainerScrollAndNativeApisAndIcons()
+{
+    std::cout << "Testing inner container scroll, horizontal scroll, scrollbar drag, egui.scroll_area, Native APIs, and Icon builders... ";
+
+    // 1. Multi-level rowFlex -> Card -> flex-1 overflow-y-auto (overscroll-contain) inside bounded desktop layout
+    {
+        MemeUI::UiSession sess;
+        MemeUI::UiNode root;
+        root.tag = "div"; root.testId = "desk_root";
+        root.classStr = "h-screen w-full p-4 flex flex-col gap-3 overflow-y-auto";
+
+        MemeUI::UiNode row;
+        row.tag = "div"; row.classStr = "flex flex-row gap-3 flex-1";
+        MemeUI::UiNode card;
+        card.tag = "div"; card.classStr = "flex-1 flex flex-col gap-2 p-3 bg-slate-900";
+        MemeUI::UiNode listBox;
+        listBox.tag = "div"; listBox.testId = "chat_inner_list";
+        listBox.classStr = "flex-1 flex flex-col gap-2 overflow-y-auto overscroll-contain";
+        for (int i = 0; i < 16; ++i) {
+            MemeUI::UiNode item;
+            item.tag = "div"; item.classStr = "h-16 bg-slate-800 rounded-lg";
+            MemeUI::UiNode t; t.isText = true; t.text = "Msg " + std::to_string(i);
+            item.children.push_back(t);
+            listBox.children.push_back(item);
+        }
+        card.children.push_back(listBox);
+        row.children.push_back(card);
+        root.children.push_back(row);
+
+        // Extra sibling to make sure root itself also overflows vertically
+        MemeUI::UiNode tallSib; tallSib.tag = "div"; tallSib.classStr = "h-48 shrink-0";
+        root.children.push_back(tallSib);
+
+        sess.cachedRoot = root;
+        sess.renderFrame(1000.0f, 600.0f);
+        auto innerRes = sess.agentQuery("", "", "chat_inner_list");
+        assert(innerRes.size() == 1 && innerRes[0].isScrollContainer && innerRes[0].maxScrollY > 200.0f);
+
+        // Scroll inside inner list -> inner list scrolls, root stays 0
+        float ix = innerRes[0].x + 40.0f, iy = innerRes[0].y + 40.0f;
+        assert(sess.handleScroll(ix, iy, 0.0f, -3.0f));
+        sess.renderFrame(1000.0f, 600.0f);
+        auto innerAfter = sess.agentQuery("", "", "chat_inner_list");
+        assert(innerAfter[0].scrollY > 40.0f);
+        auto rootAfter = sess.agentQuery("", "", "desk_root");
+        assert(rootAfter[0].scrollY == 0.0f);
+
+        // Drag vertical scrollbar thumb/track to bottom -> inner scroll reaches maxScrollY
+        float sbX = innerAfter[0].x + innerAfter[0].width - 4.0f;
+        float sbTopY = innerAfter[0].y + 8.0f;
+        float sbBotY = innerAfter[0].y + innerAfter[0].height - 8.0f;
+        assert(sess.handlePointerDown(sbX, sbTopY, 0, 1));
+        assert(sess.interaction.draggingScrollbar);
+        assert(sess.handlePointerMove(sbX, sbBotY));
+        sess.handlePointerUp(sbX, sbBotY, 0);
+        sess.renderFrame(1000.0f, 600.0f);
+        auto innerDragged = sess.agentQuery("", "", "chat_inner_list");
+        assert(innerDragged[0].scrollY > innerDragged[0].maxScrollY * 0.7f);
+
+        // At bottom of inner container with overscroll-contain: scrolling further down must NOT chain to root
+        sess.interaction.scrollOffsetsY[innerDragged[0].nodeKey] = innerDragged[0].maxScrollY;
+        sess.renderFrame(1000.0f, 600.0f);
+        assert(!sess.handleScroll(ix, iy, 0.0f, -5.0f));
+        assert(sess.agentQuery("", "", "desk_root")[0].scrollY == 0.0f);
+    }
+
+    // 2. h-1/2, max-h-32, horizontal overflow-x-auto + onWheel virtual handler
+    {
+        MemeUI::UiSession sess;
+        double wheelSum = 0.0;
+        MemeUI::UiNode root; root.tag = "div"; root.classStr = "h-[400px] w-[320px] flex flex-col gap-2 p-2";
+        MemeUI::UiNode halfBox; halfBox.tag = "div"; halfBox.testId = "half_scroll";
+        halfBox.classStr = "h-1/2 overflow-y-auto flex flex-col gap-1";
+        for (int i = 0; i < 10; ++i) {
+            MemeUI::UiNode c; c.tag = "div"; c.classStr = "h-12";
+            halfBox.children.push_back(c);
+        }
+        MemeUI::UiNode xStrip; xStrip.tag = "div"; xStrip.testId = "horiz_strip";
+        xStrip.classStr = "w-full h-16 flex flex-row gap-2 overflow-x-auto";
+        for (int i = 0; i < 6; ++i) {
+            MemeUI::UiNode c; c.tag = "div"; c.classStr = "w-28 shrink-0 bg-indigo-700";
+            xStrip.children.push_back(c);
+        }
+        MemeUI::UiNode wheelBox; wheelBox.tag = "div"; wheelBox.testId = "wheel_box";
+        wheelBox.classStr = "h-20 overflow-hidden";
+        wheelBox.handlers["wheel"] = [&](const MemeUI::UiEvent &ev) { wheelSum += ev.deltaY; };
+
+        root.children.push_back(halfBox);
+        root.children.push_back(xStrip);
+        root.children.push_back(wheelBox);
+
+        sess.cachedRoot = root;
+        sess.renderFrame(320.0f, 400.0f);
+
+        auto hrHalf = sess.agentQuery("", "", "half_scroll");
+        assert(hrHalf.size() == 1 && std::abs(hrHalf[0].height - 192.0f) < 2.0f && hrHalf[0].maxScrollY > 100.0f);
+
+        auto hrX = sess.agentQuery("", "", "horiz_strip");
+        assert(hrX.size() == 1 && hrX[0].maxScrollX > 200.0f);
+        assert(sess.handleScroll(hrX[0].x + 20.0f, hrX[0].y + 10.0f, -3.0f, 0.0f));
+        sess.renderFrame(320.0f, 400.0f);
+        assert(sess.agentQuery("", "", "horiz_strip")[0].scrollX > 40.0f);
+
+        auto hrW = sess.agentQuery("", "", "wheel_box");
+        assert(hrW.size() == 1 && sess.handleScroll(hrW[0].x + 15.0f, hrW[0].y + 15.0f, 0.0f, -2.5f));
+        assert(std::abs(wheelSum - (-2.5)) < 0.01);
+    }
+
+    // 3. Immediate-mode egui.scroll_area registers UiHitRegion & scrolls cleanly
+    {
+        MemeUI::UiSession esess;
+        esess.isImmediateMode = true;
+        esess.eguiUpdateFn = [](MemeUI::EguiContext &ctx) {
+            MemeUI::EguiUi u(&ctx, ctx.remainingRect, false, 0);
+            u.scrollArea("egui_test_list", 120.0f, [](MemeUI::EguiUi &sub) {
+                for (int i = 0; i < 14; ++i) {
+                    sub.label("Row " + std::to_string(i));
+                }
+            });
+        };
+        esess.renderFrame(400.0f, 300.0f);
+        bool foundSa = false;
+        MemeUI::UiHitRegion saHr;
+        for (const auto &hr : esess.lastHits) {
+            if (hr.nodeKey == "egui_sa_egui_test_list") { foundSa = true; saHr = hr; break; }
+        }
+        assert(foundSa && saHr.isScrollContainer && saHr.maxScrollY > 50.0f);
+        assert(esess.handleScroll(saHr.x + 20.0f, saHr.y + 20.0f, 0.0f, -3.0f));
+        assert(esess.interaction.scrollOffsetsY["egui_test_list"] > 20.0f);
+    }
+
+    // 4. Unified MemeNative storage, keychain, clipboard & device info
+    {
+        std::string uniq = "suite_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+        assert(MemeNative::storageSet(uniq, "val_ok"));
+        assert(MemeNative::storageGet(uniq) == "val_ok");
+        auto ks = MemeNative::storageKeys();
+        assert(std::find(ks.begin(), ks.end(), uniq) != ks.end());
+        assert(MemeNative::storageRemove(uniq));
+        assert(MemeNative::storageGet(uniq, "gone") == "gone");
+
+        assert(MemeNative::keychainSet("meme_suite_svc", uniq, "sec_val"));
+        assert(MemeNative::keychainGet("meme_suite_svc", uniq) == "sec_val");
+        assert(MemeNative::keychainRemove("meme_suite_svc", uniq));
+        assert(MemeNative::keychainGet("meme_suite_svc", uniq).empty());
+
+        auto d = MemeNative::getDeviceInfo();
+        assert(!d.os.empty() && !d.arch.empty());
+        auto p = MemeNative::getAppPaths();
+        assert(!p.appData.empty() && !p.cache.empty());
+    }
+
+    // 5. IconAssets PNG encode/decode + ICNS + ICO binary format validation
+    {
+        auto icon = MemePackager::loadOrDefaultIcon("", 64);
+        assert(icon.width == 64 && icon.height == 64 && icon.rgba.size() == 64u * 64u * 4u);
+        auto png = MemePackager::encodePngRgba(icon);
+        assert(png.size() > 32 && png[0] == 0x89 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G');
+        MemePackager::IconImage decoded;
+        assert(MemePackager::decodePngRgba(png, decoded));
+        assert(decoded.width == 64 && decoded.height == 64 && decoded.rgba.size() == icon.rgba.size());
+
+        auto icns = MemePackager::buildIcnsFromRgba(icon);
+        assert(icns.size() > 128 && icns[0] == 'i' && icns[1] == 'c' && icns[2] == 'n' && icns[3] == 's');
+
+        auto ico = MemePackager::buildIcoFromRgba(icon);
+        assert(ico.size() > 64 && ico[0] == 0 && ico[1] == 0 && ico[2] == 1 && ico[3] == 0 && ico[4] == 4);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -3105,6 +3278,7 @@ int main()
     testStandardLibraries();
     testFastHttpServersExpressAndElysiaTypeSafety();
     testNativeUiPrimitivesTextEngineAndTessellator();
+    testInnerContainerScrollAndNativeApisAndIcons();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

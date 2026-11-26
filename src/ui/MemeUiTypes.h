@@ -271,10 +271,13 @@ struct ComputedStyle {
     float height = -1;
     float widthPercent = -1;
     float heightPercent = -1;
+    float heightVh = -1;
     float minWidth = -1;
     float maxWidth = -1;
     float minHeight = -1;
     float maxHeight = -1;
+    float maxHeightPercent = -1;
+    float maxHeightVh = -1;
     bool minHScreen = false;
 
     PositionMode position = PositionMode::STATIC;
@@ -287,6 +290,7 @@ struct ComputedStyle {
 
     OverflowMode overflowX = OverflowMode::VISIBLE;
     OverflowMode overflowY = OverflowMode::VISIBLE;
+    bool overscrollContain = false;
 
     bool isRtl = false;
     bool hasExplicitRtl = false;
@@ -426,6 +430,8 @@ struct UiHitRegion {
     bool hasPointerDown = false;
     bool hasScroll = false;
     bool isScrollContainer = false;
+    bool overscrollContain = false;
+    bool hasWheelHandler = false;
     float scrollX = 0;
     float scrollY = 0;
     float maxScrollX = 0;

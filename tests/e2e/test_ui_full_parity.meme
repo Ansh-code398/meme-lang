@@ -481,4 +481,65 @@ pakad by = eguiBtnRect.current.y + 8.0;
 egui.step(16, bx, by, sach);
 sahi_hai(eguiClicks.current, 1, "T4_egui_step_pointer_triggers_button_click");
 
+// ==============================================================================
+// TIER 5: Inner Container Scrolling & Cross-Platform Native APIs Parity
+// ==============================================================================
+
+kaam InnerScrollParityApp() {
+    de (
+        <div class="h-48 w-80 p-3 flex flex-col gap-2 bg-slate-900">
+            <div class="flex-1 flex flex-row gap-2">
+                <div class="flex-1 flex flex-col gap-2">
+                    <div testId="nested_y_scroll" class="flex-1 overflow-y-auto overscroll-contain flex flex-col gap-2">
+                        <div class="h-12 bg-slate-800">Item 1</div>
+                        <div class="h-12 bg-slate-800">Item 2</div>
+                        <div class="h-12 bg-slate-800">Item 3</div>
+                        <div class="h-12 bg-slate-800">Item 4</div>
+                        <div class="h-12 bg-slate-800">Item 5</div>
+                    </div>
+                </div>
+            </div>
+            <div testId="nested_x_scroll" class="w-full h-12 flex flex-row gap-2 overflow-x-auto">
+                <div class="w-32 shrink-0 bg-indigo-700">Chip 1</div>
+                <div class="w-32 shrink-0 bg-indigo-700">Chip 2</div>
+                <div class="w-32 shrink-0 bg-indigo-700">Chip 3</div>
+                <div class="w-32 shrink-0 bg-indigo-700">Chip 4</div>
+            </div>
+        </div>
+    );
+}
+ui.mount(<InnerScrollParityApp />);
+pakad scAg = createAgent();
+pakad ny = scAg.getByTestId("nested_y_scroll");
+assert_true(ny != khali && ny.maxScrollY > 20.0, "T5_nested_flex_row_col_scroll_y_overflow");
+scAg.act("nested_y_scroll", "scroll", -2);
+assert_true(scAg.getByTestId("nested_y_scroll").scrollY > 10.0, "T5_nested_y_scroll_moves");
+pakad nx = scAg.getByTestId("nested_x_scroll");
+assert_true(nx != khali && nx.maxScrollX > 50.0, "T5_nested_horiz_overflow_x_auto");
+
+bula "native";
+bula "native" jaise { clipboard, device, storage, keychain };
+sahi_hai(device.platform(), sys.platform(), "T5_native_platform_matches_sys");
+pakad dinfo = device.info();
+assert_true(dinfo.os != "" && dinfo.arch != "", "T5_native_device_info_populated");
+assert_true(storage.set("parity_k", "parity_v"), "T5_native_storage_set");
+sahi_hai(storage.get("parity_k"), "parity_v", "T5_native_storage_get");
+assert_true(storage.keys().lambai() >= 1, "T5_native_storage_keys");
+assert_true(storage.remove("parity_k"), "T5_native_storage_remove");
+assert_true(keychain.set("meme_parity_svc", "tok", "sec_123"), "T5_native_keychain_set");
+sahi_hai(keychain.get("meme_parity_svc", "tok"), "sec_123", "T5_native_keychain_get");
+assert_true(keychain.remove("meme_parity_svc", "tok"), "T5_native_keychain_remove");
+clipboard.set("clip_parity_ok");
+sahi_hai(clipboard.get(), "clip_parity_ok", "T5_native_clipboard_roundtrip");
+sahi_hai(clipboard.hasText(), sach, "T5_native_clipboard_has_text");
+assert_true(native.paths().appData != "", "T5_native_paths_app_data");
+pakad batt = native.battery();
+assert_true(batt.state != "", "T5_native_battery_struct");
+pakad netSt = native.network();
+assert_true(netSt.type != "", "T5_native_network_struct");
+pakad sens = native.sensors.poll();
+sahi_hai(sens.available || !sens.available, sach, "T5_native_sensors_poll");
+pakad appDev = app.device_info();
+sahi_hai(appDev.os, dinfo.os, "T5_app_device_info_parity");
+
 dikha "ALL MEME-UI DUAL-ENGINE PARITY TESTS PASSED!";

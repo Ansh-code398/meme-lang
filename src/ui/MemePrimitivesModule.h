@@ -166,8 +166,11 @@ inline Value hitRegionToValue(const MemeUI::UiHitRegion &hr) {
     m->set("placeholder", Value(hr.placeholder));
     m->set("isPassword", Value(hr.isPassword));
     m->set("isMultiline", Value(hr.isMultiline));
+    m->set("scrollX", Value(static_cast<double>(hr.scrollX)));
+    m->set("maxScrollX", Value(static_cast<double>(hr.maxScrollX)));
     m->set("scrollY", Value(static_cast<double>(hr.scrollY)));
     m->set("maxScrollY", Value(static_cast<double>(hr.maxScrollY)));
+    m->set("isScrollContainer", Value(hr.isScrollContainer));
     m->set("isRtl", Value(hr.isRtl));
     return Value(m);
 }

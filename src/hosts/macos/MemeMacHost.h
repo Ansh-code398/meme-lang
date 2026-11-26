@@ -9,6 +9,9 @@
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
+#include "../../platform/MemeNativeApis.h"
+#include <dlfcn.h>
+#import <objc/message.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -585,8 +588,283 @@ inline void bindMacClipboard(UiSession &session) {
     };
 }
 
+inline void bindMacNativeHooks(UiSession &session, NSWindow *win, NSView *view) {
+    auto &h = MemeNative::hooks();
+    h.dispatchMainThread = [](std::function<void()> fn) {
+        if (std::getenv("MEME_HEADLESS") != nullptr) { if (fn) fn(); return; }
+        dispatch_async(dispatch_get_main_queue(), ^{ if (fn) fn(); });
+    };
+    h.requestRerender = [&session, view]() {
+        session.needsRender = true;
+        if (view) dispatch_async(dispatch_get_main_queue(), ^{ [view setNeedsDisplay:YES]; });
+    };
+    h.clipboardGet = []() -> std::string {
+        @autoreleasepool {
+            NSString *s = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+            return s ? std::string([s UTF8String]) : "";
+        }
+    };
+    h.clipboardSet = [](const std::string &txt) -> bool {
+        @autoreleasepool {
+            NSPasteboard *pb = [NSPasteboard generalPasteboard];
+            [pb clearContents];
+            NSString *ns = [NSString stringWithUTF8String:txt.c_str()];
+            return ns ? ([pb setString:ns forType:NSPasteboardTypeString] != NO) : false;
+        }
+    };
+    h.hapticImpact = [](const std::string &style) -> bool {
+        @autoreleasepool {
+            NSHapticFeedbackPattern pat = NSHapticFeedbackPatternGeneric;
+            if (style == "light") pat = NSHapticFeedbackPatternAlignment;
+            else if (style == "heavy") pat = NSHapticFeedbackPatternLevelChange;
+            [[NSHapticFeedbackManager defaultPerformer] performFeedbackPattern:pat performanceTime:NSHapticFeedbackPerformanceTimeNow];
+            return true;
+        }
+    };
+    h.hapticSelection = []() -> bool {
+        @autoreleasepool {
+            [[NSHapticFeedbackManager defaultPerformer] performFeedbackPattern:NSHapticFeedbackPatternAlignment performanceTime:NSHapticFeedbackPerformanceTimeNow];
+            return true;
+        }
+    };
+    h.canOpenUrl = [](const std::string &url) -> bool {
+        @autoreleasepool {
+            NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url.c_str()]];
+            return u && ([[NSWorkspace sharedWorkspace] URLForApplicationToOpenURL:u] != nil);
+        }
+    };
+    h.openUrl = [](const std::string &url) -> bool {
+        @autoreleasepool {
+            NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url.c_str()]];
+            return u && ([[NSWorkspace sharedWorkspace] openURL:u] != NO);
+        }
+    };
+    h.shareAsync = [view](const std::string &text, const std::string &title, const std::string &url, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        if (std::getenv("MEME_HEADLESS") != nullptr || !view) {
+            MemeNative::AsyncResponse r; r.ok = true; r.value = text;
+            MemeNative::resolveAsyncCallback(rid, r);
+            return;
+        }
+        NSMutableArray *items = [NSMutableArray array];
+        if (!text.empty()) [items addObject:[NSString stringWithUTF8String:text.c_str()]];
+        else if (!title.empty()) [items addObject:[NSString stringWithUTF8String:title.c_str()]];
+        if (!url.empty()) {
+            NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url.c_str()]];
+            if (u) [items addObject:u];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSSharingServicePicker *picker = [[NSSharingServicePicker alloc] initWithItems:items];
+            [picker showRelativeToRect:NSMakeRect(view.bounds.size.width * 0.5, view.bounds.size.height * 0.5, 2, 2) ofView:view preferredEdge:NSRectEdgeMinY];
+            MEME_OBJC_RELEASE(picker);
+            MemeNative::AsyncResponse r; r.ok = true; r.accepted = true; r.value = text;
+            MemeNative::resolveAsyncCallback(rid, r);
+        });
+    };
+    h.alertAsync = [](const std::string &title, const std::string &msg, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        if (std::getenv("MEME_HEADLESS") != nullptr) { MemeNative::AsyncResponse r; MemeNative::resolveAsyncCallback(rid, r); return; }
+        NSString *t = [NSString stringWithUTF8String:title.c_str()];
+        NSString *m = [NSString stringWithUTF8String:msg.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:(t ?: @"")];
+            [a setInformativeText:(m ?: @"")];
+            [a runModal];
+            MEME_OBJC_RELEASE(a);
+            MemeNative::AsyncResponse r; r.ok = true; r.accepted = true;
+            MemeNative::resolveAsyncCallback(rid, r);
+        });
+    };
+    h.confirmAsync = [](const std::string &title, const std::string &msg, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        if (std::getenv("MEME_HEADLESS") != nullptr) { MemeNative::AsyncResponse r; r.accepted = true; MemeNative::resolveAsyncCallback(rid, r); return; }
+        NSString *t = [NSString stringWithUTF8String:title.c_str()];
+        NSString *m = [NSString stringWithUTF8String:msg.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:(t ?: @"")];
+            [a setInformativeText:(m ?: @"")];
+            [a addButtonWithTitle:@"OK"];
+            [a addButtonWithTitle:@"Cancel"];
+            BOOL yes = ([a runModal] == NSAlertFirstButtonReturn);
+            MEME_OBJC_RELEASE(a);
+            MemeNative::AsyncResponse r; r.ok = true; r.accepted = yes != NO; r.cancelled = !r.accepted;
+            MemeNative::resolveAsyncCallback(rid, r);
+        });
+    };
+    h.promptAsync = [](const std::string &title, const std::string &msg, const std::string &defVal, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        if (std::getenv("MEME_HEADLESS") != nullptr) { MemeNative::AsyncResponse r; r.value = defVal; MemeNative::resolveAsyncCallback(rid, r); return; }
+        NSString *t = [NSString stringWithUTF8String:title.c_str()];
+        NSString *m = [NSString stringWithUTF8String:msg.c_str()];
+        NSString *d = [NSString stringWithUTF8String:defVal.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:(t ?: @"")];
+            [a setInformativeText:(m ?: @"")];
+            [a addButtonWithTitle:@"OK"];
+            [a addButtonWithTitle:@"Cancel"];
+            NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+            [tf setStringValue:(d ?: @"")];
+            [a setAccessoryView:tf];
+            BOOL yes = ([a runModal] == NSAlertFirstButtonReturn);
+            NSString *val = [tf stringValue] ?: @"";
+            MEME_OBJC_RELEASE(tf);
+            MEME_OBJC_RELEASE(a);
+            MemeNative::AsyncResponse r; r.ok = true; r.accepted = yes != NO; r.cancelled = !r.accepted;
+            if (r.accepted) r.value = [val UTF8String];
+            MemeNative::resolveAsyncCallback(rid, r);
+        });
+    };
+    h.fileDialogAsync = [](const std::string &mode, const std::string &title, const std::string &defName, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        if (std::getenv("MEME_HEADLESS") != nullptr) { MemeNative::AsyncResponse r; r.ok = false; r.cancelled = true; MemeNative::resolveAsyncCallback(rid, r); return; }
+        NSString *t = [NSString stringWithUTF8String:title.c_str()];
+        NSString *d = [NSString stringWithUTF8String:defName.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            MemeNative::AsyncResponse r; r.ok = false; r.accepted = false; r.cancelled = true;
+            if (mode == "save") {
+                NSSavePanel *sp = [NSSavePanel savePanel];
+                if (t.length > 0) [sp setTitle:t];
+                if (d.length > 0) [sp setNameFieldStringValue:d];
+                if ([sp runModal] == NSModalResponseOK && sp.URL.path) {
+                    r.ok = true; r.accepted = true; r.cancelled = false;
+                    r.path = [sp.URL.path UTF8String]; r.value = r.path; r.paths.push_back(r.path);
+                }
+            } else {
+                NSOpenPanel *op = [NSOpenPanel openPanel];
+                if (t.length > 0) [op setTitle:t];
+                [op setCanChooseDirectories:(mode == "folder")];
+                [op setCanChooseFiles:(mode != "folder")];
+                if ([op runModal] == NSModalResponseOK) {
+                    for (NSURL *u in op.URLs) {
+                        if (u.path) r.paths.push_back([u.path UTF8String]);
+                    }
+                    if (!r.paths.empty()) {
+                        r.ok = true; r.accepted = true; r.cancelled = false;
+                        r.path = r.paths.front(); r.value = r.path;
+                    }
+                }
+            }
+            MemeNative::resolveAsyncCallback(rid, r);
+        });
+    };
+    h.getDeviceInfo = []() -> MemeNative::DeviceInfo {
+        MemeNative::DeviceInfo d;
+        @autoreleasepool {
+            d.os = "mac";
+            d.arch = MemeNative::defaultArchName();
+            d.model = "Mac";
+            NSOperatingSystemVersion v = [[NSProcessInfo processInfo] operatingSystemVersion];
+            d.osVersion = std::to_string(v.majorVersion) + "." + std::to_string(v.minorVersion) + "." + std::to_string(v.patchVersion);
+            d.locale = [[[NSLocale currentLocale] localeIdentifier] UTF8String] ?: "en_US";
+            d.timezone = [[[NSTimeZone localTimeZone] name] UTF8String] ?: "UTC";
+            NSString *apName = NSApp ? NSApp.effectiveAppearance.name : @"NSAppearanceNameDarkAqua";
+            d.isDark = ([apName rangeOfString:@"Dark" options:NSCaseInsensitiveSearch].location != NSNotFound);
+            d.theme = d.isDark ? "dark" : "light";
+            d.isMobile = false; d.isDesktop = true; d.isWeb = false;
+        }
+        return d;
+    };
+    h.getScreenInfo = [&session, win]() -> MemeNative::ScreenInfo {
+        MemeNative::ScreenInfo s;
+        s.width = session.input.viewportW > 0 ? session.input.viewportW : 1040.0f;
+        s.height = session.input.viewportH > 0 ? session.input.viewportH : 720.0f;
+        s.scale = win ? static_cast<float>([win backingScaleFactor]) : static_cast<float>([[NSScreen mainScreen] backingScaleFactor]);
+        return s;
+    };
+    h.biometricsAvailable = []() -> bool {
+        void *la = dlopen("/System/Library/Frameworks/LocalAuthentication.framework/LocalAuthentication", RTLD_LAZY);
+        Class laCls = la ? NSClassFromString(@"LAContext") : nil;
+        if (!laCls) return false;
+        id ctx = [[laCls alloc] init];
+        NSError *err = nil;
+        BOOL ok = ((BOOL (*)(id, SEL, NSInteger, NSError **))objc_msgSend)(ctx, NSSelectorFromString(@"canEvaluatePolicy:error:"), 2, &err);
+        MEME_OBJC_RELEASE(ctx);
+        return ok != NO;
+    };
+    h.biometricsAuthAsync = [](const std::string &reason, MemeNative::AsyncCallback cb) {
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        void *la = dlopen("/System/Library/Frameworks/LocalAuthentication.framework/LocalAuthentication", RTLD_LAZY);
+        Class laCls = la ? NSClassFromString(@"LAContext") : nil;
+        if (!laCls) { MemeNative::AsyncResponse r; r.ok = false; r.error = "LAContext unavailable"; MemeNative::resolveAsyncCallback(rid, r); return; }
+        id ctx = [[laCls alloc] init];
+        NSString *nsR = [NSString stringWithUTF8String:(reason.empty() ? "Authenticate" : reason.c_str())];
+        void (^reply)(BOOL, NSError *) = ^(BOOL ok, NSError *err) {
+            MemeNative::AsyncResponse r; r.ok = (ok != NO); r.accepted = r.ok; r.cancelled = !r.ok;
+            if (err && err.localizedDescription) r.error = [err.localizedDescription UTF8String];
+            MemeNative::resolveAsyncCallback(rid, r);
+        };
+        ((void (*)(id, SEL, NSInteger, id, id))objc_msgSend)(ctx, NSSelectorFromString(@"evaluatePolicy:localizedReason:reply:"), 2, nsR, reply);
+        MEME_OBJC_RELEASE(ctx);
+    };
+    h.beep = [](double, int) -> bool { NSBeep(); return true; };
+    h.setWindowTitle = [win](const std::string &title) -> bool {
+        if (!win) return false;
+        NSString *ns = [NSString stringWithUTF8String:title.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{ [win setTitle:(ns ?: @"")]; });
+        return true;
+    };
+    h.setWindowSize = [win](int w, int hSz) -> bool {
+        if (!win) return false;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [win setContentSize:NSMakeSize(std::max(160, w), std::max(120, hSz))];
+        });
+        return true;
+    };
+    h.setFullscreen = [win](bool on) -> bool {
+        if (!win) return false;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            bool isFs = (([win styleMask] & NSWindowStyleMaskFullScreen) != 0);
+            if (on != isFs) [win toggleFullScreen:nil];
+        });
+        return true;
+    };
+    h.minimizeWindow = [win]() -> bool {
+        if (!win) return false;
+        dispatch_async(dispatch_get_main_queue(), ^{ [win miniaturize:nil]; });
+        return true;
+    };
+    h.focusWindow = [win]() -> bool {
+        if (!win) return false;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [NSApp activateIgnoringOtherApps:YES];
+            [win makeKeyAndOrderFront:nil];
+        });
+        return true;
+    };
+}
+
+inline void applyMacAppIcon() {
+    @autoreleasepool {
+        std::vector<uint8_t> rgba;
+        int iw = 0, ih = 0;
+        MemeNative::ensureDefaultAppIconRgba(128, rgba, iw, ih);
+        if (rgba.empty() || iw <= 0 || ih <= 0) return;
+        NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
+                                                                        pixelsWide:iw
+                                                                        pixelsHigh:ih
+                                                                     bitsPerSample:8
+                                                                   samplesPerPixel:4
+                                                                          hasAlpha:YES
+                                                                          isPlanar:NO
+                                                                    colorSpaceName:NSCalibratedRGBColorSpace
+                                                                       bytesPerRow:iw * 4
+                                                                      bitsPerPixel:32];
+        if (!rep) return;
+        std::memcpy([rep bitmapData], rgba.data(), rgba.size());
+        NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(iw, ih)];
+        [img addRepresentation:rep];
+        [NSApp setApplicationIconImage:img];
+        MEME_OBJC_RELEASE(img);
+        MEME_OBJC_RELEASE(rep);
+    }
+}
+
 inline int runMacNativeApp(const std::string &title, UiSession &session, int width = 1040, int height = 720, std::function<void()> customRenderFn = nullptr) {
     if (std::getenv("MEME_HEADLESS") != nullptr) {
+        bindMacNativeHooks(session, nil, nil);
         session.renderFrame(static_cast<float>(width), static_cast<float>(height));
         return 0;
     }
@@ -594,6 +872,7 @@ inline int runMacNativeApp(const std::string &title, UiSession &session, int wid
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        applyMacAppIcon();
 
         NSRect frame = NSMakeRect(120, 120, width, height);
         NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
@@ -622,6 +901,7 @@ inline int runMacNativeApp(const std::string &title, UiSession &session, int wid
         view.session = &session;
         view.onNeedRender = &onRender;
         [view setupRenderer];
+        bindMacNativeHooks(session, win, view);
         [win setContentView:view];
         [win makeFirstResponder:view];
         [win center];

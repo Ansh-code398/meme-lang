@@ -423,7 +423,8 @@ public:
                 knownFunctions.insert(f->name);
             } else if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
                 if (imp->path != "ui" && imp->path != "egui" && imp->path != "view" && imp->path != "gui" &&
-                    imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui") {
+                    imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui" &&
+                    imp->path != "native" && imp->path != "app" && imp->path != "device") {
                     std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
                     if (!alias.empty() && imp->namedImports.empty()) {
                         knownModuleAliases.insert(sanitizeIdentifier(alias));
@@ -746,27 +747,43 @@ public:
                 // Map methods
                 if (method == "keys" || method == "values" ||
                     method == "chaabi" || method == "maal" || method == "la" || method == "get") {
-                    std::string mapArgs;
-                    for (size_t i = 0; i < e->args.size(); ++i) {
-                        if (i > 0) mapArgs += ", ";
-                        if (auto *se = dynamic_cast<const StringExpr *>(e->args[i].get())) {
-                            mapArgs += "\"" + escapeString(se->value) + "\"";
-                        } else {
-                            mapArgs += generateExpr(e->args[i].get());
+                    if (knownModuleAliases.count(objStr)) {
+                        std::string mapArgs;
+                        for (size_t i = 0; i < e->args.size(); ++i) {
+                            if (i > 0) mapArgs += ", ";
+                            if (auto *se = dynamic_cast<const StringExpr *>(e->args[i].get())) {
+                                mapArgs += "\"" + escapeString(se->value) + "\"";
+                            } else {
+                                mapArgs += generateExpr(e->args[i].get());
+                            }
                         }
+                        return objStr + "." + method + "(" + mapArgs + ")";
                     }
-                    return objStr + "." + method + "(" + mapArgs + ")";
+                    std::string mArgs;
+                    for (size_t i = 0; i < e->args.size(); ++i) {
+                        if (i > 0) mArgs += ", ";
+                        mArgs += "MemeValue(" + generateExpr(e->args[i].get()) + ")";
+                    }
+                    return "meme_call_method(" + objStr + ", \"" + escapeString(get->name) + "\", std::vector<MemeValue>{" + mArgs + "})";
                 }
                 // Mutex and thread methods
+                if (method == "khol") {
+                    if (knownModuleAliases.count(objStr)) return objStr + "." + method + "(" + args + ")";
+                    return "meme_khol_or_call(" + objStr + (args.empty() ? "" : (", " + args)) + ")";
+                }
                 if (method == "lock" || method == "unlock" || method == "pakad" || method == "chhod" ||
-                    method == "band" || method == "khol" || method == "try_lock" || method == "koshish" ||
+                    method == "band" || method == "try_lock" || method == "koshish" ||
                     method == "surakshit" || method == "with_lock" || method == "join" || method == "rok" ||
                     method == "jod" || method == "wait" || method == "is_done" || method == "khatam" ||
                     method == "chal_raha" || method == "is_alive") {
                     return objStr + "." + method + "(" + args + ")";
                 }
                 // Socket methods
-                if (method == "send" || method == "recv" || method == "close" ||
+                if (method == "send") {
+                    if (knownModuleAliases.count(objStr)) return objStr + "." + method + "(" + args + ")";
+                    return "meme_send_or_call(" + objStr + (args.empty() ? "" : (", " + args)) + ")";
+                }
+                if (method == "recv" || method == "close" ||
                     method == "is_valid" || method == "is_closed" || method == "accept" ||
                     method == "set_nonblocking" || method == "set_timeout") {
                     return objStr + "." + method + "(" + args + ")";
@@ -1822,6 +1839,11 @@ public:
                 for (const auto &ni : imp->namedImports) {
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << (imp->path == "egui" ? "egui" : "ui") << ", \"" << escapeString(ni) << "\");\n";
                 }
+            } else if (imp->path == "native" || imp->path == "app" || imp->path == "device") {
+                std::string srcMod = (imp->path == "app") ? "app" : (imp->path == "device" ? "meme_index(native, \"device\")" : "native");
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                }
             }
             return;
         }
@@ -2628,6 +2650,15 @@ public:
                             globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
                         }
                     } else if (!alias.empty() && alias != "ui" && alias != "egui" && alias != "view" && alias != "gui") {
+                        globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
+                    }
+                } else if (imp->path == "native" || imp->path == "app" || imp->path == "device") {
+                    std::string srcMod = (imp->path == "app") ? "app" : (imp->path == "device" ? "meme_index(native, \"device\")" : "native");
+                    if (!imp->namedImports.empty()) {
+                        for (const auto &ni : imp->namedImports) {
+                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                        }
+                    } else if (!alias.empty() && alias != "native" && alias != "app") {
                         globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
                     }
                 } else {

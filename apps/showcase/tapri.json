@@ -1,6 +1,11 @@
 {
   "name": "meme-showcase",
+  "displayName": "MEME-UI Showcase",
+  "bundleId": "dev.memelang.showcase",
   "version": "1.0.0",
+  "description": "Universal Zero-WebView Native GPU Showcase in MEMElang",
+  "themeColor": "#0f172a",
+  "scheme": "memeshowcase",
   "entry": "src/App.meme",
   "output": "bin/meme-showcase"
 }

@@ -43,6 +43,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
+#include "../platform/MemeNativeApis.h"
 
 #if defined(__APPLE__)
 #include <crt_externs.h>
@@ -5115,20 +5116,16 @@ static std::shared_ptr<MemeMap> createSystummModule(Interpreter &interpreter)
     m->set("chdir", jaoVal);
 
     auto kaunVal = Value(std::make_shared<NativeMethodCallable>("kaun", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
-#if defined(__EMSCRIPTEN__)
-        return Value("wasm");
-#elif defined(_WIN32)
-        return Value("windows");
-#elif defined(__APPLE__)
-        return Value("mac");
-#elif defined(__linux__)
-        return Value("linux");
-#else
-        return Value("unknown");
-#endif
+        return Value(MemeNative::defaultPlatformName());
     }));
     m->set("kaun", kaunVal);
     m->set("platform", kaunVal);
+    m->set("os_version", Value(std::make_shared<NativeMethodCallable>("os_version", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().osVersion);
+    })));
+    m->set("locale", Value(std::make_shared<NativeMethodCallable>("locale", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().locale);
+    })));
 
     auto nikalVal = Value(std::make_shared<NativeMethodCallable>("nikal", 0, 1, [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         long long code = 0;
@@ -5149,64 +5146,23 @@ static std::shared_ptr<MemeMap> createSystummModule(Interpreter &interpreter)
     m->set("copy", Value(std::make_shared<NativeMethodCallable>("copy", 1, [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         std::string text = args[0].deref().toString();
         simulatedClipboard = text;
-#if !defined(__EMSCRIPTEN__)
-        if (!interpreter.getHeadless() && !std::getenv("MEME_HEADLESS"))
+        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
         {
-#if defined(__APPLE__)
-            FILE *p = popen("pbcopy", "w");
-            if (p)
-            {
-                fwrite(text.data(), 1, text.size(), p);
-                pclose(p);
-            }
-#elif defined(__linux__)
-            FILE *p = popen("xclip -selection clipboard 2>/dev/null || wl-copy 2>/dev/null", "w");
-            if (p)
-            {
-                fwrite(text.data(), 1, text.size(), p);
-                pclose(p);
-            }
-#elif defined(_WIN32)
-            FILE *p = _popen("clip", "w");
-            if (p)
-            {
-                fwrite(text.data(), 1, text.size(), p);
-                _pclose(p);
-            }
-#endif
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            MemeNative::state().clipboardFallback = text;
+            return Value(true);
         }
-#endif
-        return Value(true);
+        return Value(MemeNative::clipboardSet(text));
     })));
 
     m->set("paste", Value(std::make_shared<NativeMethodCallable>("paste", 0, [&interpreter](Interpreter &, const std::vector<Value> &) -> Value {
-#if !defined(__EMSCRIPTEN__)
-        if (!interpreter.getHeadless() && !std::getenv("MEME_HEADLESS"))
+        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
         {
-#if defined(__APPLE__)
-            FILE *p = popen("pbpaste", "r");
-            if (p)
-            {
-                char buf[256];
-                std::string res;
-                while (fgets(buf, sizeof(buf), p)) res += buf;
-                pclose(p);
-                return Value(res);
-            }
-#elif defined(__linux__)
-            FILE *p = popen("xclip -o -selection clipboard 2>/dev/null || wl-paste 2>/dev/null", "r");
-            if (p)
-            {
-                char buf[256];
-                std::string res;
-                while (fgets(buf, sizeof(buf), p)) res += buf;
-                pclose(p);
-                return Value(res);
-            }
-#endif
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            return Value(!MemeNative::state().clipboardFallback.empty() ? MemeNative::state().clipboardFallback : simulatedClipboard);
         }
-#endif
-        return Value(simulatedClipboard);
+        std::string out = MemeNative::clipboardGet();
+        return Value(!out.empty() ? out : simulatedClipboard);
     })));
 
     return m;
@@ -5714,164 +5670,533 @@ static std::shared_ptr<MemeMap> createCliModule(Interpreter &interpreter)
     return m;
 }
 
-static std::shared_ptr<MemeMap> createAppModule(Interpreter &interpreter)
+static Value asyncResToInterpValue(const MemeNative::AsyncResponse &r)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("ok", Value(r.ok));
+    m->set("accepted", Value(r.accepted));
+    m->set("cancelled", Value(r.cancelled));
+    m->set("value", Value(r.value));
+    m->set("path", Value(r.path));
+    auto plist = std::make_shared<MemeList>();
+    for (const auto &p : r.paths) plist->elements.push_back(Value(p));
+    m->set("paths", Value(plist));
+    m->set("lat", Value(r.lat));
+    m->set("lon", Value(r.lon));
+    m->set("accuracy", Value(r.accuracy));
+    m->set("error", Value(r.error));
+    return Value(m);
+}
+
+static Value deviceInfoToInterpValue(const MemeNative::DeviceInfo &d)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->set("os", Value(d.os));
+    m->set("arch", Value(d.arch));
+    m->set("model", Value(d.model));
+    m->set("osVersion", Value(d.osVersion));
+    m->set("locale", Value(d.locale));
+    m->set("timezone", Value(d.timezone));
+    m->set("theme", Value(d.theme));
+    m->set("isDark", Value(d.isDark));
+    m->set("isMobile", Value(d.isMobile));
+    m->set("isDesktop", Value(d.isDesktop));
+    m->set("isWeb", Value(d.isWeb));
+    return Value(m);
+}
+
+static std::shared_ptr<MemeMap> createNativeModule(Interpreter &interpreter)
 {
     auto m = std::make_shared<MemeMap>();
     m->isModule = true;
 
-    auto alertFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string title = args[0].deref().toString();
-        std::string msg = args[1].deref().toString();
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
-            interpreter.getOutputStream() << "[App Alert: " << title << "] " << msg << "\n";
-            return Value(true);
-        }
-#if defined(__APPLE__)
-        std::string script = "osascript -e 'display dialog \"" + msg + "\" with title \"" + title + "\" buttons {\"OK\"} default button \"OK\"'";
-        std::system(script.c_str());
-#elif defined(__linux__)
-        std::string script = "zenity --info --title=\"" + title + "\" --text=\"" + msg + "\" 2>/dev/null";
-        std::system(script.c_str());
-#elif defined(_WIN32)
-        std::string script = "powershell -Command \"Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show('" + msg + "', '" + title + "')\"";
-        std::system(script.c_str());
-#else
-        interpreter.getOutputStream() << "[App Alert: " << title << "] " << msg << "\n";
-#endif
-        return Value(true);
+    auto isHeadless = [&interpreter]() {
+        return interpreter.getHeadless() || std::getenv("MEME_HEADLESS") != nullptr;
     };
-    auto alertVal = Value(std::make_shared<NativeMethodCallable>("alert", 2, alertFn));
-    m->set("alert", alertVal);
-    m->set("dikha_box", alertVal);
-
-    auto puchBoxFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string title = args[0].deref().toString();
-        std::string prompt = args[1].deref().toString();
-        std::string defVal = args.size() > 2 ? args[2].deref().toString() : "";
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
-            return Value(defVal);
-        }
-#if defined(__APPLE__)
-        std::string script = "osascript -e 'display dialog \"" + prompt + "\" default answer \"" + defVal + "\" with title \"" + title + "\"'";
-        FILE *p = popen(script.c_str(), "r");
-        if (p)
-        {
-            char buf[256];
-            std::string res;
-            while (fgets(buf, sizeof(buf), p)) res += buf;
-            pclose(p);
-            size_t tag = res.find("text returned:");
-            if (tag != std::string::npos)
-            {
-                std::string ans = res.substr(tag + 14);
-                while (!ans.empty() && (ans.back() == '\n' || ans.back() == '\r')) ans.pop_back();
-                return Value(ans);
+    auto makeCb = [&interpreter](const std::vector<Value> &a, size_t idx) -> MemeNative::AsyncCallback {
+        if (idx < a.size()) {
+            Value cb = a[idx].deref();
+            if (cb.isCallable()) {
+                return [&interpreter, cb](const MemeNative::AsyncResponse &r) {
+                    MemePrimitivesModule::invokeCallableSafe(interpreter, cb, {asyncResToInterpValue(r)});
+                };
             }
         }
-#endif
-        return Value(defVal);
+        return nullptr;
     };
-    auto puchBoxVal = Value(std::make_shared<NativeMethodCallable>("puch_box", 2, 3, puchBoxFn));
-    m->set("puch_box", puchBoxVal);
-    m->set("input_box", puchBoxVal);
+    auto findLastCb = [&interpreter](const std::vector<Value> &a) -> MemeNative::AsyncCallback {
+        if (!a.empty()) {
+            Value cb = a.back().deref();
+            if (cb.isCallable()) {
+                return [&interpreter, cb](const MemeNative::AsyncResponse &r) {
+                    MemePrimitivesModule::invokeCallableSafe(interpreter, cb, {asyncResToInterpValue(r)});
+                };
+            }
+        }
+        return nullptr;
+    };
+    auto readOptTitle = [](const std::vector<Value> &a, const std::string &defTitle) -> std::string {
+        if (a.empty() || a[0].deref().isCallable()) return defTitle;
+        Value v = a[0].deref();
+        if (v.isMap() && v.getMap()->has("title")) return v.getMap()->entries["title"].deref().toString();
+        return v.toString();
+    };
+    auto readOptDefName = [](const std::vector<Value> &a) -> std::string {
+        if (!a.empty() && a[0].deref().isMap() && a[0].deref().getMap()->has("defaultName")) {
+            return a[0].deref().getMap()->entries["defaultName"].deref().toString();
+        }
+        return "";
+    };
 
-    auto hanNaBoxFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string title = args[0].deref().toString();
-        std::string q = args[1].deref().toString();
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
+    auto clipMod = std::make_shared<MemeMap>();
+    clipMod->isModule = true;
+    clipMod->set("get", Value(std::make_shared<NativeMethodCallable>("get", 0, [isHeadless](Interpreter &, const std::vector<Value> &) -> Value {
+        if (isHeadless()) {
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            return Value(!MemeNative::state().clipboardFallback.empty() ? MemeNative::state().clipboardFallback : simulatedClipboard);
+        }
+        return Value(MemeNative::clipboardGet());
+    })));
+    clipMod->set("set", Value(std::make_shared<NativeMethodCallable>("set", 1, [isHeadless](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string txt = a[0].deref().toString();
+        simulatedClipboard = txt;
+        if (isHeadless()) {
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            MemeNative::state().clipboardFallback = txt;
             return Value(true);
         }
-#if defined(__APPLE__)
-        std::string script = "osascript -e 'display dialog \"" + q + "\" with title \"" + title + "\" buttons {\"Na\", \"Han\"} default button \"Han\"'";
-        FILE *p = popen(script.c_str(), "r");
-        if (p)
-        {
-            char buf[256];
-            std::string res;
-            while (fgets(buf, sizeof(buf), p)) res += buf;
-            pclose(p);
-            return Value(res.find("button returned:Han") != std::string::npos);
+        return Value(MemeNative::clipboardSet(txt));
+    })));
+    clipMod->set("hasText", Value(std::make_shared<NativeMethodCallable>("hasText", 0, [isHeadless](Interpreter &, const std::vector<Value> &) -> Value {
+        if (isHeadless()) {
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            return Value(!(MemeNative::state().clipboardFallback.empty() && simulatedClipboard.empty()));
         }
-#endif
-        return Value(true);
-    };
-    auto hanNaBoxVal = Value(std::make_shared<NativeMethodCallable>("han_na_box", 2, hanNaBoxFn));
-    m->set("han_na_box", hanNaBoxVal);
-    m->set("confirm_box", hanNaBoxVal);
+        return Value(MemeNative::clipboardHasText());
+    })));
+    clipMod->set("clear", Value(std::make_shared<NativeMethodCallable>("clear", 0, [isHeadless](Interpreter &, const std::vector<Value> &) -> Value {
+        simulatedClipboard.clear();
+        if (isHeadless()) {
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            MemeNative::state().clipboardFallback.clear();
+            return Value(true);
+        }
+        return Value(MemeNative::clipboardClear());
+    })));
+    m->set("clipboard", Value(clipMod));
 
-    auto fileChunoFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string title = args.size() > 0 ? args[0].deref().toString() : "Select File";
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
-            return Value("");
+    auto dialogMod = std::make_shared<MemeMap>();
+    dialogMod->isModule = true;
+    dialogMod->set("alert", Value(std::make_shared<NativeMethodCallable>("alert", 1, 3, [isHeadless, makeCb](Interpreter &interp, const std::vector<Value> &a) -> Value {
+        std::string title = a[0].deref().toString();
+        std::string msg = a.size() > 1 ? a[1].deref().toString() : "";
+        auto cb = makeCb(a, 2);
+        if (isHeadless()) {
+            interp.getOutputStream() << "[App Alert: " << title << "] " << msg << "\n";
+            if (cb) { MemeNative::AsyncResponse r; r.ok = true; r.accepted = true; cb(r); }
+            return Value(true);
         }
-#if defined(__APPLE__)
-        std::string script = "osascript -e 'POSIX path of (choose file with prompt \"" + title + "\")' 2>/dev/null";
-        FILE *p = popen(script.c_str(), "r");
-        if (p)
-        {
-            char buf[512];
-            std::string res;
-            while (fgets(buf, sizeof(buf), p)) res += buf;
-            pclose(p);
-            while (!res.empty() && (res.back() == '\n' || res.back() == '\r')) res.pop_back();
-            return Value(res);
+        MemeNative::alertAsync(title, msg, cb);
+        return Value(true);
+    })));
+    dialogMod->set("confirm", Value(std::make_shared<NativeMethodCallable>("confirm", 1, 3, [isHeadless, makeCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string title = a[0].deref().toString();
+        std::string msg = a.size() > 1 ? a[1].deref().toString() : "";
+        auto cb = makeCb(a, 2);
+        auto accepted = std::make_shared<bool>(true);
+        if (isHeadless()) {
+            if (cb) { MemeNative::AsyncResponse r; r.ok = true; r.accepted = true; cb(r); }
+            return Value(true);
         }
-#endif
-        return Value("");
+        MemeNative::confirmAsync(title, msg, [cb, accepted](const MemeNative::AsyncResponse &r) {
+            *accepted = r.accepted;
+            if (cb) cb(r);
+        });
+        return Value(*accepted);
+    })));
+    dialogMod->set("prompt", Value(std::make_shared<NativeMethodCallable>("prompt", 1, 4, [isHeadless, findLastCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string title = a[0].deref().toString();
+        std::string msg = a.size() > 1 ? a[1].deref().toString() : "";
+        std::string def = (a.size() > 2 && !a[2].deref().isCallable()) ? a[2].deref().toString() : "";
+        auto cb = findLastCb(a);
+        if (isHeadless()) {
+            if (cb) { MemeNative::AsyncResponse r; r.ok = true; r.accepted = true; r.value = def; cb(r); }
+            return Value(def);
+        }
+        auto outVal = std::make_shared<std::string>(def);
+        MemeNative::promptAsync(title, msg, def, [cb, outVal](const MemeNative::AsyncResponse &r) {
+            *outVal = r.value;
+            if (cb) cb(r);
+        });
+        return Value(*outVal);
+    })));
+    auto makeFileDlgFn = [isHeadless, findLastCb, readOptTitle, readOptDefName](const std::string &mode, const std::string &defTitle) {
+        return Value(std::make_shared<NativeMethodCallable>(mode, 0, 2, [mode, defTitle, isHeadless, findLastCb, readOptTitle, readOptDefName](Interpreter &, const std::vector<Value> &a) -> Value {
+            auto cb = findLastCb(a);
+            if (isHeadless()) {
+                MemeNative::AsyncResponse r; r.ok = false; r.accepted = false; r.cancelled = true;
+                if (cb) cb(r);
+                return asyncResToInterpValue(r);
+            }
+            auto syncRes = std::make_shared<MemeNative::AsyncResponse>();
+            MemeNative::fileDialogAsync(mode, readOptTitle(a, defTitle), readOptDefName(a), [cb, syncRes](const MemeNative::AsyncResponse &r) {
+                *syncRes = r;
+                if (cb) cb(r);
+            });
+            return asyncResToInterpValue(*syncRes);
+        }));
     };
-    auto fileChunoVal = Value(std::make_shared<NativeMethodCallable>("file_chuno", 0, 1, fileChunoFn));
+    dialogMod->set("pickFile", makeFileDlgFn("open", "Open File"));
+    dialogMod->set("saveFile", makeFileDlgFn("save", "Save File"));
+    dialogMod->set("pickFolder", makeFileDlgFn("folder", "Select Folder"));
+    m->set("dialog", Value(dialogMod));
+
+    auto hapticsMod = std::make_shared<MemeMap>();
+    hapticsMod->isModule = true;
+    hapticsMod->set("impact", Value(std::make_shared<NativeMethodCallable>("impact", 0, 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::hapticImpact(a.empty() ? "medium" : a[0].deref().toString()));
+    })));
+    hapticsMod->set("notify", Value(std::make_shared<NativeMethodCallable>("notify", 0, 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::hapticNotify(a.empty() ? "success" : a[0].deref().toString()));
+    })));
+    hapticsMod->set("selection", Value(std::make_shared<NativeMethodCallable>("selection", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::hapticSelection());
+    })));
+    hapticsMod->set("vibrate", Value(std::make_shared<NativeMethodCallable>("vibrate", 0, 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::hapticVibrate(a.empty() ? 100 : static_cast<int>(toLongLong(a[0]))));
+    })));
+    m->set("haptics", Value(hapticsMod));
+
+    auto notifyMod = std::make_shared<MemeMap>();
+    notifyMod->isModule = true;
+    notifyMod->set("requestPermission", Value(std::make_shared<NativeMethodCallable>("requestPermission", 0, 1, [findLastCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        auto ok = std::make_shared<bool>(true);
+        auto cb = findLastCb(a);
+        MemeNative::notifyRequestPermissionAsync([cb, ok](const MemeNative::AsyncResponse &r) { *ok = r.accepted; if (cb) cb(r); });
+        return Value(*ok);
+    })));
+    notifyMod->set("send", Value(std::make_shared<NativeMethodCallable>("send", 1, 3, [isHeadless](Interpreter &interp, const std::vector<Value> &a) -> Value {
+        std::string title = a[0].deref().toString();
+        std::string body = a.size() > 1 ? a[1].deref().toString() : "";
+        if (isHeadless()) {
+            interp.getOutputStream() << "[Notification: " << title << "] " << body << "\n";
+            std::lock_guard<std::mutex> lock(MemeNative::state().mu);
+            MemeNative::state().notifications.push_back({title, body});
+            return Value(true);
+        }
+        return Value(MemeNative::notifySend(title, body));
+    })));
+    notifyMod->set("badge", Value(std::make_shared<NativeMethodCallable>("badge", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::setBadgeCount(static_cast<int>(toLongLong(a[0]))));
+    })));
+    m->set("notify", Value(notifyMod));
+
+    auto shareVal = Value(std::make_shared<NativeMethodCallable>("share", 1, 2, [isHeadless, findLastCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string text, title, url;
+        Value v = a[0].deref();
+        if (v.isMap()) {
+            auto vm = v.getMap();
+            if (vm->has("text")) text = vm->entries["text"].deref().toString();
+            if (vm->has("title")) title = vm->entries["title"].deref().toString();
+            if (vm->has("url")) url = vm->entries["url"].deref().toString();
+        } else if (!v.isCallable()) {
+            text = v.toString();
+        }
+        auto cb = findLastCb(a);
+        if (isHeadless()) {
+            if (cb) { MemeNative::AsyncResponse r; r.ok = true; r.value = text.empty() ? url : text; cb(r); }
+            return Value(true);
+        }
+        MemeNative::shareAsync(text, title, url, cb);
+        return Value(true);
+    }));
+
+    auto launcherMod = std::make_shared<MemeMap>();
+    launcherMod->isModule = true;
+    launcherMod->set("openUrl", Value(std::make_shared<NativeMethodCallable>("openUrl", 1, [isHeadless](Interpreter &interp, const std::vector<Value> &a) -> Value {
+        std::string url = a[0].deref().toString();
+        if (isHeadless()) { interp.getOutputStream() << "[Open: " << url << "]\n"; return Value(true); }
+        return Value(MemeNative::openUrl(url));
+    })));
+    launcherMod->set("canOpenUrl", Value(std::make_shared<NativeMethodCallable>("canOpenUrl", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::canOpenUrl(a[0].deref().toString()));
+    })));
+    launcherMod->set("share", shareVal);
+    m->set("launcher", Value(launcherMod));
+    m->set("share", shareVal);
+
+    auto deviceMod = std::make_shared<MemeMap>();
+    deviceMod->isModule = true;
+    deviceMod->set("info", Value(std::make_shared<NativeMethodCallable>("info", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return deviceInfoToInterpValue(MemeNative::getDeviceInfo());
+    })));
+    deviceMod->set("platform", Value(std::make_shared<NativeMethodCallable>("platform", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().os);
+    })));
+    deviceMod->set("isMobile", Value(std::make_shared<NativeMethodCallable>("isMobile", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().isMobile);
+    })));
+    deviceMod->set("isDesktop", Value(std::make_shared<NativeMethodCallable>("isDesktop", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().isDesktop);
+    })));
+    deviceMod->set("isWeb", Value(std::make_shared<NativeMethodCallable>("isWeb", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().isWeb);
+    })));
+    deviceMod->set("locale", Value(std::make_shared<NativeMethodCallable>("locale", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().locale);
+    })));
+    deviceMod->set("timezone", Value(std::make_shared<NativeMethodCallable>("timezone", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().timezone);
+    })));
+    deviceMod->set("theme", Value(std::make_shared<NativeMethodCallable>("theme", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::getDeviceInfo().theme);
+    })));
+    deviceMod->set("safeArea", Value(std::make_shared<NativeMethodCallable>("safeArea", 0, [](Interpreter &interp, const std::vector<Value> &) -> Value {
+        auto s = MemeNative::getScreenInfo();
+        const auto &uiIn = interp.getUiSession().input;
+        auto sm = std::make_shared<MemeMap>();
+        sm->set("top", Value(static_cast<double>(std::max(s.safeTop, uiIn.safeTop))));
+        sm->set("bottom", Value(static_cast<double>(std::max(s.safeBottom, uiIn.safeBottom))));
+        sm->set("left", Value(static_cast<double>(std::max(s.safeLeft, uiIn.safeLeft))));
+        sm->set("right", Value(static_cast<double>(std::max(s.safeRight, uiIn.safeRight))));
+        return Value(sm);
+    })));
+    deviceMod->set("screen", Value(std::make_shared<NativeMethodCallable>("screen", 0, [](Interpreter &interp, const std::vector<Value> &) -> Value {
+        auto s = MemeNative::getScreenInfo();
+        const auto &uiIn = interp.getUiSession().input;
+        auto sm = std::make_shared<MemeMap>();
+        sm->set("width", Value(static_cast<double>(uiIn.viewportW > 0 ? uiIn.viewportW : s.width)));
+        sm->set("height", Value(static_cast<double>(uiIn.viewportH > 0 ? uiIn.viewportH : s.height)));
+        sm->set("scale", Value(static_cast<double>(uiIn.dpiScale > 0 ? uiIn.dpiScale : s.scale)));
+        sm->set("safeTop", Value(static_cast<double>(std::max(s.safeTop, uiIn.safeTop))));
+        sm->set("safeBottom", Value(static_cast<double>(std::max(s.safeBottom, uiIn.safeBottom))));
+        sm->set("safeLeft", Value(static_cast<double>(std::max(s.safeLeft, uiIn.safeLeft))));
+        sm->set("safeRight", Value(static_cast<double>(std::max(s.safeRight, uiIn.safeRight))));
+        return Value(sm);
+    })));
+    m->set("device", Value(deviceMod));
+
+    auto batteryVal = Value(std::make_shared<NativeMethodCallable>("battery", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto b = MemeNative::getBatteryInfo();
+        auto bm = std::make_shared<MemeMap>();
+        bm->set("level", Value(b.level));
+        bm->set("charging", Value(b.charging));
+        bm->set("state", Value(b.state));
+        bm->set("supported", Value(b.supported));
+        return Value(bm);
+    }));
+    auto networkVal = Value(std::make_shared<NativeMethodCallable>("network", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto n = MemeNative::getNetworkInfo();
+        auto nm = std::make_shared<MemeMap>();
+        nm->set("online", Value(n.online));
+        nm->set("type", Value(n.type));
+        return Value(nm);
+    }));
+    auto powerMod = std::make_shared<MemeMap>();
+    powerMod->isModule = true;
+    powerMod->set("battery", batteryVal);
+    powerMod->set("network", networkVal);
+    m->set("power", Value(powerMod));
+    m->set("battery", batteryVal);
+    m->set("network", networkVal);
+
+    m->set("paths", Value(std::make_shared<NativeMethodCallable>("paths", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto p = MemeNative::getAppPaths();
+        auto pm = std::make_shared<MemeMap>();
+        pm->set("appData", Value(p.appData));
+        pm->set("cache", Value(p.cache));
+        pm->set("documents", Value(p.documents));
+        pm->set("temp", Value(p.temp));
+        return Value(pm);
+    })));
+
+    auto storageMod = std::make_shared<MemeMap>();
+    storageMod->isModule = true;
+    storageMod->set("get", Value(std::make_shared<NativeMethodCallable>("get", 1, 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::storageGet(a[0].deref().toString(), a.size() > 1 ? a[1].deref().toString() : ""));
+    })));
+    storageMod->set("set", Value(std::make_shared<NativeMethodCallable>("set", 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::storageSet(a[0].deref().toString(), a[1].deref().toString()));
+    })));
+    storageMod->set("remove", Value(std::make_shared<NativeMethodCallable>("remove", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::storageRemove(a[0].deref().toString()));
+    })));
+    storageMod->set("keys", Value(std::make_shared<NativeMethodCallable>("keys", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto ks = MemeNative::storageKeys();
+        auto out = std::make_shared<MemeList>();
+        for (const auto &k : ks) out->elements.push_back(Value(k));
+        return Value(out);
+    })));
+    m->set("storage", Value(storageMod));
+
+    auto kcMod = std::make_shared<MemeMap>();
+    kcMod->isModule = true;
+    kcMod->set("get", Value(std::make_shared<NativeMethodCallable>("get", 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::keychainGet(a[0].deref().toString(), a[1].deref().toString()));
+    })));
+    kcMod->set("set", Value(std::make_shared<NativeMethodCallable>("set", 3, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::keychainSet(a[0].deref().toString(), a[1].deref().toString(), a[2].deref().toString()));
+    })));
+    kcMod->set("remove", Value(std::make_shared<NativeMethodCallable>("remove", 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::keychainRemove(a[0].deref().toString(), a[1].deref().toString()));
+    })));
+    m->set("keychain", Value(kcMod));
+
+    auto bioMod = std::make_shared<MemeMap>();
+    bioMod->isModule = true;
+    bioMod->set("isAvailable", Value(std::make_shared<NativeMethodCallable>("isAvailable", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::biometricsAvailable());
+    })));
+    bioMod->set("authenticate", Value(std::make_shared<NativeMethodCallable>("authenticate", 0, 2, [findLastCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string reason = (!a.empty() && !a[0].deref().isCallable()) ? a[0].deref().toString() : "Authenticate";
+        MemeNative::biometricsAuthAsync(reason, findLastCb(a));
+        return Value(true);
+    })));
+    m->set("biometrics", Value(bioMod));
+    m->set("biometric", Value(bioMod));
+
+    auto audioMod = std::make_shared<MemeMap>();
+    audioMod->isModule = true;
+    audioMod->set("beep", Value(std::make_shared<NativeMethodCallable>("beep", 0, 2, [isHeadless](Interpreter &, const std::vector<Value> &a) -> Value {
+        if (isHeadless()) return Value(true);
+        double f = a.size() > 0 ? toDouble(a[0]) : 440.0;
+        int d = a.size() > 1 ? static_cast<int>(toLongLong(a[1])) : 150;
+        return Value(MemeNative::beep(f, d));
+    })));
+    audioMod->set("speak", Value(std::make_shared<NativeMethodCallable>("speak", 1, 2, [isHeadless](Interpreter &, const std::vector<Value> &a) -> Value {
+        if (isHeadless()) return Value(true);
+        double rate = 1.0;
+        if (a.size() > 1) {
+            Value v = a[1].deref();
+            rate = (v.isMap() && v.getMap()->has("rate")) ? toDouble(v.getMap()->entries["rate"]) : toDouble(v);
+        }
+        return Value(MemeNative::speak(a[0].deref().toString(), rate));
+    })));
+    audioMod->set("stopSpeaking", Value(std::make_shared<NativeMethodCallable>("stopSpeaking", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::stopSpeaking());
+    })));
+    audioMod->set("playSound", Value(std::make_shared<NativeMethodCallable>("playSound", 1, [isHeadless](Interpreter &, const std::vector<Value> &a) -> Value {
+        if (isHeadless()) return Value(true);
+        return Value(MemeNative::playSound(a[0].deref().toString()));
+    })));
+    m->set("audio", Value(audioMod));
+
+    auto locMod = std::make_shared<MemeMap>();
+    locMod->isModule = true;
+    locMod->set("get", Value(std::make_shared<NativeMethodCallable>("get", 0, 1, [findLastCb](Interpreter &, const std::vector<Value> &a) -> Value {
+        MemeNative::getLocationAsync(findLastCb(a));
+        return Value(true);
+    })));
+    m->set("location", Value(locMod));
+
+    auto camMod = std::make_shared<MemeMap>();
+    camMod->isModule = true;
+    camMod->set("pickPhoto", Value(std::make_shared<NativeMethodCallable>("pickPhoto", 0, 2, [isHeadless, findLastCb, readOptTitle](Interpreter &, const std::vector<Value> &a) -> Value {
+        auto cb = findLastCb(a);
+        if (isHeadless()) { MemeNative::AsyncResponse r; r.ok = false; r.cancelled = true; if (cb) cb(r); return Value(false); }
+        MemeNative::fileDialogAsync("photo", readOptTitle(a, "Pick Photo"), "", cb);
+        return Value(true);
+    })));
+    camMod->set("capture", Value(std::make_shared<NativeMethodCallable>("capture", 0, 2, [isHeadless, findLastCb, readOptTitle](Interpreter &, const std::vector<Value> &a) -> Value {
+        auto cb = findLastCb(a);
+        if (isHeadless()) { MemeNative::AsyncResponse r; r.ok = false; r.cancelled = true; if (cb) cb(r); return Value(false); }
+        MemeNative::fileDialogAsync("camera", readOptTitle(a, "Capture Photo"), "", cb);
+        return Value(true);
+    })));
+    m->set("camera", Value(camMod));
+
+    auto sensMod = std::make_shared<MemeMap>();
+    sensMod->isModule = true;
+    sensMod->set("accelerometer", Value(std::make_shared<NativeMethodCallable>("accelerometer", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto s = MemeNative::getSensorSnapshot();
+        auto sm = std::make_shared<MemeMap>();
+        sm->set("x", Value(s.accelX)); sm->set("y", Value(s.accelY)); sm->set("z", Value(s.accelZ));
+        sm->set("available", Value(s.available));
+        return Value(sm);
+    })));
+    sensMod->set("gyroscope", Value(std::make_shared<NativeMethodCallable>("gyroscope", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto s = MemeNative::getSensorSnapshot();
+        auto sm = std::make_shared<MemeMap>();
+        sm->set("x", Value(s.gyroX)); sm->set("y", Value(s.gyroY)); sm->set("z", Value(s.gyroZ));
+        sm->set("available", Value(s.available));
+        return Value(sm);
+    })));
+    sensMod->set("poll", Value(std::make_shared<NativeMethodCallable>("poll", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto s = MemeNative::getSensorSnapshot();
+        auto sm = std::make_shared<MemeMap>();
+        sm->set("accelX", Value(s.accelX)); sm->set("accelY", Value(s.accelY)); sm->set("accelZ", Value(s.accelZ));
+        sm->set("gyroX", Value(s.gyroX)); sm->set("gyroY", Value(s.gyroY)); sm->set("gyroZ", Value(s.gyroZ));
+        sm->set("available", Value(s.available));
+        return Value(sm);
+    })));
+    m->set("sensors", Value(sensMod));
+
+    auto winMod = std::make_shared<MemeMap>();
+    winMod->isModule = true;
+    winMod->set("setTitle", Value(std::make_shared<NativeMethodCallable>("setTitle", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::setWindowTitle(a[0].deref().toString()));
+    })));
+    winMod->set("setSize", Value(std::make_shared<NativeMethodCallable>("setSize", 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::setWindowSize(static_cast<int>(toLongLong(a[0])), static_cast<int>(toLongLong(a[1]))));
+    })));
+    winMod->set("setFullscreen", Value(std::make_shared<NativeMethodCallable>("setFullscreen", 0, 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(MemeNative::setFullscreen(a.empty() ? true : a[0].deref().isTruthy()));
+    })));
+    winMod->set("minimize", Value(std::make_shared<NativeMethodCallable>("minimize", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::minimizeWindow());
+    })));
+    winMod->set("focus", Value(std::make_shared<NativeMethodCallable>("focus", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::focusWindow());
+    })));
+    winMod->set("hideKeyboard", Value(std::make_shared<NativeMethodCallable>("hideKeyboard", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemeNative::hideKeyboard());
+    })));
+    m->set("window", Value(winMod));
+
+    return m;
+}
+
+static std::shared_ptr<MemeMap> createAppModule(Interpreter &interpreter)
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+    auto nativeMap = createNativeModule(interpreter);
+
+    auto dialogMap = nativeMap->entries["dialog"].getMap();
+    auto notifyMap = nativeMap->entries["notify"].getMap();
+    auto launcherMap = nativeMap->entries["launcher"].getMap();
+    auto hapticsMap = nativeMap->entries["haptics"].getMap();
+    auto deviceMap = nativeMap->entries["device"].getMap();
+
+    m->set("alert", dialogMap->entries["alert"]);
+    m->set("dikha_box", dialogMap->entries["alert"]);
+    m->set("puch_box", dialogMap->entries["prompt"]);
+    m->set("input_box", dialogMap->entries["prompt"]);
+    m->set("han_na_box", dialogMap->entries["confirm"]);
+    m->set("confirm_box", dialogMap->entries["confirm"]);
+
+    auto pickFileLegacyFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string title = args.size() > 0 ? args[0].deref().toString() : "Select File";
+        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS")) return Value("");
+        auto res = std::make_shared<MemeNative::AsyncResponse>();
+        MemeNative::fileDialogAsync("open", title, "", [res](const MemeNative::AsyncResponse &r) { *res = r; });
+        return Value(res->path);
+    };
+    auto fileChunoVal = Value(std::make_shared<NativeMethodCallable>("file_chuno", 0, 1, pickFileLegacyFn));
     m->set("file_chuno", fileChunoVal);
     m->set("pick_file", fileChunoVal);
-
-    auto notifyFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string title = args[0].deref().toString();
-        std::string msg = args[1].deref().toString();
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
-            interpreter.getOutputStream() << "[Notification: " << title << "] " << msg << "\n";
-            return Value(true);
-        }
-#if defined(__APPLE__)
-        std::string script = "osascript -e 'display notification \"" + msg + "\" with title \"" + title + "\"'";
-        std::system(script.c_str());
-#elif defined(__linux__)
-        std::string script = "notify-send \"" + title + "\" \"" + msg + "\" 2>/dev/null";
-        std::system(script.c_str());
-#else
-        interpreter.getOutputStream() << "[Notification: " << title << "] " << msg << "\n";
-#endif
-        return Value(true);
-    };
-    m->set("notify", Value(std::make_shared<NativeMethodCallable>("notify", 2, notifyFn)));
-
-    auto openFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
-        std::string target = args[0].deref().toString();
-        if (interpreter.getHeadless() || std::getenv("MEME_HEADLESS"))
-        {
-            interpreter.getOutputStream() << "[Open: " << target << "]\n";
-            return Value(true);
-        }
-#if defined(__APPLE__)
-        std::string cmd = "open \"" + target + "\"";
-        std::system(cmd.c_str());
-#elif defined(__linux__)
-        std::string cmd = "xdg-open \"" + target + "\" 2>/dev/null";
-        std::system(cmd.c_str());
-#elif defined(_WIN32)
-        std::string cmd = "start \"\" \"" + target + "\"";
-        std::system(cmd.c_str());
-#else
-        interpreter.getOutputStream() << "[Open: " << target << "]\n";
-#endif
-        return Value(true);
-    };
-    auto openVal = Value(std::make_shared<NativeMethodCallable>("khol", 1, openFn));
-    m->set("khol", openVal);
-    m->set("open", openVal);
+    m->set("save_file", dialogMap->entries["saveFile"]);
+    m->set("pick_folder", dialogMap->entries["pickFolder"]);
+    m->set("notify", notifyMap->entries["send"]);
+    m->set("khol", launcherMap->entries["openUrl"]);
+    m->set("open", launcherMap->entries["openUrl"]);
+    m->set("open_url", launcherMap->entries["openUrl"]);
+    m->set("openUrl", launcherMap->entries["openUrl"]);
+    m->set("share", nativeMap->entries["share"]);
+    m->set("haptic", hapticsMap->entries["impact"]);
+    m->set("device_info", deviceMap->entries["info"]);
+    m->set("battery", nativeMap->entries["battery"]);
+    m->set("network", nativeMap->entries["network"]);
 
     return m;
 }
@@ -8766,8 +9091,19 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
     m->set("render", dikhaVal);
     m->set("mount", Value(std::make_shared<NativeMethodCallable>("mount", 1, [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         if (!args.empty()) {
+            bool wasImmediate = interpreter.uiSession.isImmediateMode;
+            interpreter.uiSession.isImmediateMode = false;
+            interpreter.uiSession.eguiUpdateFn = nullptr;
+            if (wasImmediate) {
+                interpreter.uiSession.interaction = MemeUI::UiInteractionState();
+                interpreter.uiSession.popups.stack.clear();
+                interpreter.uiSession.focusScopes.scopes.clear();
+            }
             Value arg = args[0].deref();
             if (std::holds_alternative<std::shared_ptr<Callable>>(arg.data)) {
+                interpreter.uiSession.interaction = MemeUI::UiInteractionState();
+                interpreter.uiSession.popups.stack.clear();
+                interpreter.uiSession.focusScopes.scopes.clear();
                 interpreter.rootCallable = arg;
                 interpreter.rootComponentName = "App";
                 interpreter.setRootUiComponent(Value(std::monostate{}));
@@ -11639,6 +11975,11 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("cli", cliMod);
     importedModules["cli"] = cliMod;
 
+    auto nativeMod = Value(createNativeModule(*this));
+    globals->define("native", nativeMod);
+    importedModules["native"] = nativeMod;
+    importedModules["device"] = nativeMod.getMap()->entries["device"];
+
     auto appMod = Value(createAppModule(*this));
     globals->define("app", appMod);
     importedModules["app"] = appMod;
@@ -12761,6 +13102,10 @@ Value Interpreter::importModule(const std::string &path, int line)
         Value mod = Value(ShadcnComponents::createShadcnModule());
         importedModules[path] = mod;
         return mod;
+    }
+    if (path == "native" || path == "app" || path == "device")
+    {
+        return importedModules[path];
     }
 
     std::filesystem::path modulePath(path);
@@ -16227,6 +16572,10 @@ void Interpreter::triggerUiRerender()
         evMap->set("value", Value(ev.value));
         evMap->set("checked", Value(ev.boolValue));
         evMap->set("numValue", Value(ev.numValue));
+        evMap->set("x", Value(static_cast<double>(ev.x)));
+        evMap->set("y", Value(static_cast<double>(ev.y)));
+        evMap->set("deltaX", Value(static_cast<double>(ev.deltaX)));
+        evMap->set("deltaY", Value(static_cast<double>(ev.deltaY)));
         evMap->set("key", Value(ev.key));
         auto targetMap = std::make_shared<MemeMap>();
         targetMap->set("value", Value(ev.value));
@@ -16264,6 +16613,7 @@ void Interpreter::triggerUiRerender()
         hr.hasClick = uh.hasClick; hr.hasChange = uh.hasChange;
         hr.hasKeyDown = uh.hasKeyDown; hr.hasScroll = uh.hasScroll;
         hr.isScrollContainer = uh.isScrollContainer;
+        hr.scrollX = uh.scrollX; hr.maxScrollX = uh.maxScrollX;
         hr.scrollY = uh.scrollY; hr.maxScrollY = uh.maxScrollY;
         hr.inputValue = uh.inputValue; hr.placeholder = uh.placeholder;
         hr.isPassword = uh.isPassword; hr.isMultiline = uh.isMultiline;

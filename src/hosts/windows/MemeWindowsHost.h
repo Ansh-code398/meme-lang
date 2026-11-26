@@ -22,6 +22,7 @@
 #endif
 #include <d2d1.h>
 #include <dwrite.h>
+#include <commdlg.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -32,6 +33,7 @@
 #include "../../ui/MemeUiTypes.h"
 #include "../../ui/MemeUiTessellator.h"
 #include "../../ui/MemeUiRuntime.h"
+#include "../../platform/MemeNativeApis.h"
 
 namespace MemeUI {
 
@@ -414,6 +416,125 @@ inline int runWindowsNativeApp(const std::string &title, UiSession &session, int
                                 CW_USEDEFAULT, CW_USEDEFAULT, physW, physH, nullptr, nullptr, hInst, &ctx);
     if (!hwnd) return 1;
 
+    // Apply embedded or default squircle window/taskbar icon
+    HICON hAppIcon = nullptr;
+    {
+        std::vector<uint8_t> rgba;
+        int iw = 0, ih = 0;
+        MemeNative::ensureDefaultAppIconRgba(32, rgba, iw, ih);
+        if (!rgba.empty() && iw > 0 && ih > 0) {
+            std::vector<uint8_t> bgra(rgba.size(), 0);
+            for (size_t i = 0; i + 3 < rgba.size(); i += 4) {
+                bgra[i + 0] = rgba[i + 2];
+                bgra[i + 1] = rgba[i + 1];
+                bgra[i + 2] = rgba[i + 0];
+                bgra[i + 3] = rgba[i + 3];
+            }
+            HBITMAP hColor = CreateBitmap(iw, ih, 1, 32, bgra.data());
+            HBITMAP hMask = CreateBitmap(iw, ih, 1, 1, nullptr);
+            if (hColor && hMask) {
+                ICONINFO ii{};
+                ii.fIcon = TRUE;
+                ii.hbmMask = hMask;
+                ii.hbmColor = hColor;
+                hAppIcon = CreateIconIndirect(&ii);
+                if (hAppIcon) {
+                    SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hAppIcon));
+                    SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hAppIcon));
+                }
+            }
+            if (hColor) DeleteObject(hColor);
+            if (hMask) DeleteObject(hMask);
+        }
+    }
+
+    auto &nh = MemeNative::hooks();
+    nh.requestRerender = [hwnd, &session]() {
+        session.needsRender = true;
+        PostMessageW(hwnd, WM_TIMER, 1, 0);
+    };
+    nh.clipboardGet = session.clipboardReadFn;
+    nh.clipboardSet = [&session](const std::string &t) -> bool {
+        if (session.clipboardWriteFn) session.clipboardWriteFn(t);
+        return true;
+    };
+    nh.getScreenInfo = [&session, &ctx]() -> MemeNative::ScreenInfo {
+        MemeNative::ScreenInfo s;
+        s.width = session.input.viewportW;
+        s.height = session.input.viewportH;
+        s.scale = ctx.dpiScale;
+        return s;
+    };
+    nh.getDeviceInfo = []() -> MemeNative::DeviceInfo {
+        MemeNative::DeviceInfo d;
+        d.os = "windows";
+        d.arch = MemeNative::defaultArchName();
+        d.model = "Windows PC";
+        d.isDesktop = true; d.isMobile = false; d.isWeb = false;
+        d.isDark = true;
+        if (HMODULE adv = LoadLibraryW(L"advapi32.dll")) {
+            typedef LONG(WINAPI *RegOpenKeyExWFn)(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY);
+            typedef LONG(WINAPI *RegQueryValueExWFn)(HKEY, LPCWSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD);
+            typedef LONG(WINAPI *RegCloseKeyFn)(HKEY);
+            auto pOpen = reinterpret_cast<RegOpenKeyExWFn>(GetProcAddress(adv, "RegOpenKeyExW"));
+            auto pQuery = reinterpret_cast<RegQueryValueExWFn>(GetProcAddress(adv, "RegQueryValueExW"));
+            auto pClose = reinterpret_cast<RegCloseKeyFn>(GetProcAddress(adv, "RegCloseKey"));
+            if (pOpen && pQuery && pClose) {
+                HKEY hk = nullptr;
+                if (pOpen(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &hk) == 0 && hk) {
+                    DWORD val = 0, sz = sizeof(val), tp = 0;
+                    if (pQuery(hk, L"AppsUseLightTheme", nullptr, &tp, reinterpret_cast<LPBYTE>(&val), &sz) == 0) {
+                        d.isDark = (val == 0);
+                    }
+                    pClose(hk);
+                }
+            }
+        }
+        d.theme = d.isDark ? "dark" : "light";
+        return d;
+    };
+    nh.fileDialogAsync = [hwnd](const std::string &mode, const std::string &dlgTitle, const std::string &defName, MemeNative::AsyncCallback cb) {
+        MemeNative::AsyncResponse r; r.ok = false; r.accepted = false; r.cancelled = true;
+        if (HMODULE cd = LoadLibraryW(L"comdlg32.dll")) {
+            typedef BOOL(WINAPI *DlgFn)(LPOPENFILENAMEW);
+            auto fn = reinterpret_cast<DlgFn>(GetProcAddress(cd, mode == "save" ? "GetSaveFileNameW" : "GetOpenFileNameW"));
+            if (fn) {
+                wchar_t buf[2048] = {0};
+                if (!defName.empty()) {
+                    std::wstring wdef = WinHostDetail::utf8ToWide(defName);
+                    wcsncpy(buf, wdef.c_str(), 2040);
+                }
+                std::wstring wt = WinHostDetail::utf8ToWide(dlgTitle);
+                OPENFILENAMEW ofn{};
+                ofn.lStructSize = sizeof(ofn);
+                ofn.hwndOwner = hwnd;
+                ofn.lpstrFile = buf;
+                ofn.nMaxFile = 2048;
+                ofn.lpstrTitle = wt.empty() ? nullptr : wt.c_str();
+                ofn.lpstrFilter = (mode == "photo") ? L"Images\0*.png;*.jpg;*.jpeg;*.bmp;*.webp\0All Files\0*.*\0" : L"All Files\0*.*\0";
+                ofn.Flags = OFN_PATHMUSTEXIST | (mode == "save" ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST) | OFN_NOCHANGEDIR;
+                if (fn(&ofn)) {
+                    r.ok = true; r.accepted = true; r.cancelled = false;
+                    r.path = WinHostDetail::wideToUtf8(buf);
+                    r.value = r.path;
+                    r.paths.push_back(r.path);
+                }
+            }
+        }
+        MemeNative::dispatchCallbackOnUiThread(cb, r);
+    };
+    nh.setWindowTitle = [hwnd](const std::string &t) -> bool {
+        return SetWindowTextW(hwnd, WinHostDetail::utf8ToWide(t).c_str()) != 0;
+    };
+    nh.setWindowSize = [hwnd, &ctx](int w, int hSz) -> bool {
+        return SetWindowPos(hwnd, nullptr, 0, 0,
+                            static_cast<int>(std::max(160, w) * ctx.dpiScale),
+                            static_cast<int>(std::max(120, hSz) * ctx.dpiScale),
+                            SWP_NOMOVE | SWP_NOZORDER) != 0;
+    };
+    nh.minimizeWindow = [hwnd]() -> bool { return ShowWindow(hwnd, SW_MINIMIZE) != 0; };
+    nh.focusWindow = [hwnd]() -> bool { return SetForegroundWindow(hwnd) != 0; };
+
     session.input.viewportW = static_cast<float>(width);
     session.input.viewportH = static_cast<float>(height);
     session.input.dpiScale = ctx.dpiScale;
@@ -425,6 +546,7 @@ inline int runWindowsNativeApp(const std::string &title, UiSession &session, int
         DispatchMessageW(&msg);
     }
 
+    if (hAppIcon) DestroyIcon(hAppIcon);
     if (ctx.rt) ctx.rt->Release();
     if (ctx.dwFactory) ctx.dwFactory->Release();
     if (ctx.d2dFactory) ctx.d2dFactory->Release();

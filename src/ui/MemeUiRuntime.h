@@ -93,6 +93,10 @@ inline std::string hitRegionsToJsonStr(const std::vector<UiHitRegion> &regions) 
         json += "\"numMin\": " + std::to_string(r.numMin) + ", ";
         json += "\"numMax\": " + std::to_string(r.numMax) + ", ";
         json += "\"numStep\": " + std::to_string(r.numStep) + ", ";
+        json += "\"isScrollContainer\": " + std::string(r.isScrollContainer ? "true" : "false") + ", ";
+        json += "\"overscrollContain\": " + std::string(r.overscrollContain ? "true" : "false") + ", ";
+        json += "\"scrollX\": " + std::to_string(r.scrollX) + ", ";
+        json += "\"maxScrollX\": " + std::to_string(r.maxScrollX) + ", ";
         json += "\"scrollY\": " + std::to_string(r.scrollY) + ", ";
         json += "\"maxScrollY\": " + std::to_string(r.maxScrollY) + ", ";
         json += "\"isRtl\": " + std::string(r.isRtl ? "true" : "false") + ", ";
@@ -144,7 +148,7 @@ public:
                          node.classStr.find("overflow-x-auto") != std::string::npos ||
                          node.classStr.find("overflow-x-scroll") != std::string::npos ||
                          (nKey == "root" && node.classStr.find("overflow-hidden") == std::string::npos));
-        if (hasClick || hasChange || isScroll || node.handlers.count("keydown") > 0 || node.handlers.count("pointerdown") > 0 || !node.testId.empty()) {
+        if (hasClick || hasChange || isScroll || node.handlers.count("wheel") > 0 || node.handlers.count("scroll") > 0 || node.handlers.count("keydown") > 0 || node.handlers.count("pointerdown") > 0 || !node.testId.empty()) {
             int id = ++idCounter;
             outMap[id] = &node;
         }
@@ -193,9 +197,13 @@ public:
         input.viewportH = vh;
 
         if (isImmediateMode && eguiUpdateFn) {
+            egui.interaction.scrollOffsetsY = interaction.scrollOffsetsY;
+            egui.interaction.scrollOffsetsX = interaction.scrollOffsetsX;
             egui.beginFrame(input);
             eguiUpdateFn(egui);
             egui.endFrame();
+            interaction.scrollOffsetsY = egui.interaction.scrollOffsetsY;
+            interaction.scrollOffsetsX = egui.interaction.scrollOffsetsX;
             lastCmds = egui.cmds;
             lastHits = egui.hitRegions;
             lastMesh = Tessellator::tessellate(lastCmds, vw, vh);
@@ -305,7 +313,32 @@ public:
             }
         }
 
-        if (changed) needsRender = true;
+        // Active scrollbar thumb drag
+        if (input.mouseDown[0] && interaction.draggingScrollbar && !interaction.activeKey.empty()) {
+            const UiHitRegion *shr = findRegionByKey(interaction.activeKey);
+            if (shr) {
+                if (interaction.draggingScrollbarHorizontal && shr->maxScrollX > 0.5f && shr->width > 16.0f) {
+                    float thumbW = std::max(20.0f, shr->width * (shr->width / std::max(1.0f, shr->contentW)));
+                    float denom = std::max(1.0f, shr->width - thumbW);
+                    float ratio = std::clamp((x - shr->x - interaction.scrollbarDragOffset) / denom, 0.0f, 1.0f);
+                    interaction.scrollOffsetsX[shr->nodeKey] = ratio * shr->maxScrollX;
+                    dispatchEventOnNode(shr->id, "scroll", "", static_cast<double>(interaction.scrollOffsetsX[shr->nodeKey]), x, y, 0.0f, 0.0f);
+                    changed = true;
+                } else if (!interaction.draggingScrollbarHorizontal && shr->maxScrollY > 0.5f && shr->height > 16.0f) {
+                    float thumbH = std::max(20.0f, shr->height * (shr->height / std::max(1.0f, shr->contentH)));
+                    float denom = std::max(1.0f, shr->height - thumbH);
+                    float ratio = std::clamp((y - shr->y - interaction.scrollbarDragOffset) / denom, 0.0f, 1.0f);
+                    interaction.scrollOffsetsY[shr->nodeKey] = ratio * shr->maxScrollY;
+                    dispatchEventOnNode(shr->id, "scroll", "", static_cast<double>(interaction.scrollOffsetsY[shr->nodeKey]), x, y, 0.0f, 0.0f);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            needsRender = true;
+            version++;
+        }
         return changed;
     }
 
@@ -332,6 +365,70 @@ public:
         }
 
         const UiHitRegion *hr = hitTestTopmost(x, y);
+
+        // Check vertical / horizontal scrollbar track hits on overlapping scroll containers
+        if (button == 0) {
+            const UiHitRegion *sbHit = nullptr;
+            bool sbHoriz = false;
+            int modalBlockZ = -999999;
+            for (const auto &r : lastHits) {
+                if (r.tag == "backdrop" && r.clipRect.contains(x, y) &&
+                    x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) {
+                    modalBlockZ = std::max(modalBlockZ, r.zIndex);
+                }
+            }
+            for (auto it = lastHits.rbegin(); it != lastHits.rend(); ++it) {
+                const auto &r = *it;
+                if (!r.isScrollContainer || r.disabled || r.zIndex < modalBlockZ) continue;
+                bool inside = (r.nodeKey == "root")
+                    ? (x >= 0.0f && x <= input.viewportW && y >= 0.0f && y <= input.viewportH)
+                    : (r.clipRect.contains(x, y) && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height);
+                if (!inside) continue;
+                if (r.maxScrollY > 2.0f && r.height > 16.0f && x >= r.x + r.width - 12.0f && x <= r.x + r.width) {
+                    if (!hr || !(hr->hasClick || hr->hasChange) || hr->zIndex <= r.zIndex) {
+                        sbHit = &r; sbHoriz = false; break;
+                    }
+                }
+                if (r.maxScrollX > 2.0f && r.width > 16.0f && y >= r.y + r.height - 12.0f && y <= r.y + r.height) {
+                    if (!hr || !(hr->hasClick || hr->hasChange) || hr->zIndex <= r.zIndex) {
+                        sbHit = &r; sbHoriz = true; break;
+                    }
+                }
+            }
+            if (sbHit) {
+                interaction.activeId = sbHit->id;
+                interaction.activeKey = sbHit->nodeKey;
+                interaction.draggingScrollbar = true;
+                interaction.draggingScrollbarHorizontal = sbHoriz;
+                if (sbHoriz) {
+                    float thumbW = std::max(20.0f, sbHit->width * (sbHit->width / std::max(1.0f, sbHit->contentW)));
+                    float thumbX = sbHit->x + (sbHit->scrollX / sbHit->maxScrollX) * (sbHit->width - thumbW);
+                    if (x >= thumbX && x <= thumbX + thumbW) {
+                        interaction.scrollbarDragOffset = x - thumbX;
+                    } else {
+                        interaction.scrollbarDragOffset = thumbW * 0.5f;
+                        float denom = std::max(1.0f, sbHit->width - thumbW);
+                        float ratio = std::clamp((x - sbHit->x - interaction.scrollbarDragOffset) / denom, 0.0f, 1.0f);
+                        interaction.scrollOffsetsX[sbHit->nodeKey] = ratio * sbHit->maxScrollX;
+                    }
+                } else {
+                    float thumbH = std::max(20.0f, sbHit->height * (sbHit->height / std::max(1.0f, sbHit->contentH)));
+                    float thumbY = sbHit->y + (sbHit->scrollY / sbHit->maxScrollY) * (sbHit->height - thumbH);
+                    if (y >= thumbY && y <= thumbY + thumbH) {
+                        interaction.scrollbarDragOffset = y - thumbY;
+                    } else {
+                        interaction.scrollbarDragOffset = thumbH * 0.5f;
+                        float denom = std::max(1.0f, sbHit->height - thumbH);
+                        float ratio = std::clamp((y - sbHit->y - interaction.scrollbarDragOffset) / denom, 0.0f, 1.0f);
+                        interaction.scrollOffsetsY[sbHit->nodeKey] = ratio * sbHit->maxScrollY;
+                    }
+                }
+                needsRender = true;
+                version++;
+                return true;
+            }
+        }
+
         if (!hr) {
             interaction.focusedKey.clear();
             interaction.focusedId = 0;
@@ -373,7 +470,10 @@ public:
             input.mouseDown[button] = false;
             input.mouseReleased[button] = true;
         }
+        bool wasScrollbarDrag = interaction.draggingScrollbar;
         interaction.draggingSlider = false;
+        interaction.draggingScrollbar = false;
+        interaction.draggingScrollbarHorizontal = false;
         for (auto &kv : interaction.textFields) kv.second.handlePointerUp();
 
         if (isImmediateMode) {
@@ -384,7 +484,7 @@ public:
 
         const UiHitRegion *hr = hitTestTopmost(x, y);
         bool dispatched = false;
-        if (hr && hr->nodeKey == interaction.activeKey && (hr->hasClick || hr->tag == "checkbox" || hr->tag == "switch" || hr->tag == "radio")) {
+        if (!wasScrollbarDrag && hr && hr->nodeKey == interaction.activeKey && (hr->hasClick || hr->tag == "checkbox" || hr->tag == "switch" || hr->tag == "radio")) {
             std::string extraVal;
             if (!interaction.focusedKey.empty()) {
                 auto it = interaction.textFields.find(interaction.focusedKey);
@@ -399,14 +499,16 @@ public:
     }
 
     bool handleScroll(float x, float y, float dx, float dy) {
+        input.pointerX = x;
+        input.pointerY = y;
         input.wheelDeltaX = dx;
         input.wheelDeltaY = dy;
         if (isImmediateMode) {
             renderFrame(input.viewportW, input.viewportH);
             input.wheelDeltaX = 0; input.wheelDeltaY = 0;
-            return true;
+            return egui.didScroll;
         }
-        if (interaction.draggingSlider) return false;
+        if (interaction.draggingSlider || interaction.draggingScrollbar) return false;
 
         int modalBlockZ = -999999;
         for (const auto &hr : lastHits) {
@@ -418,12 +520,14 @@ public:
 
         std::vector<const UiHitRegion *> candidates;
         for (const auto &hr : lastHits) {
-            if (!hr.isScrollContainer || hr.disabled || hr.zIndex < modalBlockZ) continue;
+            if (hr.disabled || hr.zIndex < modalBlockZ) continue;
+            if (!hr.isScrollContainer && !hr.hasWheelHandler) continue;
             bool inside = (hr.nodeKey == "root")
                 ? (x >= 0.0f && x <= input.viewportW && y >= 0.0f && y <= input.viewportH)
                 : (hr.clipRect.contains(x, y) &&
                    x >= hr.x && x <= hr.x + hr.width && y >= hr.y && y <= hr.y + hr.height);
-            if (inside && (hr.maxScrollY > 0.5f || hr.maxScrollX > 0.5f)) {
+            if (!inside) continue;
+            if (hr.hasWheelHandler || hr.overscrollContain || hr.maxScrollY > 0.5f || hr.maxScrollX > 0.5f) {
                 candidates.push_back(&hr);
             }
         }
@@ -432,8 +536,15 @@ public:
         });
         for (auto it = candidates.rbegin(); it != candidates.rend(); ++it) {
             const UiHitRegion *hr = *it;
+            if (hr->hasWheelHandler) {
+                if (dispatchEventOnNode(hr->id, "wheel", "", 0.0, x, y, dx, dy)) {
+                    needsRender = true;
+                    version++;
+                    if (!hr->isScrollContainer || hr->overscrollContain) return true;
+                }
+            }
             bool moved = false;
-            if (hr->maxScrollY > 0.5f && std::abs(dy) > 1e-5f) {
+            if (hr->isScrollContainer && hr->maxScrollY > 0.5f && std::abs(dy) > 1e-5f) {
                 float &sy = interaction.scrollOffsetsY[hr->nodeKey];
                 float nextY = std::clamp(sy - dy * 28.0f, 0.0f, hr->maxScrollY);
                 if (std::abs(nextY - sy) > 1e-4f) {
@@ -441,7 +552,7 @@ public:
                     moved = true;
                 }
             }
-            if (hr->maxScrollX > 0.5f && std::abs(dx) > 1e-5f) {
+            if (hr->isScrollContainer && hr->maxScrollX > 0.5f && std::abs(dx) > 1e-5f) {
                 float &sx = interaction.scrollOffsetsX[hr->nodeKey];
                 float nextX = std::clamp(sx - dx * 28.0f, 0.0f, hr->maxScrollX);
                 if (std::abs(nextX - sx) > 1e-4f) {
@@ -450,9 +561,19 @@ public:
                 }
             }
             if (moved) {
+                dispatchEventOnNode(hr->id, "scroll", "",
+                    static_cast<double>(interaction.scrollOffsetsY[hr->nodeKey]),
+                    x, y, dx, dy);
                 needsRender = true;
                 version++;
                 return true;
+            }
+            bool horizDom = std::abs(dx) > std::abs(dy);
+            bool blocksChain = hr->overscrollContain && (
+                (horizDom && hr->maxScrollX > 0.5f) ||
+                (!horizDom && (hr->maxScrollY > 0.5f || hr->hasWheelHandler)));
+            if (blocksChain) {
+                break;
             }
         }
         return false;
@@ -593,7 +714,7 @@ public:
                                  n.classStr.find("overflow-x-auto") != std::string::npos ||
                                  n.classStr.find("overflow-x-scroll") != std::string::npos ||
                                  (isRoot && n.classStr.find("overflow-hidden") == std::string::npos));
-                if (hasClick || hasChange || isScroll || n.handlers.count("keydown") > 0 || n.handlers.count("pointerdown") > 0 || !n.testId.empty()) {
+                if (hasClick || hasChange || isScroll || n.handlers.count("wheel") > 0 || n.handlers.count("scroll") > 0 || n.handlers.count("keydown") > 0 || n.handlers.count("pointerdown") > 0 || !n.testId.empty()) {
                     ++counter;
                     if (counter == target) { found = &n; return; }
                 }
@@ -604,7 +725,7 @@ public:
         return w.found;
     }
 
-    bool dispatchEventOnNode(int nodeId, const std::string &eventType, const std::string &val = "", double numVal = 0.0) {
+    bool dispatchEventOnNode(int nodeId, const std::string &eventType, const std::string &val = "", double numVal = 0.0, float evX = 0.0f, float evY = 0.0f, float evDx = 0.0f, float evDy = 0.0f) {
         const UiNode *n = findNodeForHitId(nodeId, cachedRoot);
         if (!n) return false;
 
@@ -613,6 +734,10 @@ public:
         ev.targetId = nodeId;
         ev.value = val;
         ev.numValue = numVal;
+        ev.x = evX;
+        ev.y = evY;
+        ev.deltaX = evDx;
+        ev.deltaY = evDy;
         ev.boolValue = (n->tag == "checkbox" || n->tag == "switch") ? !n->checked : n->checked;
 
         if (eventType == "click") {

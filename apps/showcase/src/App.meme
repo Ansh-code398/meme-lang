@@ -3,10 +3,11 @@
 // Zero platform checks • 100% Native GPU/2D Rendering • Full Dual-Engine Parity
 
 bula "math";
+bula "native";
 bula "ui:shadcn" jaise {
     Card, Button, Badge, Input, Textarea, Checkbox, Switch,
     Slider, Progress, Combobox, Popover, Tooltip, Toast, Dialog,
-    Tabs, TabsList, TabsTrigger, TabsContent,
+    Tabs, TabsList, TabsTrigger, TabsContent, ScrollArea,
     ResizablePanelGroup, ResizablePanel, ResizableHandle, Canvas
 };
 bula "ui:primitives" jaise { createVirtualizer, createTypeahead, createReorder };
@@ -46,6 +47,10 @@ kaam App() {
     [apiToken, setApiToken] = useState("meme_live_98421");
     [notesText, setNotesText] = useState("Multi-line native editor:\n- Ctrl/Cmd+C, X, V clipboard\n- Undo/Redo & Word selection\n- Zero OS stock widget bloat");
 
+    // Tab 5: Cross-Platform Native APIs
+    [nativeStatus, setNativeStatus] = useState("Ready (" + native.device.platform() + ")");
+    [nativeCounter, setNativeCounter] = useState(0);
+
     // Headless virtualizer over 10,000 rows (O(visible) layout + O(log N) Fenwick scroll)
     pakad virtualizer = useMemo(() => createVirtualizer({
         "itemCount": 10000,
@@ -62,6 +67,10 @@ kaam App() {
     pakad typeahead = useMemo(() => createTypeahead({ "items": presets }), []);
 
     pakad reorderCtrl = useMemo(() => createReorder({ "items": reorderItems }), []);
+    pakad diagRows = ["GPU Pipeline Active", "Font Atlas 512x512", "Scroll Clipping Active", "Inner Flex Solver", "Overscroll Contain", "Keychain & Storage", "Haptics Engine", "Native Device Info"];
+    pakad devInfo = native.device.info();
+    pakad battInfo = native.battery();
+    pakad netInfo = native.network();
 
     kaam sendChat() {
         agar (chatDraft != "") {
@@ -180,18 +189,26 @@ kaam App() {
                     >
                         Multi-Input Editor
                     </TabsTrigger>
+                    <TabsTrigger
+                        testId="tab_native"
+                        selected={activeTab == "native"}
+                        class={activeTab == "native" ? "bg-indigo-600 text-white" : ""}
+                        onClick={() => setActiveTab("native")}
+                    >
+                        Native APIs
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent hidden={activeTab != "chat"} class="flex-1 flex flex-col gap-3">
                     <div class="flex flex-col md:flex-row gap-3 flex-1">
-                        <Card class="flex-1 p-4 flex flex-col gap-2">
+                        <Card class="flex-1 min-h-[340px] p-4 flex flex-col gap-2">
                             <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                                 <span class="text-xs font-bold text-slate-300">
                                     {"Live Room Messages (" + chatMessages.lambai() + ")"}
                                 </span>
                                 <span class="text-xs text-emerald-400 font-mono">Zero-WebView 60FPS</span>
                             </div>
-                            <div class="flex-1 flex flex-col gap-2 overflow-y-auto">
+                            <div testId="chat_messages_scroll" class="flex-1 flex flex-col gap-2 overflow-y-auto">
                                 {chatMessages.map(msg => (
                                     <div key={msg.id} class="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/50 flex flex-col gap-1">
                                         <span class="text-xs font-bold text-amber-400">{"@" + msg.user}</span>
@@ -227,7 +244,7 @@ kaam App() {
                                     </Button>
                                 </div>
                             </div>
-                            <div class="flex-1 flex flex-col gap-1.5 overflow-hidden">
+                            <div testId="virtual_feed_box" onWheel={(e) => handleScrollStep(-e.deltaY * 14)} class="flex-1 flex flex-col gap-1.5 overflow-hidden overscroll-contain">
                                 {vSnap.map(vRow => (
                                     <div key={vRow.index} class="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                                         <span class="text-xs font-mono text-sky-400">{"#event-" + vRow.index}</span>
@@ -292,12 +309,12 @@ kaam App() {
                                     value={typeQuery}
                                     onChange={(e) => handleTypeaheadSearch(e.target.value)}
                                 />
-                                <div class="flex gap-1.5 flex-wrap">
+                                <div testId="horiz_presets" class="flex flex-row gap-2 overflow-x-auto pb-1">
                                     {presets.map(pName => (
                                         <Button
                                             key={pName}
                                             variant={selectedTheme == pName ? "default" : "outline"}
-                                            class="px-2.5 py-1 text-xs"
+                                            class="px-3 py-1 text-xs shrink-0"
                                             onClick={() => setSelectedTheme(pName)}
                                         >
                                             {pName}
@@ -373,6 +390,16 @@ kaam App() {
                                     </div>
                                 ))}
                             </div>
+
+                            <span class="text-xs font-bold text-slate-400">Inner ScrollArea (Independent Viewport)</span>
+                            <ScrollArea testId="explorer_scroll" class="h-32 rounded-xl bg-slate-950 border border-slate-800 p-2 gap-1.5 overscroll-contain">
+                                {diagRows.map((dRow, dIdx) => (
+                                    <div key={dRow} class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                        <span class="text-xs text-slate-200">{(dIdx + 1) + ". " + dRow}</span>
+                                        <span class="text-xs font-mono text-emerald-400">OK</span>
+                                    </div>
+                                ))}
+                            </ScrollArea>
                         </ResizablePanel>
                     </ResizablePanelGroup>
                 </TabsContent>
@@ -427,6 +454,85 @@ kaam App() {
                         >
                             Append Verification Line
                         </Button>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent hidden={activeTab != "native"} class="flex-1 flex flex-col gap-3">
+                    <Card class="p-4 flex flex-col gap-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sm font-bold text-white">Cross-Platform Native OS & Hardware APIs</span>
+                            <Badge class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                {devInfo.os + " / " + devInfo.arch}
+                            </Badge>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-1">
+                                <span class="text-xs text-slate-400">Device & Locale</span>
+                                <span class="text-xs font-mono text-sky-300">{devInfo.model + " • " + devInfo.locale}</span>
+                                <span class="text-xs text-slate-400">{"Theme: " + devInfo.theme}</span>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-1">
+                                <span class="text-xs text-slate-400">Battery & Power</span>
+                                <span class="text-xs font-mono text-amber-300">{"State: " + battInfo.state}</span>
+                                <span class="text-xs text-slate-400">{"Level: " + battInfo.level}</span>
+                            </div>
+                            <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-1">
+                                <span class="text-xs text-slate-400">Network Connectivity</span>
+                                <span class="text-xs font-mono text-emerald-300">{netInfo.online ? "Online" : "Offline"}</span>
+                                <span class="text-xs text-slate-400">{"Transport: " + netInfo.type}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <Button
+                                testId="native_storage_btn"
+                                class="px-3 py-1.5 text-xs"
+                                onClick={() => {
+                                    pakad nNext = nativeCounter + 1;
+                                    setNativeCounter(nNext);
+                                    native.storage.set("showcase_count", string(nNext));
+                                    setNativeStatus("Saved count=" + native.storage.get("showcase_count"));
+                                }}
+                            >
+                                Save KV Storage
+                            </Button>
+                            <Button
+                                testId="native_clipboard_btn"
+                                variant="secondary"
+                                class="px-3 py-1.5 text-xs"
+                                onClick={() => {
+                                    native.clipboard.set("MEME-UI-" + devInfo.os);
+                                    setNativeStatus("Clipboard: " + native.clipboard.get());
+                                }}
+                            >
+                                Test Clipboard
+                            </Button>
+                            <Button
+                                testId="native_haptic_btn"
+                                variant="outline"
+                                class="px-3 py-1.5 text-xs"
+                                onClick={() => {
+                                    native.haptics.impact("medium");
+                                    native.audio.beep(520, 90);
+                                    setNativeStatus("Triggered Haptic + Audio Beep");
+                                }}
+                            >
+                                Haptic & Beep
+                            </Button>
+                            <Button
+                                testId="native_notify_btn"
+                                variant="outline"
+                                class="px-3 py-1.5 text-xs"
+                                onClick={() => {
+                                    native.notify.send("MEME-UI", "Native API check on " + devInfo.os);
+                                    setNativeStatus("Notification Sent");
+                                }}
+                            >
+                                Send Notification
+                            </Button>
+                        </div>
+                        <span testId="native_status_text" class="text-xs font-mono text-indigo-300">
+                            {nativeStatus}
+                        </span>
                     </Card>
                 </TabsContent>
             </Tabs>
