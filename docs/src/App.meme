@@ -1,5 +1,5 @@
 bula "ui" jaise { useState, useRouter };
-bula "ui:shadcn" jaise { ScrollArea };
+bula "ui:shadcn" jaise { ScrollArea, Popover };
 bula "native";
 bula "platform";
 bula "meme";
@@ -37,6 +37,30 @@ jugaad collectAllSections() {
 
 pakad ALL_SECTIONS = collectAllSections();
 
+jugaad getTrackForSection(secId) {
+    pakad ci = 0;
+    jabtak ci < size(DOCS_CATEGORIES) {
+        pakad cat = DOCS_CATEGORIES[ci];
+        pakad sids = cat.sectionIds;
+        pakad j = 0;
+        jabtak j < size(sids) {
+            dekh sids[j] == secId {
+                ye_le cat.track != nalla ? cat.track : "core";
+            }
+            j = j + 1;
+        }
+        ci = ci + 1;
+    }
+    ye_le "core";
+}
+
+jugaad getTrackLabel(trackId) {
+    dekh trackId == "platform" {
+        ye_le "UI, Native & Platform";
+    }
+    ye_le "Core Language";
+}
+
 jugaad resolveRouteState(routePath, routeQuery, fallbackSection) {
     dekh routePath == "/playground" {
         ye_le {"tab": "playground", "section": fallbackSection};
@@ -56,7 +80,7 @@ jugaad resolveRouteState(routePath, routeQuery, fallbackSection) {
     ye_le {"tab": "docs", "section": fallbackSection};
 }
 
-jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelectSection) {
+jugaad SidebarPanel(sections, activeSecId, activeTrack, onSelectTrack, searchQuery, setSearchQuery, onSelectSection) {
     pakad qLow = searchQuery.to_lower();
 
     pakad findSectionById = jugaad(sid) {
@@ -80,13 +104,15 @@ jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelect
             pakad dOk = s.description.to_lower().find(qLow) >= 0;
             pakad idOk = s.id.to_lower().find(qLow) >= 0;
             dekh tOk || dOk || idOk {
+                pakad trk = getTrackForSection(s.id);
+                pakad trkBadge = trk == "platform" ? "[UI/Platform] " : "[Core] ";
                 matches.push(
                     <button
                         key={si}
                         className={activeSecId == s.id ? "w-full text-left px-3 py-2 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "w-full text-left px-3 py-2 rounded-lg text-zinc-400 text-xs"}
                         onClick={() => onSelectSection(s.id)}
                     >
-                        {s.title}
+                        {trkBadge + s.title}
                     </button>
                 );
             }
@@ -102,6 +128,11 @@ jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelect
         pakad ci = 0;
         jabtak ci < size(DOCS_CATEGORIES) {
             pakad cat = DOCS_CATEGORIES[ci];
+            pakad catTrack = cat.track != nalla ? cat.track : "core";
+            dekh catTrack != activeTrack {
+                ci = ci + 1;
+                chal;
+            }
             pakad sids = cat.sectionIds;
             pakad catBtns = [];
             pakad j = 0;
@@ -133,6 +164,24 @@ jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelect
 
     ye_le (
         <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+                <span className="px-1 font-mono text-xs text-zinc-500">Documentation Sections</span>
+                <div className="flex flex-row gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+                    <button
+                        className={activeTrack == "core" ? "flex-1 px-2 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs text-center" : "flex-1 px-2 py-1.5 rounded-lg text-zinc-400 text-xs text-center"}
+                        onClick={() => onSelectTrack("core")}
+                    >
+                        Core Language
+                    </button>
+                    <button
+                        className={activeTrack == "platform" ? "flex-1 px-2 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs text-center" : "flex-1 px-2 py-1.5 rounded-lg text-zinc-400 text-xs text-center"}
+                        onClick={() => onSelectTrack("platform")}
+                    >
+                        UI & Platform
+                    </button>
+                </div>
+            </div>
+
             <div className="flex flex-row items-center gap-2">
                 <input
                     className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
@@ -158,14 +207,19 @@ jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelect
 
 jugaad App() {
     pakad router = useRouter();
+    pakad initLang = (router.query != nalla && router.query.has("lang") && router.query["lang"] == "en") ? "en" : "hi";
     pakad [selectedSecId, setSelectedSecId] = useState("intro");
     pakad [searchQuery, setSearchQuery] = useState("");
     pakad [playgroundCode, setPlaygroundCode] = useState("");
     pakad [mobileMenuOpen, setMobileMenuOpen] = useState(nhi);
+    pakad [syntaxMode, setSyntaxMode] = useState(initLang);
+    pakad [langMenuOpen, setLangMenuOpen] = useState(nhi);
 
     pakad routeInfo = resolveRouteState(router.path, router.query, selectedSecId);
     pakad activeTab = routeInfo.tab;
     pakad effectiveSecId = routeInfo.section;
+    pakad activeTrack = getTrackForSection(effectiveSecId);
+    pakad activeTrackLabel = getTrackLabel(activeTrack);
 
     pakad scr = native.device.screen();
     pakad isCompact = (scr.width > 0 && scr.width < 820);
@@ -186,17 +240,29 @@ jugaad App() {
     jugaad navigateToSection(secId) {
         setSelectedSecId(secId);
         setMobileMenuOpen(nhi);
+        setLangMenuOpen(nhi);
         router.navigate("/docs/" + secId);
+    }
+
+    jugaad navigateToTrack(trkId) {
+        pakad targetSec = trkId == "platform" ? "react-jsx-ui" : "intro";
+        setSelectedSecId(targetSec);
+        setSearchQuery("");
+        setMobileMenuOpen(nhi);
+        setLangMenuOpen(nhi);
+        router.navigate("/docs/" + targetSec);
     }
 
     jugaad openPlaygroundWithCode(code) {
         setPlaygroundCode(code);
         setMobileMenuOpen(nhi);
+        setLangMenuOpen(nhi);
         router.navigate("/playground");
     }
 
     jugaad goTab(tabName) {
         setMobileMenuOpen(nhi);
+        setLangMenuOpen(nhi);
         dekh tabName == "playground" {
             router.navigate("/playground");
         } warna dekh tabName == "errors" {
@@ -204,6 +270,11 @@ jugaad App() {
         } warna {
             router.navigate("/docs/" + effectiveSecId);
         }
+    }
+
+    jugaad selectSyntaxMode(nextMode) {
+        setSyntaxMode(nextMode);
+        setLangMenuOpen(nhi);
     }
 
     ye_le (
@@ -225,9 +296,11 @@ jugaad App() {
                         <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 font-bold text-amber-400 text-sm">M</span>
                         <span className="font-bold text-base text-zinc-100">MEMElang</span>
                     </button>
-                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400">
-                        {"100% Pure .meme (" + platform.os() + ")"}
-                    </span>
+                    {!isCompact ? (
+                        <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400">
+                            {"100% Pure .meme (" + platform.os() + ")"}
+                        </span>
+                    ) : nalla}
                 </div>
 
                 <div className="flex flex-row items-center gap-1.5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
@@ -251,45 +324,82 @@ jugaad App() {
                     </button>
                 </div>
 
-                {!isCompact ? (
-                    <div className="flex flex-row items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400">
-                            Wasm Eval Ready
-                        </span>
+                <div className="flex flex-row items-center gap-2">
+                    <button
+                        className={syntaxMode == "en" ? "px-3 py-1.5 rounded-lg bg-sky-950 border border-sky-700 font-mono text-xs font-semibold text-sky-200" : "px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-700 font-mono text-xs font-semibold text-amber-200"}
+                        onClick={() => setLangMenuOpen(!langMenuOpen)}
+                    >
+                        {"Syntax: " + (syntaxMode == "en" ? "English" : "Fun Hindi") + " v"}
+                    </button>
+                    {!isCompact ? (
                         <button
                             className="px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-xs"
                             onClick={() => goTab("playground")}
                         >
                             Try Live
                         </button>
-                    </div>
-                ) : nalla}
+                    ) : nalla}
+                </div>
             </div>
+
+            {langMenuOpen ? (
+                <Popover className="fixed top-14 right-4 w-64 rounded-xl border border-zinc-700 bg-zinc-900 p-2 flex flex-col gap-1.5 shadow-2xl">
+                    <span className="px-2 py-1 font-mono text-xs text-zinc-400">Code Syntax Mode</span>
+                    <button
+                        className={syntaxMode == "hi" ? "w-full text-left px-3 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold" : "w-full text-left px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs"}
+                        onClick={() => selectSyntaxMode("hi")}
+                    >
+                        {"Fun Hindi (pakad, jugaad, dekh)"}
+                    </button>
+                    <button
+                        className={syntaxMode == "en" ? "w-full text-left px-3 py-2 rounded-lg bg-sky-500 text-zinc-950 text-xs font-semibold" : "w-full text-left px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs"}
+                        onClick={() => selectSyntaxMode("en")}
+                    >
+                        {"English (let, fn, if, print)"}
+                    </button>
+                </Popover>
+            ) : nalla}
 
             {activeTab == "docs" ? (
                 <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
                     {!isCompact ? (
                         <ScrollArea className="w-72 shrink-0 h-full overflow-y-auto border-r border-zinc-800 p-4 bg-zinc-950">
-                            {SidebarPanel(ALL_SECTIONS, effectiveSecId, searchQuery, setSearchQuery, navigateToSection)}
+                            {SidebarPanel(ALL_SECTIONS, effectiveSecId, activeTrack, navigateToTrack, searchQuery, setSearchQuery, navigateToSection)}
                         </ScrollArea>
                     ) : nalla}
 
                     <ScrollArea key={"doc-" + effectiveSecId} className="flex-1 h-full overflow-y-auto p-6">
-                        {isCompact && mobileMenuOpen ? (
-                            <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900">
-                                {SidebarPanel(ALL_SECTIONS, effectiveSecId, searchQuery, setSearchQuery, navigateToSection)}
+                        {isCompact ? (
+                            <div className="flex flex-row gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800 mb-4">
+                                <button
+                                    className={activeTrack == "core" ? "flex-1 px-2 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs text-center" : "flex-1 px-2 py-1.5 rounded-lg text-zinc-400 text-xs text-center"}
+                                    onClick={() => navigateToTrack("core")}
+                                >
+                                    Core Language
+                                </button>
+                                <button
+                                    className={activeTrack == "platform" ? "flex-1 px-2 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs text-center" : "flex-1 px-2 py-1.5 rounded-lg text-zinc-400 text-xs text-center"}
+                                    onClick={() => navigateToTrack("platform")}
+                                >
+                                    UI & Platform
+                                </button>
                             </div>
                         ) : nalla}
-                        <DocContentComp section={currentSection} prevSection={prevSection} nextSection={nextSection} onNavigateSection={navigateToSection} onOpenPlayground={openPlaygroundWithCode} />
+                        {isCompact && mobileMenuOpen ? (
+                            <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900">
+                                {SidebarPanel(ALL_SECTIONS, effectiveSecId, activeTrack, navigateToTrack, searchQuery, setSearchQuery, navigateToSection)}
+                            </div>
+                        ) : nalla}
+                        <DocContentComp section={currentSection} prevSection={prevSection} nextSection={nextSection} trackLabel={activeTrackLabel} syntaxMode={syntaxMode} onNavigateSection={navigateToSection} onOpenPlayground={openPlaygroundWithCode} />
                     </ScrollArea>
                 </div>
             ) : activeTab == "playground" ? (
                 <ScrollArea key="pg-scroll" className="flex-1 h-full overflow-y-auto p-6">
-                    <PlaygroundComp presets={PLAYGROUND_RECIPES} initialCode={playgroundCode} />
+                    <PlaygroundComp presets={PLAYGROUND_RECIPES} initialCode={playgroundCode} syntaxMode={syntaxMode} />
                 </ScrollArea>
             ) : (
                 <ScrollArea key="err-scroll" className="flex-1 h-full overflow-y-auto p-6">
-                    <ErrorsComp errorsList={ERROR_ITEMS} onOpenPlayground={openPlaygroundWithCode} />
+                    <ErrorsComp errorsList={ERROR_ITEMS} syntaxMode={syntaxMode} onOpenPlayground={openPlaygroundWithCode} />
                 </ScrollArea>
             )}
 

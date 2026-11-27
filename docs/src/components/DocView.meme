@@ -9,7 +9,7 @@ jugaad formatDocText(raw) {
     ye_le raw;
 }
 
-jugaad renderDocBlock(item, idx, onOpenPlayground) {
+jugaad renderDocBlock(item, idx, syntaxMode, onOpenPlayground) {
     pakad bType = item.type;
 
     dekh bType == "text" {
@@ -28,7 +28,7 @@ jugaad renderDocBlock(item, idx, onOpenPlayground) {
     }
 
     dekh bType == "code" {
-        ye_le <div key={idx}><CodeBlockComp title={item.title} code={item.code} onOpenPlayground={onOpenPlayground} /></div>;
+        ye_le <div key={idx}><CodeBlockComp title={item.title} code={item.code} syntaxMode={syntaxMode} onOpenPlayground={onOpenPlayground} /></div>;
     }
 
     dekh bType == "callout" {
@@ -141,6 +141,8 @@ jugaad DocContentView(props) {
     pakad section = props.section;
     pakad prevSection = props.prevSection;
     pakad nextSection = props.nextSection;
+    pakad trackLabel = props.trackLabel != nalla ? props.trackLabel : "Core Language";
+    pakad syntaxMode = props.syntaxMode != nalla ? props.syntaxMode : "hi";
     pakad onNavigateSection = props.onNavigateSection;
     pakad onOpenPlayground = props.onOpenPlayground;
 
@@ -152,18 +154,23 @@ jugaad DocContentView(props) {
     pakad renderedBlocks = [];
     pakad bi = 0;
     jabtak bi < size(blocks) {
-        renderedBlocks.push(renderDocBlock(blocks[bi], bi, onOpenPlayground));
+        renderedBlocks.push(renderDocBlock(blocks[bi], bi, syntaxMode, onOpenPlayground));
         bi = bi + 1;
     }
 
     ye_le (
         <div className="flex flex-col gap-4 max-w-4xl w-full pb-12">
             <div className="pb-5 border-b border-zinc-800 flex flex-col gap-2">
-                <div className="flex flex-row items-center gap-2">
+                <div className="flex flex-row items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-xs text-emerald-300">
+                        {trackLabel}
+                    </span>
                     <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 font-mono text-xs text-amber-400">
                         {section.id}
                     </span>
-                    <span className="text-xs text-zinc-500">MEMElang Reference</span>
+                    <span className={syntaxMode == "en" ? "px-2 py-0.5 rounded bg-sky-950 border border-sky-800 font-mono text-xs text-sky-300" : "px-2 py-0.5 rounded bg-amber-950 border border-amber-800 font-mono text-xs text-amber-300"}>
+                        {syntaxMode == "en" ? "English Word Syntax" : "Fun Hindi Syntax"}
+                    </span>
                 </div>
                 <h1 className="text-2xl font-bold text-zinc-100">{section.title}</h1>
                 <p className="text-sm text-zinc-400">{section.description}</p>

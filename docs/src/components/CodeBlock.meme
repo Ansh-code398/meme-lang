@@ -15,32 +15,45 @@ jugaad formatMs(msVal) {
 jugaad CodeBlockView(props) {
     pakad title = props.title;
     pakad code = props.code;
+    pakad syntaxMode = props.syntaxMode != nalla ? props.syntaxMode : "hi";
     pakad onOpenPlayground = props.onOpenPlayground;
 
-    pakad [copied, setCopied] = useState(nhi);
-    pakad [showOut, setShowOut] = useState(nhi);
-    pakad [evalOut, setEvalOut] = useState("");
-    pakad [evalErr, setEvalErr] = useState(nhi);
-    pakad [evalMs, setEvalMs] = useState("0.0");
-    pakad [prevCode, setPrevCode] = useState(code);
+    pakad [evalState, setEvalState] = useState({
+        "code": "",
+        "mode": "",
+        "copied": nhi,
+        "show": nhi,
+        "out": "",
+        "err": nhi,
+        "ms": "0.0"
+    });
 
-    dekh code != prevCode {
-        setPrevCode(code);
-        setCopied(nhi);
-        setShowOut(nhi);
-        setEvalOut("");
-        setEvalErr(nhi);
-    }
+    pakad sameCtx = (evalState.code == code && evalState.mode == syntaxMode);
+    pakad copied = sameCtx && evalState.copied;
+    pakad showOut = sameCtx && evalState.show;
+    pakad evalOut = sameCtx ? evalState.out : "";
+    pakad evalErr = sameCtx && evalState.err;
+    pakad evalMs = sameCtx ? evalState.ms : "0.0";
 
+    pakad displayCode = shSyntax.formatSnippetForMode(code, syntaxMode);
     pakad safeTitle = (title == nalla || title == "") ? "snippet.meme" : title;
+    pakad modeLabel = syntaxMode == "en" ? "English" : "Fun Hindi";
 
     jugaad handleCopy() {
-        native.clipboard.write(code);
-        setCopied(han);
+        native.clipboard.write(displayCode);
+        setEvalState({
+            "code": code,
+            "mode": syntaxMode,
+            "copied": han,
+            "show": showOut,
+            "out": evalOut,
+            "err": evalErr,
+            "ms": evalMs
+        });
     }
 
     jugaad handleRun() {
-        pakad res = meme.eval(code);
+        pakad res = meme.eval(displayCode);
         pakad outStr = shSyntax.stripAnsiCodes(res.output);
         dekh outStr == "" {
             dekh res.hasUi {
@@ -49,10 +62,27 @@ jugaad CodeBlockView(props) {
                 outStr = "(Execution completed with no stdout output)";
             }
         }
-        setEvalOut(outStr);
-        setEvalErr(res.isError);
-        setEvalMs(formatMs(res.durationMs));
-        setShowOut(han);
+        setEvalState({
+            "code": code,
+            "mode": syntaxMode,
+            "copied": copied,
+            "show": han,
+            "out": outStr,
+            "err": res.isError,
+            "ms": formatMs(res.durationMs)
+        });
+    }
+
+    jugaad handleCloseOut() {
+        setEvalState({
+            "code": code,
+            "mode": syntaxMode,
+            "copied": copied,
+            "show": nhi,
+            "out": "",
+            "err": nhi,
+            "ms": "0.0"
+        });
     }
 
     ye_le (
@@ -61,11 +91,14 @@ jugaad CodeBlockView(props) {
                 <div className="flex flex-row items-center gap-2">
                     <span className="font-mono text-xs font-semibold text-amber-400">{"</>"}</span>
                     <span className="font-mono text-xs text-zinc-200 font-medium">{safeTitle}</span>
+                    <span className={syntaxMode == "en" ? "px-1.5 py-0.5 rounded bg-sky-950 border border-sky-800 font-mono text-xs text-sky-300" : "px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 font-mono text-xs text-amber-300"}>
+                        {modeLabel}
+                    </span>
                 </div>
                 <div className="flex flex-row items-center gap-2">
                     <button
                         className="px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200"
-                        onClick={() => onOpenPlayground(code)}
+                        onClick={() => onOpenPlayground(displayCode)}
                     >
                         Playground
                     </button>
@@ -85,7 +118,7 @@ jugaad CodeBlockView(props) {
             </div>
 
             <div className="p-4 overflow-x-auto bg-zinc-950">
-                {shSyntax.renderHighlightedCode(code)}
+                {shSyntax.renderHighlightedCode(displayCode)}
             </div>
 
             {showOut ? (
@@ -101,7 +134,7 @@ jugaad CodeBlockView(props) {
                             <span className="font-mono text-xs text-zinc-400">{evalMs + "ms"}</span>
                             <button
                                 className="px-2 py-0.5 rounded bg-zinc-800 text-xs text-zinc-300 border border-zinc-700"
-                                onClick={() => setShowOut(nhi)}
+                                onClick={handleCloseOut}
                             >
                                 Close
                             </button>

@@ -16924,9 +16924,21 @@ void Interpreter::triggerUiRerender()
     if (rootUiComponent.isNil() && rootCallable.isNil())
         return;
 
-    componentInstanceCounters.clear();
-    componentHookCursors.clear();
-    componentPathStack.clear();
+    if (isRenderingUi)
+    {
+        rerenderQueued = true;
+        return;
+    }
+    isRenderingUi = true;
+    int renderPassCount = 0;
+    try
+    {
+        do
+        {
+            rerenderQueued = false;
+            componentInstanceCounters.clear();
+            componentHookCursors.clear();
+            componentPathStack.clear();
 
     Value renderedTree;
     if (!rootCallable.isNil() && std::holds_alternative<std::shared_ptr<Callable>>(rootCallable.deref().data))
@@ -17086,10 +17098,20 @@ void Interpreter::triggerUiRerender()
             }
             tl_fxDepth--;
         }
-        else
-        {
-            pendingEffects.clear();
+            else
+            {
+                pendingEffects.clear();
+            }
         }
+        } while (rerenderQueued && ++renderPassCount < 16);
+        rerenderQueued = false;
+        isRenderingUi = false;
+    }
+    catch (...)
+    {
+        rerenderQueued = false;
+        isRenderingUi = false;
+        throw;
     }
 }
 

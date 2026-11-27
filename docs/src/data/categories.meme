@@ -2,6 +2,7 @@ jugaad getCategories() {
     ye_le [
         {
             "name": "Getting Started",
+            "track": "core",
             "sectionIds": [
                 "intro",
                 "quickstart"
@@ -9,6 +10,7 @@ jugaad getCategories() {
         },
         {
             "name": "Language Basics",
+            "track": "core",
             "sectionIds": [
                 "variables",
                 "types",
@@ -20,6 +22,7 @@ jugaad getCategories() {
         },
         {
             "name": "Functions & Architecture",
+            "track": "core",
             "sectionIds": [
                 "functions",
                 "oop",
@@ -29,6 +32,7 @@ jugaad getCategories() {
         },
         {
             "name": "Async, Networking & Concurrency",
+            "track": "core",
             "sectionIds": [
                 "async-await-promises",
                 "fetch-http-client",
@@ -38,13 +42,24 @@ jugaad getCategories() {
         },
         {
             "name": "Type System & Memory Safety",
+            "track": "core",
             "sectionIds": [
                 "gradual-typing",
                 "memory-safety"
             ]
         },
         {
+            "name": "Standard Library & Errors",
+            "track": "core",
+            "sectionIds": [
+                "stdlib",
+                "builtins",
+                "meme-errors"
+            ]
+        },
+        {
             "name": "Native UI & Reactivity",
+            "track": "platform",
             "sectionIds": [
                 "react-jsx-ui",
                 "native-desktop"
@@ -52,6 +67,7 @@ jugaad getCategories() {
         },
         {
             "name": "Platform, Permissions & Packaging",
+            "track": "platform",
             "sectionIds": [
                 "native-permissions",
                 "platform-separation",
@@ -62,23 +78,17 @@ jugaad getCategories() {
         },
         {
             "name": "Universal Interop",
+            "track": "platform",
             "sectionIds": [
                 "chameleon-bridge"
             ]
         },
         {
             "name": "Tooling & Package Manager",
+            "track": "platform",
             "sectionIds": [
                 "tapri-package-manager",
                 "vscode-extension"
-            ]
-        },
-        {
-            "name": "Standard Library & Errors",
-            "sectionIds": [
-                "stdlib",
-                "builtins",
-                "meme-errors"
             ]
         }
     ];

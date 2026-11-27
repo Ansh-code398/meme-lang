@@ -71,9 +71,11 @@ jugaad formatPgMs(msVal) {
 jugaad PlaygroundView(props) {
     pakad presets = props.presets;
     pakad initialCode = props.initialCode;
+    pakad syntaxMode = props.syntaxMode != nalla ? props.syntaxMode : "hi";
     pakad defaultPreset = presets[0];
-    pakad startCode = (initialCode != nalla && initialCode != "") ? initialCode : defaultPreset.code;
-    pakad [selectedId, setSelectedId] = useState((initialCode != nalla && initialCode != "") ? "custom" : defaultPreset.id);
+    pakad hasInitial = (initialCode != nalla && initialCode != "");
+    pakad startCode = hasInitial ? initialCode : shPg.formatSnippetForMode(defaultPreset.code, syntaxMode);
+    pakad [selectedId, setSelectedId] = useState(hasInitial ? "custom" : defaultPreset.id);
     pakad [codeText, setCodeText] = useState(startCode);
     pakad [stdinText, setStdinText] = useState(defaultPreset.stdin != nalla ? defaultPreset.stdin : "");
     pakad [showStdin, setShowStdin] = useState(nhi);
@@ -85,6 +87,7 @@ jugaad PlaygroundView(props) {
     pakad [resGpuCmds, setResGpuCmds] = useState([]);
     pakad [copied, setCopied] = useState(nhi);
     pakad [prevInitial, setPrevInitial] = useState(initialCode);
+    pakad [prevMode, setPrevMode] = useState(syntaxMode);
 
     dekh initialCode != prevInitial {
         setPrevInitial(initialCode);
@@ -96,9 +99,29 @@ jugaad PlaygroundView(props) {
         }
     }
 
+    dekh syntaxMode != prevMode {
+        setPrevMode(syntaxMode);
+        pakad matchedBase = nalla;
+        dekh selectedId != "custom" {
+            pakad mi = 0;
+            jabtak mi < size(presets) {
+                dekh presets[mi].id == selectedId {
+                    matchedBase = presets[mi].code;
+                    bas;
+                }
+                mi = mi + 1;
+            }
+        }
+        dekh matchedBase != nalla {
+            setCodeText(shPg.formatSnippetForMode(matchedBase, syntaxMode));
+        } warna {
+            setCodeText(shPg.convertCodeSyntax(codeText, syntaxMode));
+        }
+    }
+
     jugaad selectPreset(presetObj) {
         setSelectedId(presetObj.id);
-        setCodeText(presetObj.code);
+        setCodeText(shPg.formatSnippetForMode(presetObj.code, syntaxMode));
         pakad pStdin = presetObj.stdin != nalla ? presetObj.stdin : "";
         setStdinText(pStdin);
         setShowStdin(pStdin != "");
@@ -185,11 +208,11 @@ jugaad PlaygroundView(props) {
 
             <div className="flex flex-row items-center gap-2 flex-wrap">
                 <span className="font-mono text-xs text-zinc-500">Quick Insert:</span>
-                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-sky-300" onClick={() => appendTemplate("pakad x = 42;\ndikha x;")}>+ pakad</button>
-                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-300" onClick={() => appendTemplate("jugaad greet(name) {\n    ye_le \"Namaste \" + name;\n}\ndikha greet(\"Duniya\");")}>+ jugaad</button>
-                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-300" onClick={() => appendTemplate("bula \"platform\";\ndikha platform.info();")}>+ platform</button>
-                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-fuchsia-300" onClick={() => appendTemplate("bula \"permissions\";\ndikha permissions.check(\"camera\");")}>+ permissions</button>
-                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-400" onClick={() => appendTemplate("jugaad MiniCard() {\n    ye_le <div className=\"p-4 rounded-xl bg-slate-900 border border-indigo-500 text-white\">Live GPU Card</div>;\n}\nui.mount(MiniCard);")}>+ ui.mount</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-sky-300" onClick={() => appendTemplate(shPg.formatSnippetForMode("pakad x = 42;\ndikha x;", syntaxMode))}>{syntaxMode == "en" ? "+ let" : "+ pakad"}</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-300" onClick={() => appendTemplate(shPg.formatSnippetForMode("jugaad greet(name) {\n    ye_le \"Namaste \" + name;\n}\ndikha greet(\"Duniya\");", syntaxMode))}>{syntaxMode == "en" ? "+ fn" : "+ jugaad"}</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-300" onClick={() => appendTemplate(shPg.formatSnippetForMode("bula \"platform\";\ndikha platform.info();", syntaxMode))}>+ platform</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-fuchsia-300" onClick={() => appendTemplate(shPg.formatSnippetForMode("bula \"permissions\";\ndikha permissions.check(\"camera\");", syntaxMode))}>+ permissions</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-400" onClick={() => appendTemplate(shPg.formatSnippetForMode("jugaad MiniCard() {\n    ye_le <div className=\"p-4 rounded-xl bg-slate-900 border border-indigo-500 text-white\">Live GPU Card</div>;\n}\nui.mount(MiniCard);", syntaxMode))}>+ ui.mount</button>
             </div>
 
             {showStdin ? (
@@ -206,8 +229,13 @@ jugaad PlaygroundView(props) {
 
             <div className="flex flex-col lg:flex-row gap-4 w-full">
                 <div className="flex-1 flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                    <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 flex flex-row items-center justify-between">
-                        <span className="font-mono text-xs text-zinc-300 font-medium">main.meme - Live Editor</span>
+                    <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 flex flex-row items-center justify-between gap-2">
+                        <div className="flex flex-row items-center gap-2">
+                            <span className="font-mono text-xs text-zinc-300 font-medium">main.meme - Live Editor</span>
+                            <span className={syntaxMode == "en" ? "px-1.5 py-0.5 rounded bg-sky-950 border border-sky-800 font-mono text-xs text-sky-300" : "px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 font-mono text-xs text-amber-300"}>
+                                {syntaxMode == "en" ? "English" : "Fun Hindi"}
+                            </span>
+                        </div>
                         <span className="font-mono text-xs text-zinc-500">{string(size(codeText)) + " chars"}</span>
                     </div>
                     <textarea

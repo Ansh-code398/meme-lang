@@ -2830,20 +2830,22 @@ public:
         std::unique_ptr<Expr> start = parseLogicalOr();
         checkNotError();
 
-        if (peek().type != TokenType::SE)
+        if (peek().type != TokenType::SE &&
+            !(peek().type == TokenType::IDENTIFIER && peek().value == "to"))
         {
             errorAt(peek(),
-                "Kahan tak ghumana hai? Range ke liye dusra 'se' lagao! (Jaise: ghuma " + varName + " se 1 se 10)");
+                "Chakkar aa jayega! 'ghuma " + varName + "' ke baad 'se' (range) ya 'to' lagao! (Jaise: ghuma " + varName + " se 1 se 10 / for " + varName + " from 1 to 10)");
         }
-        current++; // consume 'se'
+        current++; // consume 'se' / 'to'
 
         std::unique_ptr<Expr> end = parseLogicalOr();
         checkNotError();
 
         std::unique_ptr<Expr> step = nullptr;
-        if (peek().type == TokenType::SE)
+        if (peek().type == TokenType::SE ||
+            (peek().type == TokenType::IDENTIFIER && (peek().value == "step" || peek().value == "by")))
         {
-            current++; // consume optional 'se' for step
+            current++; // consume optional 'se' / 'step' for step
             step = parseLogicalOr();
         }
 

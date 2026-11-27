@@ -198,12 +198,35 @@ async function main() {
     await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_home.png'));
     console.log('[PASS] Pure-.meme Docs Home rendered on WebGL2 Canvas');
 
-    // 2. Inline CodeBlock "Run" button executes live meme.eval in Wasm!
-    await clickByLabel(cdp, 'Run');
-    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Close')), 'Inline CodeBlock Run Drawer opened');
-    console.log('[PASS] Inline Docs CodeBlock Run button executed live via meme.eval in Wasm');
+    // 1b. Verify 2-section Track Segregation (Core Language hides UI/Platform items until switched)
+    const coreCheck = (await cdp.send('Runtime.evaluate', {
+      expression: `(() => {
+        const names = (window.__MEME_AGENT__.snapshot().nodes || []).map(n => n.accessibleName || '');
+        return {
+          hasCoreVar: names.some(s => s.includes('Variables & Lexical Scope')),
+          hasPlatformHosting: names.some(s => s.includes('Hosting & Deployment')),
+        };
+      })()`,
+      returnByValue: true,
+    })).result.value;
+    if (!coreCheck.hasCoreVar || coreCheck.hasPlatformHosting) {
+      throw new Error(`Track segregation check failed on initial Core view: ${JSON.stringify(coreCheck)}`);
+    }
+    console.log('[PASS] Documentation segregated into 2 tracks (Core Language vs UI & Platform)');
 
-    // 3. Navigate to Hosting & Deployment section via sidebar & check URL history sync!
+    // 2. Open Hindi/English Syntax Dropdown -> switch to English -> Run English snippet live in Wasm!
+    await clickByLabel(cdp, 'Syntax: Fun Hindi');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('English (let, fn, if, print)')), 'Syntax dropdown opened');
+    await clickByLabel(cdp, 'English (let, fn, if, print)');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('English Word Syntax')), 'Switched docs syntax to English');
+    await clickByLabel(cdp, 'Run');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Close')), 'Inline English CodeBlock Run Drawer opened');
+    await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_english_mode.png'));
+    console.log('[PASS] Hindi/English dropdown switched code to English & ran live in Wasm');
+
+    // 3. Switch to UI & Platform track, navigate to Hosting & Deployment & check URL history sync!
+    await clickByLabel(cdp, 'UI & Platform');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Hosting & Deployment')), 'UI & Platform track topics loaded');
     await clickByLabel(cdp, 'Hosting & Deployment');
     await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Package Static Web Bundle')), 'Hosting & Deployment section active');
     const urlAfterSec = (await cdp.send('Runtime.evaluate', { expression: 'window.location.pathname', returnByValue: true })).result.value;
@@ -211,21 +234,28 @@ async function main() {
     await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_hosting.png'));
     console.log('[PASS] URL history synced to /docs/hosting-deploy');
 
-    // 4. Deep-link reload test (Vercel SPA fallback /docs/native-permissions)
+    // 4. Deep-link reload test (Vercel SPA fallback /docs/native-permissions auto-selects UI, Native & Platform track)
     await cdp.send('Page.navigate', { url: `${baseUrl}/docs/native-permissions` });
     await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '') === 'Run'), 'Deep-link /docs/native-permissions reloaded cleanly');
     const deepPath = (await cdp.send('Runtime.evaluate', { expression: 'window.location.pathname', returnByValue: true })).result.value;
     if (deepPath !== '/docs/native-permissions') throw new Error(`Expected /docs/native-permissions on reload, got ${deepPath}`);
     console.log('[PASS] Direct deep-link reload /docs/native-permissions succeeded');
 
-    // 5. Switch to Playground & REPL tab, pick GPU UI preset, Run in Wasm, check GPU Canvas!
+    // 5. Switch to Playground & REPL tab, toggle dropdown English -> Fun Hindi, pick GPU UI preset, Run in Wasm!
     await clickByLabel(cdp, 'Playground & REPL');
     await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Run in Wasm')), 'Playground tab active');
+    await clickByLabel(cdp, 'Syntax: Fun Hindi');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('English (let, fn, if, print)')), 'Playground syntax dropdown opened');
+    await clickByLabel(cdp, 'English (let, fn, if, print)');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('+ let')), 'Playground switched Quick Insert & editor to English syntax');
+    await clickByLabel(cdp, 'Syntax: English');
+    await clickByLabel(cdp, 'Fun Hindi (pakad, jugaad, dekh)');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('+ pakad')), 'Playground toggled back to Fun Hindi syntax');
     await clickByLabel(cdp, 'Zero-WebView Native GPU UI');
     await clickByLabel(cdp, 'Run in Wasm');
     await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Direct GPU UI (') && !(r.accessibleName || '').includes('Direct GPU UI (0)')), 'Playground GPU preview populated');
     await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_playground_gpu.png'));
-    console.log('[PASS] Playground executed GPU UI snippet in Wasm & painted <canvas> GPU preview');
+    console.log('[PASS] Playground converted Hindi <-> English live & executed GPU UI in Wasm');
 
     // 6. Switch to Meme Errors tab & trigger live error
     await clickByLabel(cdp, 'Meme Errors');

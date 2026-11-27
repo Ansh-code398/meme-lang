@@ -70,6 +70,8 @@ public:
     std::string rootComponentName = "App";
     std::string lastGpuCommandsJson = "[]";
     std::string lastHitRegionsJson = "[]";
+    bool isRenderingUi = false;
+    bool rerenderQueued = false;
 
     // Hooks & Contexts
     std::unordered_map<std::string, MemeValue> hookSlots;
@@ -457,50 +459,66 @@ public:
             return;
         }
         if (rootCallable.type == MemeValue::TYPE_NALLA && rootTree.type == MemeValue::TYPE_NALLA) return;
-
-        componentInstanceCounters.clear();
-        componentHookCursors.clear();
-        componentPathStack.clear();
-
-        MemeValue rendered;
-        if (rootCallable.is_callable()) {
-            pushComponentCall(rootComponentName.empty() ? "App" : rootComponentName);
-            try {
-                rendered = rootCallable.call_args({});
-                popComponentCall();
-            } catch (...) {
-                popComponentCall();
-                throw;
-            }
-        } else {
-            rendered = rootTree;
+        if (isRenderingUi) {
+            rerenderQueued = true;
+            return;
         }
-        rootTree = rendered;
+        isRenderingUi = true;
+        int renderPassCount = 0;
+        try {
+            do {
+                rerenderQueued = false;
+                componentInstanceCounters.clear();
+                componentHookCursors.clear();
+                componentPathStack.clear();
 
-        session.isImmediateMode = false;
-        session.cachedRoot = valueToUiNode(rendered);
-        float vw = session.input.viewportW > 0.0f ? session.input.viewportW : 800.0f;
-        float vh = session.input.viewportH > 0.0f ? session.input.viewportH : 600.0f;
-        session.renderFrame(vw, vh);
-        lastGpuCommandsJson = MemeUI::gpuDrawCmdsToJson(session.lastCmds);
-        lastHitRegionsJson = MemeUI::hitRegionsToJsonStr(session.lastHits);
-
-        if (!pendingEffects.empty()) {
-            static thread_local int tl_fxDepth = 0;
-            if (tl_fxDepth < 8) {
-                tl_fxDepth++;
-                auto effects = std::move(pendingEffects);
-                pendingEffects.clear();
-                try {
-                    for (auto &ef : effects) ef();
-                } catch (...) {
-                    tl_fxDepth--;
-                    throw;
+                MemeValue rendered;
+                if (rootCallable.is_callable()) {
+                    pushComponentCall(rootComponentName.empty() ? "App" : rootComponentName);
+                    try {
+                        rendered = rootCallable.call_args({});
+                        popComponentCall();
+                    } catch (...) {
+                        popComponentCall();
+                        throw;
+                    }
+                } else {
+                    rendered = rootTree;
                 }
-                tl_fxDepth--;
-            } else {
-                pendingEffects.clear();
-            }
+                rootTree = rendered;
+
+                session.isImmediateMode = false;
+                session.cachedRoot = valueToUiNode(rendered);
+                float vw = session.input.viewportW > 0.0f ? session.input.viewportW : 800.0f;
+                float vh = session.input.viewportH > 0.0f ? session.input.viewportH : 600.0f;
+                session.renderFrame(vw, vh);
+                lastGpuCommandsJson = MemeUI::gpuDrawCmdsToJson(session.lastCmds);
+                lastHitRegionsJson = MemeUI::hitRegionsToJsonStr(session.lastHits);
+
+                if (!pendingEffects.empty()) {
+                    static thread_local int tl_fxDepth = 0;
+                    if (tl_fxDepth < 8) {
+                        tl_fxDepth++;
+                        auto effects = std::move(pendingEffects);
+                        pendingEffects.clear();
+                        try {
+                            for (auto &ef : effects) ef();
+                        } catch (...) {
+                            tl_fxDepth--;
+                            throw;
+                        }
+                        tl_fxDepth--;
+                    } else {
+                        pendingEffects.clear();
+                    }
+                }
+            } while (rerenderQueued && ++renderPassCount < 16);
+            rerenderQueued = false;
+            isRenderingUi = false;
+        } catch (...) {
+            rerenderQueued = false;
+            isRenderingUi = false;
+            throw;
         }
     }
 

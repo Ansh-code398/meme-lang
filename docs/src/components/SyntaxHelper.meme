@@ -1,5 +1,412 @@
 bula "ui" jaise { useState };
 
+pakad HI_TO_EN_KW = {
+    "pakad": "let",
+    "le": "let",
+    "jugaad": "fn",
+    "kaam": "fn",
+    "ye_le": "return",
+    "wapas": "return",
+    "de": "return",
+    "dekh": "if",
+    "agar": "if",
+    "warna": "else",
+    "nahi_toh": "else",
+    "jabtak": "while",
+    "ghoom": "for",
+    "ghuma": "for",
+    "mein": "in",
+    "andar": "in",
+    "bas_kar": "break",
+    "bas": "break",
+    "aage_badh": "continue",
+    "chal": "continue",
+    "biradari": "class",
+    "sancha": "class",
+    "roop": "class",
+    "vibe": "class",
+    "nepo": "extends",
+    "shuru": "init",
+    "apun": "this",
+    "khud": "this",
+    "dikha": "print",
+    "flex": "print",
+    "pooch": "input",
+    "bata": "input",
+    "aur": "and",
+    "ya": "or",
+    "han": "true",
+    "haan": "true",
+    "sach": "true",
+    "nhi": "false",
+    "nahi": "false",
+    "jhooth": "false",
+    "nalla": "null",
+    "kuch_nhi": "null",
+    "kuch_nahi": "null",
+    "khali": "null",
+    "udhaar": "borrow",
+    "udhaar_badal": "borrow_mut",
+    "udhaar_badlo": "borrow_mut",
+    "nakal": "clone",
+    "panga": "try",
+    "koshish": "try",
+    "lafda": "catch",
+    "sambhal": "catch",
+    "pakka": "finally",
+    "hamesha": "finally",
+    "chillao": "throw",
+    "fek": "throw",
+    "side_mein": "async",
+    "asar": "async",
+    "sabar": "await",
+    "bula": "import",
+    "chura": "import",
+    "lao": "import",
+    "shamil": "import",
+    "jaise": "as",
+    "potli": "package",
+    "dibbi": "package",
+    "bech": "export",
+    "khula": "export",
+    "baahar": "export",
+    "mohalla": "namespace",
+    "pados": "namespace",
+    "avtar": "enum",
+    "kism": "enum",
+    "jaanch": "match",
+    "parakh": "match",
+    "baaki": "default",
+    "bahuroop": "overload",
+    "aur_ek": "overload",
+    "ek_aur": "overload",
+    "tantrik": "operator",
+    "kriya": "operator",
+    "patta": "addr",
+    "thikana": "addr",
+    "asli": "deref",
+    "dekh_patta": "deref",
+    "uthha": "deref",
+    "rawana": "move",
+    "khisko": "move",
+    "chal_nikal": "move",
+    "malik": "owned",
+    "kabza": "owned",
+    "malkiyat": "owned",
+    "badal": "mut",
+    "badlo": "mut",
+    "atal": "const",
+    "sthir": "const",
+    "khatam": "drop",
+    "alvida": "drop",
+    "visarjan": "drop",
+    "daayra": "scope",
+    "seema": "scope",
+    "elaqa": "scope",
+    "Vaada": "Promise",
+    "vaada": "Promise",
+    "tijori": "db",
+    "dhaba": "server",
+    "systumm": "sys",
+    "akshar_bana": "chr",
+    "code_de": "ord",
+    "lambai": "size",
+    "kitna_lamba": "size",
+    "bina_point": "int",
+    "pura_num": "int",
+    "bada_ank": "int",
+    "point_wala": "float",
+    "float_bana": "float",
+    "state_bana": "useState",
+    "phir": "then"
+};
+
+pakad EN_TO_HI_KW = {
+    "let": "pakad",
+    "var": "pakad",
+    "fn": "jugaad",
+    "def": "jugaad",
+    "return": "ye_le",
+    "if": "dekh",
+    "else": "warna",
+    "while": "jabtak",
+    "for": "ghoom",
+    "in": "mein",
+    "break": "bas",
+    "continue": "chal",
+    "class": "biradari",
+    "extends": "nepo",
+    "inherits": "nepo",
+    "init": "shuru",
+    "constructor": "shuru",
+    "this": "apun",
+    "self": "apun",
+    "print": "dikha",
+    "input": "pooch",
+    "and": "aur",
+    "or": "ya",
+    "true": "han",
+    "false": "nhi",
+    "null": "nalla",
+    "none": "nalla",
+    "nil": "nalla",
+    "borrow": "udhaar",
+    "borrow_mut": "udhaar_badal",
+    "clone": "nakal",
+    "try": "panga",
+    "catch": "lafda",
+    "finally": "pakka",
+    "throw": "chillao",
+    "raise": "chillao",
+    "await": "sabar",
+    "import": "bula",
+    "as": "jaise",
+    "package": "potli",
+    "export": "bech",
+    "namespace": "mohalla",
+    "enum": "avtar",
+    "match": "jaanch",
+    "default": "baaki",
+    "overload": "bahuroop",
+    "operator": "tantrik",
+    "addr": "patta",
+    "deref": "asli",
+    "move": "rawana",
+    "owned": "malik",
+    "mut": "badal",
+    "const": "atal",
+    "drop": "khatam",
+    "scope": "daayra",
+    "Promise": "Vaada",
+    "db": "tijori",
+    "vault": "tijori",
+    "server": "dhaba",
+    "sys": "systumm",
+    "chr": "akshar_bana",
+    "ord": "code_de"
+};
+
+pakad HI_TO_EN_METHODS = {
+    "rakh": "set",
+    "nikal": "get",
+    "la": "get",
+    "hai_kya": "has",
+    "hatao": "delete",
+    "hata": "delete",
+    "chaabi": "keys",
+    "maal": "values",
+    "saaf": "clear",
+    "banao": "create",
+    "chala": "run",
+    "chalao": "run",
+    "jod": "join",
+    "lambai": "length",
+    "kitna_lamba": "length",
+    "dheere_bol": "lower",
+    "chilla": "upper",
+    "shuru_hota": "startsWith",
+    "khatam_hota": "endsWith",
+    "phir": "then",
+    "ruk": "sleep",
+    "sab": "all",
+    "radh": "reject",
+    "de": "resolve",
+    "khatam": "is_done",
+    "nakal": "clone",
+    "bhejo": "send",
+    "bhej": "send",
+    "thapa_maro": "status",
+    "chapp": "json",
+    "suno": "listen"
+};
+
+pakad TYPE_HI_TO_EN = {
+    "ank": "int",
+    "sankhya": "int",
+    "point": "float",
+    "dashamlav": "float",
+    "bol": "str",
+    "shabd": "str",
+    "sach": "bool"
+};
+
+jugaad isWordChar(ch) {
+    pakad c = code_de(ch);
+    ye_le (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95;
+}
+
+jugaad isDigitChar(ch) {
+    pakad c = code_de(ch);
+    ye_le c >= 48 && c <= 57;
+}
+
+jugaad convertCodeSyntax(codeText, mode) {
+    dekh codeText == nalla || codeText == "" {
+        ye_le "";
+    }
+    dekh mode != "en" && mode != "hi" {
+        ye_le codeText;
+    }
+
+    pakad toEn = (mode == "en");
+    pakad out = "";
+    pakad i = 0;
+    pakad n = size(codeText);
+    pakad prevTok = "";
+    pakad prevNonWs = "";
+    pakad inForHeader = nhi;
+    pakad inClassHeader = nhi;
+    pakad forSeCount = 0;
+
+    jabtak i < n {
+        pakad ch = codeText.slice(i, i + 1);
+
+        // Preserve double and single quoted string literals verbatim
+        dekh ch == "\"" || ch == "'" {
+            pakad q = ch;
+            out = out + ch;
+            i = i + 1;
+            jabtak i < n {
+                pakad sc = codeText.slice(i, i + 1);
+                out = out + sc;
+                i = i + 1;
+                dekh sc == "\\" && i < n {
+                    out = out + codeText.slice(i, i + 1);
+                    i = i + 1;
+                } warna dekh sc == q {
+                    bas;
+                }
+            }
+            prevNonWs = q;
+            prevTok = q;
+            chal;
+        }
+
+        // Preserve line comments // ...
+        dekh ch == "/" && i + 1 < n && codeText.slice(i + 1, i + 2) == "/" {
+            jabtak i < n && codeText.slice(i, i + 1) != "\n" {
+                out = out + codeText.slice(i, i + 1);
+                i = i + 1;
+            }
+            chal;
+        }
+
+        // Preserve block comments /* ... */
+        dekh ch == "/" && i + 1 < n && codeText.slice(i + 1, i + 2) == "*" {
+            out = out + "/*";
+            i = i + 2;
+            jabtak i < n {
+                dekh codeText.slice(i, i + 1) == "*" && i + 1 < n && codeText.slice(i + 1, i + 2) == "/" {
+                    out = out + "*/";
+                    i = i + 2;
+                    bas;
+                }
+                out = out + codeText.slice(i, i + 1);
+                i = i + 1;
+            }
+            chal;
+        }
+
+        // Preserve numeric literals (so floats/hex suffixes are untouched)
+        dekh isDigitChar(ch) {
+            jabtak i < n && isWordChar(codeText.slice(i, i + 1)) {
+                out = out + codeText.slice(i, i + 1);
+                i = i + 1;
+            }
+            prevNonWs = "0";
+            prevTok = "0";
+            chal;
+        }
+
+        // Handle multi-char operators like ->
+        dekh ch == "-" && i + 1 < n && codeText.slice(i + 1, i + 2) == ">" {
+            out = out + "->";
+            i = i + 2;
+            prevNonWs = "->";
+            prevTok = "->";
+            chal;
+        }
+
+        // Handle identifiers & keywords
+        dekh isWordChar(ch) {
+            pakad startIdx = i;
+            jabtak i < n && isWordChar(codeText.slice(i, i + 1)) {
+                i = i + 1;
+            }
+            pakad tok = codeText.slice(startIdx, i);
+            pakad mapped = tok;
+
+            dekh prevNonWs == "." {
+                dekh toEn && HI_TO_EN_METHODS.has(tok) {
+                    mapped = HI_TO_EN_METHODS[tok];
+                }
+            } warna dekh toEn && (prevNonWs == ":" || prevNonWs == "->") {
+                dekh TYPE_HI_TO_EN.has(tok) {
+                    mapped = TYPE_HI_TO_EN[tok];
+                } warna dekh HI_TO_EN_KW.has(tok) {
+                    mapped = HI_TO_EN_KW[tok];
+                }
+            } warna dekh inForHeader && toEn && (tok == "se" || tok == "from") {
+                forSeCount = forSeCount + 1;
+                dekh forSeCount == 1 {
+                    mapped = "from";
+                } warna dekh forSeCount == 2 {
+                    mapped = "to";
+                } warna {
+                    mapped = "step";
+                }
+            } warna dekh inForHeader && !toEn && (tok == "from" || tok == "to" || tok == "step" || tok == "by") {
+                mapped = "se";
+            } warna dekh tok == "se" && toEn {
+                mapped = inClassHeader ? "extends" : "from";
+            } warna dekh tok == "bol" && toEn {
+                dekh prevNonWs == "" || prevNonWs == ";" || prevNonWs == "{" || prevNonWs == "}" {
+                    mapped = "print";
+                }
+            } warna dekh toEn && HI_TO_EN_KW.has(tok) {
+                mapped = HI_TO_EN_KW[tok];
+            } warna dekh !toEn && EN_TO_HI_KW.has(tok) {
+                mapped = EN_TO_HI_KW[tok];
+            }
+
+            dekh tok == "ghoom" || tok == "ghuma" || tok == "for" {
+                inForHeader = han;
+                forSeCount = 0;
+            }
+            dekh tok == "biradari" || tok == "sancha" || tok == "roop" || tok == "vibe" || tok == "class" {
+                inClassHeader = han;
+            }
+
+            out = out + mapped;
+            prevTok = tok;
+            prevNonWs = tok;
+            chal;
+        }
+
+        dekh ch == "{" || ch == ";" {
+            inForHeader = nhi;
+            inClassHeader = nhi;
+            forSeCount = 0;
+        }
+
+        out = out + ch;
+        dekh ch != " " && ch != "\t" && ch != "\n" && ch != "\r" {
+            prevNonWs = ch;
+            prevTok = ch;
+        }
+        i = i + 1;
+    }
+
+    ye_le out;
+}
+
+jugaad formatSnippetForMode(baseHindiCode, mode) {
+    dekh mode == "en" {
+        ye_le convertCodeSyntax(baseHindiCode, "en");
+    }
+    ye_le baseHindiCode;
+}
+
 jugaad stripAnsiCodes(rawText) {
     dekh rawText == nalla || rawText == "" {
         ye_le "";
@@ -35,19 +442,19 @@ jugaad classifyCodeLineColor(lineText) {
     dekh trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("/*") || trimmed.startsWith("*") {
         ye_le "text-zinc-500";
     }
-    dekh trimmed.startsWith("bula ") || trimmed.startsWith("import ") || trimmed.startsWith("chura ") {
+    dekh trimmed.startsWith("bula ") || trimmed.startsWith("import ") || trimmed.startsWith("chura ") || trimmed.startsWith("bech ") || trimmed.startsWith("export ") {
         ye_le "text-cyan-400";
     }
-    dekh trimmed.startsWith("jugaad ") || trimmed.startsWith("kaam ") || trimmed.startsWith("biradari ") || trimmed.startsWith("avtar ") {
+    dekh trimmed.startsWith("jugaad ") || trimmed.startsWith("kaam ") || trimmed.startsWith("fn ") || trimmed.startsWith("def ") || trimmed.startsWith("biradari ") || trimmed.startsWith("sancha ") || trimmed.startsWith("class ") || trimmed.startsWith("avtar ") || trimmed.startsWith("enum ") {
         ye_le "text-amber-300";
     }
-    dekh trimmed.startsWith("dekh ") || trimmed.startsWith("warna") || trimmed.startsWith("jabtak ") || trimmed.startsWith("ghoom ") || trimmed.startsWith("jaanch ") || trimmed.startsWith("panga") || trimmed.startsWith("lafda") || trimmed.startsWith("pakka") {
+    dekh trimmed.startsWith("dekh ") || trimmed.startsWith("agar ") || trimmed.startsWith("if ") || trimmed.startsWith("elif ") || trimmed.startsWith("warna") || trimmed.startsWith("else") || trimmed.startsWith("jabtak ") || trimmed.startsWith("while ") || trimmed.startsWith("ghoom ") || trimmed.startsWith("ghuma ") || trimmed.startsWith("for ") || trimmed.startsWith("jaanch ") || trimmed.startsWith("match ") || trimmed.startsWith("panga") || trimmed.startsWith("try") || trimmed.startsWith("lafda") || trimmed.startsWith("catch") || trimmed.startsWith("pakka") || trimmed.startsWith("finally") {
         ye_le "text-fuchsia-300";
     }
-    dekh trimmed.startsWith("ye_le ") || trimmed.startsWith("wapas ") || trimmed.startsWith("de ") || trimmed.startsWith("chillao ") {
+    dekh trimmed.startsWith("ye_le ") || trimmed.startsWith("wapas ") || trimmed.startsWith("de ") || trimmed.startsWith("return ") || trimmed.startsWith("chillao ") || trimmed.startsWith("throw ") {
         ye_le "text-emerald-300";
     }
-    dekh trimmed.startsWith("dikha") || trimmed.startsWith("pakad ") || trimmed.startsWith("ui.") {
+    dekh trimmed.startsWith("dikha") || trimmed.startsWith("print") || trimmed.startsWith("pakad ") || trimmed.startsWith("let ") || trimmed.startsWith("var ") || trimmed.startsWith("const ") || trimmed.startsWith("mut ") || trimmed.startsWith("borrow") || trimmed.startsWith("udhaar") || trimmed.startsWith("ui.") {
         ye_le "text-sky-300";
     }
     ye_le "text-zinc-200";

@@ -234,6 +234,8 @@ public:
             {"sancha", TokenType::SANCHA},
             {"roop", TokenType::SANCHA},
             {"nepo", TokenType::NEPO},
+            {"extends", TokenType::NEPO},
+            {"inherits", TokenType::NEPO},
 
             // Input / Output
             {"dikha", TokenType::DIKHA},

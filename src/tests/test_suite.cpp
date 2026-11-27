@@ -3496,6 +3496,29 @@ dikha ch;
         assert(shell.find("Permissions-Policy") != std::string::npos);
     }
 
+    // 4. English syntax parity: extends, for..from..to..step, let/fn/if/else/return/print
+    {
+        std::string enOut = runAndCapture(R"(
+class Animal {
+    fn speak() { return "base"; }
+}
+class Dog extends Animal {
+    fn speak() { return "woof"; }
+}
+let total = 0;
+for i from 1 to 6 step 2 {
+    total = total + i;
+}
+let d = Dog();
+if total == 9 {
+    print d.speak() + ":" + str(total);
+} else {
+    print "fail";
+}
+)");
+        assert(enOut.find("woof:9") != std::string::npos);
+    }
+
     std::cout << "PASSED\n";
 }
 

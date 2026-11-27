@@ -62,6 +62,8 @@ public:
     Value rootUiComponent = Value(std::monostate{});
     Value rootCallable = Value(std::monostate{});
     std::string rootComponentName = "App";
+    bool isRenderingUi = false;
+    bool rerenderQueued = false;
     std::unordered_map<std::string, Value> hookSlots;
     std::vector<std::string> componentPathStack;
     std::unordered_map<std::string, int> componentInstanceCounters;
