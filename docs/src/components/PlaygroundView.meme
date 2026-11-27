@@ -1,0 +1,270 @@
+bula "ui" jaise { useState };
+bula "native";
+bula "meme";
+bula "./SyntaxHelper.meme" jaise shPg;
+
+jugaad paintPreviewCommands(painter, bounds, cmds) {
+    pakad bw = bounds.width > 10 ? bounds.width : 520.0;
+    pakad bh = bounds.height > 10 ? bounds.height : 340.0;
+    painter.rect_filled(0, 0, bw, bh, 10, "#09090b", 1.0);
+    dekh cmds == nalla || size(cmds) == 0 {
+        painter.text(24, bh * 0.45, "Run UI code (ui.mount(...)) to render Direct GPU Canvas Preview", 13, "#71717a", 500, nhi, 1.0);
+        ye_le;
+    }
+
+    pakad sx = bw / 800.0;
+    pakad sy = bh / 560.0;
+    pakad sc = sx < sy ? sx : sy;
+    dekh sc > 1.0 {
+        sc = 1.0;
+    }
+    dekh sc < 0.35 {
+        sc = 0.35;
+    }
+
+    pakad i = 0;
+    pakad total = size(cmds);
+    jabtak i < total {
+        pakad cmd = cmds[i];
+        pakad tp = cmd.type;
+        pakad cx = cmd.x * sc;
+        pakad cy = cmd.y * sc;
+        pakad cw = cmd.width * sc;
+        pakad ch = cmd.height * sc;
+        pakad cr = cmd.radius != nalla ? (cmd.radius * sc) : 0.0;
+        pakad col = (cmd.color != nalla && cmd.color != "") ? cmd.color : "#e4e4e7";
+        pakad al = cmd.alpha != nalla ? cmd.alpha : 1.0;
+
+        dekh tp == "FILL_ROUND_RECT" {
+            painter.rect_filled(cx, cy, cw, ch, cr, col, al);
+        } warna dekh tp == "STROKE_ROUND_RECT" {
+            pakad lw = cmd.lineWidth != nalla ? cmd.lineWidth : 1.0;
+            painter.rect_stroke(cx, cy, cw, ch, cr, lw, col, al);
+        } warna dekh tp == "DRAW_TEXT" {
+            pakad txt = cmd.text != nalla ? cmd.text : "";
+            dekh txt != "" {
+                pakad fs = (cmd.fontSize != nalla ? cmd.fontSize : 14.0) * sc;
+                pakad isM = cmd.isMono != nalla ? cmd.isMono : nhi;
+                painter.text(cx, cy - fs, txt, fs < 7.0 ? 7.0 : fs, col, 400, isM, al);
+            }
+        } warna dekh tp == "DRAW_CIRCLE" {
+            painter.circle_filled(cx + cw * 0.5, cy + ch * 0.5, cr > 0 ? cr : cw * 0.5, col, al);
+        } warna dekh tp == "STROKE_CIRCLE" {
+            pakad clw = cmd.lineWidth != nalla ? cmd.lineWidth : 1.0;
+            painter.circle_stroke(cx + cw * 0.5, cy + ch * 0.5, cr > 0 ? cr : cw * 0.5, clw, col, al);
+        } warna dekh tp == "DRAW_LINE" {
+            pakad llw = cmd.lineWidth != nalla ? cmd.lineWidth : 1.0;
+            painter.line(cx, cy, cx + cw, cy + ch, llw, col, al);
+        }
+        i = i + 1;
+    }
+}
+
+jugaad formatPgMs(msVal) {
+    pakad tenths = bina_point(msVal * 10.0);
+    pakad whole = bina_point(tenths / 10);
+    pakad frac = tenths - whole * 10;
+    dekh frac < 0 { frac = 0; }
+    ye_le string(whole) + "." + string(frac);
+}
+
+jugaad PlaygroundView(props) {
+    pakad presets = props.presets;
+    pakad initialCode = props.initialCode;
+    pakad defaultPreset = presets[0];
+    pakad startCode = (initialCode != nalla && initialCode != "") ? initialCode : defaultPreset.code;
+    pakad [selectedId, setSelectedId] = useState((initialCode != nalla && initialCode != "") ? "custom" : defaultPreset.id);
+    pakad [codeText, setCodeText] = useState(startCode);
+    pakad [stdinText, setStdinText] = useState(defaultPreset.stdin != nalla ? defaultPreset.stdin : "");
+    pakad [showStdin, setShowStdin] = useState(nhi);
+    pakad [outputTab, setOutputTab] = useState("console");
+    pakad [hasRun, setHasRun] = useState(nhi);
+    pakad [resOutput, setResOutput] = useState("");
+    pakad [resError, setResError] = useState(nhi);
+    pakad [resDuration, setResDuration] = useState("0.0");
+    pakad [resGpuCmds, setResGpuCmds] = useState([]);
+    pakad [copied, setCopied] = useState(nhi);
+    pakad [prevInitial, setPrevInitial] = useState(initialCode);
+
+    dekh initialCode != prevInitial {
+        setPrevInitial(initialCode);
+        dekh initialCode != nalla && initialCode != "" {
+            setCodeText(initialCode);
+            setSelectedId("custom");
+            setHasRun(nhi);
+            setResGpuCmds([]);
+        }
+    }
+
+    jugaad selectPreset(presetObj) {
+        setSelectedId(presetObj.id);
+        setCodeText(presetObj.code);
+        pakad pStdin = presetObj.stdin != nalla ? presetObj.stdin : "";
+        setStdinText(pStdin);
+        setShowStdin(pStdin != "");
+        setHasRun(nhi);
+        setResGpuCmds([]);
+    }
+
+    jugaad runCodeNow() {
+        pakad ev = meme.eval(codeText, stdinText);
+        pakad outClean = shPg.stripAnsiCodes(ev.output);
+        setResOutput(outClean);
+        setResError(ev.isError);
+        setResDuration(formatPgMs(ev.durationMs));
+        setResGpuCmds(ev.gpuCommands);
+        setHasRun(han);
+        dekh ev.hasUi {
+            setOutputTab("gpu");
+        } warna {
+            setOutputTab("console");
+        }
+    }
+
+    jugaad appendTemplate(snippet) {
+        setCodeText(codeText + "\n" + snippet);
+    }
+
+    jugaad copyCode() {
+        native.clipboard.write(codeText);
+        setCopied(han);
+    }
+
+    pakad presetBtns = [];
+    pakad pi = 0;
+    jabtak pi < size(presets) {
+        pakad p = presets[pi];
+        pakad isAct = (selectedId == p.id);
+        presetBtns.push(
+            <button
+                key={pi}
+                className={isAct ? "px-3 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs shrink-0" : "px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs shrink-0"}
+                onClick={() => selectPreset(p)}
+            >
+                {p.name}
+            </button>
+        );
+        pi = pi + 1;
+    }
+
+    ye_le (
+        <div className="flex flex-col gap-4 w-full max-w-6xl pb-10">
+            <div className="flex flex-row items-center justify-between gap-3 flex-wrap border-b border-zinc-800 pb-4">
+                <div className="flex flex-col gap-1">
+                    <h1 className="text-2xl font-bold text-zinc-100">WebAssembly Interactive Playground</h1>
+                    <p className="text-xs text-zinc-400">Edit MEMElang code live and execute directly in the pure-MEMElang WebAssembly sandbox.</p>
+                </div>
+                <div className="flex flex-row items-center gap-2 flex-wrap">
+                    <button
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
+                        onClick={() => setShowStdin(!showStdin)}
+                    >
+                        {showStdin ? "Hide Stdin" : "Stdin Input"}
+                    </button>
+                    <button
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
+                        onClick={copyCode}
+                    >
+                        {copied ? "Copied!" : "Copy Code"}
+                    </button>
+                    <button
+                        className="px-4 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 font-bold text-xs"
+                        onClick={runCodeNow}
+                    >
+                        Run in Wasm
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <span className="font-mono text-xs text-zinc-400">{"Recipes (" + string(size(presets)) + ") - Scroll horizontally or tap a recipe:"}</span>
+                <div className="w-full overflow-x-auto flex flex-row items-center gap-2 pb-2">
+                    {presetBtns}
+                </div>
+            </div>
+
+            <div className="flex flex-row items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs text-zinc-500">Quick Insert:</span>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-sky-300" onClick={() => appendTemplate("pakad x = 42;\ndikha x;")}>+ pakad</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-300" onClick={() => appendTemplate("jugaad greet(name) {\n    ye_le \"Namaste \" + name;\n}\ndikha greet(\"Duniya\");")}>+ jugaad</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-300" onClick={() => appendTemplate("bula \"platform\";\ndikha platform.info();")}>+ platform</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-fuchsia-300" onClick={() => appendTemplate("bula \"permissions\";\ndikha permissions.check(\"camera\");")}>+ permissions</button>
+                <button className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-amber-400" onClick={() => appendTemplate("jugaad MiniCard() {\n    ye_le <div className=\"p-4 rounded-xl bg-slate-900 border border-indigo-500 text-white\">Live GPU Card</div>;\n}\nui.mount(MiniCard);")}>+ ui.mount</button>
+            </div>
+
+            {showStdin ? (
+                <div className="flex flex-col gap-1.5">
+                    <span className="font-mono text-xs text-zinc-400">Standard Input (for pooch() calls):</span>
+                    <input
+                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 font-mono text-xs text-zinc-100"
+                        placeholder="Type stdin lines separated by Enter..."
+                        value={stdinText}
+                        onChange={(ev) => setStdinText(ev.target.value)}
+                    />
+                </div>
+            ) : nalla}
+
+            <div className="flex flex-col lg:flex-row gap-4 w-full">
+                <div className="flex-1 flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 flex flex-row items-center justify-between">
+                        <span className="font-mono text-xs text-zinc-300 font-medium">main.meme - Live Editor</span>
+                        <span className="font-mono text-xs text-zinc-500">{string(size(codeText)) + " chars"}</span>
+                    </div>
+                    <textarea
+                        className="w-full h-80 p-3 bg-zinc-950 font-mono text-xs text-zinc-100"
+                        value={codeText}
+                        placeholder="Write MEMElang code here..."
+                        onChange={(ev) => setCodeText(ev.target.value)}
+                    />
+                </div>
+
+                <div className="flex-1 flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 flex flex-row items-center justify-between gap-2">
+                        <div className="flex flex-row items-center gap-2">
+                            <button
+                                className={outputTab == "console" ? "px-2.5 py-1 rounded bg-zinc-800 text-xs font-semibold text-zinc-100" : "px-2.5 py-1 rounded text-xs text-zinc-400"}
+                                onClick={() => setOutputTab("console")}
+                            >
+                                Console
+                            </button>
+                            <button
+                                className={outputTab == "gpu" ? "px-2.5 py-1 rounded bg-amber-500 text-xs font-semibold text-zinc-950" : "px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs text-amber-300"}
+                                onClick={() => setOutputTab("gpu")}
+                            >
+                                {"Direct GPU UI (" + string(size(resGpuCmds)) + ")"}
+                            </button>
+                        </div>
+                        <span className="font-mono text-xs text-zinc-400">
+                            {hasRun ? ((resError ? "Error • " : "Done • ") + resDuration + "ms") : "Idle"}
+                        </span>
+                    </div>
+
+                    <div className="p-4 flex flex-col gap-3 min-h-[320px]">
+                        {outputTab == "gpu" ? (
+                            <canvas
+                                className="w-full h-72 rounded-xl border border-zinc-800 bg-zinc-950"
+                                onPaint={(painter, bounds) => paintPreviewCommands(painter, bounds, resGpuCmds)}
+                            />
+                        ) : hasRun ? (
+                            <div className="flex flex-col gap-2">
+                                {resError ? (
+                                    <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800 text-xs text-rose-200 font-semibold">
+                                        Meme Diagnostic Alert
+                                    </div>
+                                ) : nalla}
+                                <div className={resError ? "p-3 rounded-lg bg-rose-950/20 border border-rose-900 font-mono text-xs text-rose-200" : "p-3 rounded-lg bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-300"}>
+                                    {resOutput != "" ? resOutput : "(Execution completed with no stdout output)"}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-6 text-center flex flex-col gap-2">
+                                <span className="font-mono text-sm text-zinc-300">Ready to run MEMElang in WebAssembly</span>
+                                <span className="text-xs text-zinc-500">Pick a recipe above or edit main.meme, then click Run in Wasm.</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

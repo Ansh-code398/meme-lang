@@ -1,0 +1,896 @@
+jugaad getSectionsPlatform() {
+    ye_le [
+        {
+            "id": "react-jsx-ui",
+            "title": "Declarative React JSX & UI Hooks",
+            "badge": "Frontend UI",
+            "description": "Build reactive cross-platform user interfaces using familiar React JSX syntax, useState, useEffect, and controlled components.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang treats React JSX as first-class syntax. You can build modern, responsive applications using component hierarchies, reactive hooks, and Tailwind CSS utility classes without needing Babel, Webpack, or external transpilers."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. First-Class JSX Syntax & Tailwind Styling"
+                },
+                {
+                    "type": "text",
+                    "text": "Standard HTML tags (`<div>`, `<button>`, `<input>`, `<span>`) and custom components can be written directly inside expressions. Style elements using standard Tailwind CSS classes:"
+                },
+                {
+                    "type": "code",
+                    "title": "simple_jsx.meme",
+                    "code": "card = (\n    <div className=\"p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl\">\n        <h2 className=\"text-xl font-bold text-white mb-2\">Tapri Chai</h2>\n        <p className=\"text-slate-400 text-sm mb-4\">Fresh brewed cutting chai with adrak and elaichi</p>\n        <button className=\"px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition\">\n            Order Now - Rs.15\n        </button>\n    </div>\n);\n\nui.dikha(card, \"Tapri Menu\");"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. State Management with useState"
+                },
+                {
+                    "type": "text",
+                    "text": "Manage stateful reactivity with the `useState` hook. Use array destructuring `[state, setState]` to capture the value and updater function. Updating state triggers automatic re-renders across all active views:"
+                },
+                {
+                    "type": "code",
+                    "title": "counter_state.meme",
+                    "code": "kaam Counter() {\n    [count, setCount] = useState(0);\n\n    de (\n        <div className=\"p-6 bg-slate-900 rounded-2xl max-w-sm mx-auto text-center border border-slate-800\">\n            <h1 className=\"text-2xl font-bold text-white mb-2\">Chai Counter</h1>\n            <div className=\"text-4xl font-extrabold text-amber-400 my-4\">{count}</div>\n            <div className=\"flex gap-3 justify-center\">\n                <button\n                    className=\"px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold\"\n                    onClick={() => setCount(c => c - 1)}\n                >\n                    - Ghatao\n                </button>\n                <button\n                    className=\"px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg font-bold\"\n                    onClick={() => setCount(c => c + 1)}\n                >\n                    + Jodo\n                </button>\n            </div>\n        </div>\n    );\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Lifecycle & Side Effects with useEffect"
+                },
+                {
+                    "type": "text",
+                    "text": "Use `useEffect` to perform side-effects, such as loading data from local persistent storage (`tijori`) or syncing with remote APIs when the component mounts:"
+                },
+                {
+                    "type": "code",
+                    "title": "use_effect.meme",
+                    "code": "kaam NotesApp() {\n    [notes, setNotes] = useState([]);\n\n    // Lifecycle hook: runs on mount to hydrate state from persistent vault\n    useEffect(() => {\n        pakad saved = tijori.nikal(\"notes_list\");\n        agar saved != nalla {\n            setNotes(saved);\n        }\n    });\n\n    de (\n        <div className=\"p-6\">\n            <h1 className=\"text-white text-xl font-bold\">Saved Notes ({notes.lambai()})</h1>\n        </div>\n    );\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "4. Controlled Inputs & Two-Way Binding"
+                },
+                {
+                    "type": "text",
+                    "text": "Inputs support seamless two-way state binding. Input values and keyboard events sync automatically with the reactive engine:"
+                },
+                {
+                    "type": "code",
+                    "title": "controlled_input.meme",
+                    "code": "kaam NewNoteForm({ onAdd }) {\n    [text, setText] = useState(\"\");\n\n    kaam handleSubmit() {\n        agar text.lambai() > 0 {\n            onAdd(text);\n            setText(\"\");\n        }\n    }\n\n    de (\n        <div className=\"flex gap-2\">\n            <input\n                className=\"flex-1 bg-slate-800 text-white px-4 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500\"\n                placeholder=\"Naya note likho...\"\n                value={text}\n                onChange={(e) => setText(e.target.value)}\n            />\n            <button\n                className=\"px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl\"\n                onClick={handleSubmit}\n            >\n                Save\n            </button>\n        </div>\n    );\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "5. Mounting the Application"
+                },
+                {
+                    "type": "text",
+                    "text": "Call `ui.mount(<App />)` to launch the top-level root component. The runtime automatically configures the appropriate rendering backend (Native macOS Cocoa Window, Web Canvas / DOM, or Terminal UI) based on your run configuration:"
+                },
+                {
+                    "type": "code",
+                    "title": "mount_root.meme",
+                    "code": "// Mount top-level application root\nui.mount(<App />, \"ChaiVault Desktop\");"
+                }
+            ]
+        },
+        {
+            "id": "native-desktop",
+            "title": "Zero-WebView Native Desktop Engine",
+            "badge": "Native GUI",
+            "description": "Hardware-accelerated 60 FPS native desktop rendering via Cocoa NSWindow and CoreGraphics without WebViews or Electron overhead.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Traditional desktop frameworks like Electron bundle an entire Chromium browser and Node runtime with every application, resulting in 200MB+ memory usage, slow startup times, and sluggish performance. MEMElang completely rethinks desktop apps with a Zero-WebView Native Engine."
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Sub-15MB RAM & Instant Launch",
+                    "text": "MEMElang native desktop applications run on a pure Cocoa `NSWindow` via CoreGraphics Quartz. Startup takes less than 10 milliseconds, and memory consumption stays under 15MB."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "C++ Tailwind v4 Layout Solver"
+                },
+                {
+                    "type": "text",
+                    "text": "At the core of the native desktop engine is `TailwindEngine.h`, a single-pass Flexbox and CSS Grid constraint solver written in modern C++20. It parses standard Tailwind utility classes directly and computes exact layout geometries without any browser engine:"
+                },
+                {
+                    "type": "list",
+                    "items": [
+                        "Display & Direction: `flex`, `flex-col`, `flex-row`, `grid`, `grid-cols-2`, `grid-cols-3`",
+                        "Alignment & Spacing: `items-center`, `justify-between`, `justify-center`, `gap-2`, `gap-4`, `gap-6`",
+                        "Dimensions & Box Model: `w-full`, `max-w-md`, `h-screen`, `p-4`, `p-6`, `px-3`, `py-2`, `m-2`",
+                        "Borders & Shapes: `rounded-lg`, `rounded-2xl`, `rounded-full`, `border`, `border-slate-800`",
+                        "Color Palette: Full Tailwind palette (`bg-slate-950`, `bg-amber-500`, `text-white`, `text-slate-400`, etc.)",
+                        "Elevation & Effects: `shadow-sm`, `shadow-md`, `shadow-xl`, `shadow-2xl`"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Pure Vector Display List Pipeline"
+                },
+                {
+                    "type": "text",
+                    "text": "Once layout computation completes, the engine translates component trees into a compact display list of raw vector draw instructions executed directly by CoreGraphics Quartz:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Vector Command",
+                        "Parameters",
+                        "Quartz Render Target"
+                    ],
+                    "rows": [
+                        [
+                            "FILL_ROUND_RECT",
+                            "x, y, w, h, radius, color",
+                            "CGContextFillPath with CGPathAddRoundedRect"
+                        ],
+                        [
+                            "STROKE_RECT",
+                            "x, y, w, h, radius, strokeWidth, color",
+                            "CGContextStrokePath with specified border width"
+                        ],
+                        [
+                            "DRAW_TEXT",
+                            "x, y, text, fontSize, color, weight",
+                            "CTLineDraw / CGContextShowGlyphsAtPoint"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Multiplatform Dev Server & Hot-Reload"
+                },
+                {
+                    "type": "text",
+                    "text": "Launch the dev server with your desired target platform. The server features instantaneous state preservation and hot-reloads on file save:"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "# Launch native macOS Cocoa desktop window",
+                        "meme dev src/App.meme --platform=desktop",
+                        "",
+                        "# Or simulate concrete platform targets (iOS / Android / Mac / Web)",
+                        "meme dev src/App.meme --platform=ios",
+                        "meme app.meme --platform=android",
+                        "",
+                        "# Or launch web browser canvas target",
+                        "meme dev src/App.meme --platform=web",
+                        "",
+                        "# Or launch terminal rich ASCII preview",
+                        "meme dev src/App.meme --platform=terminal"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Interactive Keyboard Shortcuts"
+                },
+                {
+                    "type": "text",
+                    "text": "When running in dev mode, you can control targets and windows directly from the terminal without restarting the server:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Key",
+                        "Action",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "[d]",
+                            "Desktop Window",
+                            "Opens the hardware-accelerated Cocoa NSWindow"
+                        ],
+                        [
+                            "[w]",
+                            "Web Browser",
+                            "Opens Google Chrome / Safari to the live web application"
+                        ],
+                        [
+                            "[t]",
+                            "Terminal Preview",
+                            "Renders live Unicode ANSI widget frames in terminal"
+                        ],
+                        [
+                            "[r]",
+                            "Hot Reload",
+                            "Forces an immediate recompilation and state reload"
+                        ],
+                        [
+                            "[p]",
+                            "Switch Platform",
+                            "Cycles active default platform between desktop, web, terminal"
+                        ],
+                        [
+                            "[q]",
+                            "Quit Server",
+                            "Cleanly shuts down all windows and terminates the server"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "chameleon-bridge",
+            "title": "Chameleon Universal Interop Bridge",
+            "badge": "Universal Bridge",
+            "description": "Call Python NumPy / Pandas, Node/npm packages, and Rust crates natively in MEMElang with zero configuration.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Why choose between Python for scientific data science, Node/npm for modern cloud packages, and Rust for systems-grade cryptography? The Chameleon Universal Interop Bridge lets MEMElang import libraries from all three ecosystems seamlessly with zero glue code and zero configuration."
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Universal Ecosystem Syntax",
+                    "text": "Use the familiar `bula \"<ecosystem>:<module>\" jaise <alias>;` syntax. The Chameleon Sentinel automatically detects environment runtimes and marshals parameters across languages bidirectionally."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Python Interop (NumPy & Pandas)"
+                },
+                {
+                    "type": "text",
+                    "text": "Call Python packages like `numpy`, `pandas`, and `scipy` directly. Array operations, matrix math, and DataFrames operate with native syntax:"
+                },
+                {
+                    "type": "code",
+                    "title": "python_interop.meme",
+                    "code": "// Direct Python NumPy vector math\nbula \"py:numpy\" jaise np;\n\npakad vec = np.arange(10, 100, 10);\ndikha \"NumPy Vector:\", vec;\ndikha \"Sum:\", np.sum(vec);\ndikha \"Mean:\", np.mean(vec);\n\npakad v1 = np.array([1, 2, 3]);\npakad v2 = np.array([4, 5, 6]);\ndikha \"Dot Product:\", np.dot(v1, v2);\n\n// Direct Python Pandas DataFrames\nbula \"py:pandas\" jaise pd;\n\npakad df = pd.DataFrame([\n    { \"item\": \"Chai\", \"price\": 20, \"sold\": 150 },\n    { \"item\": \"Bun Maska\", \"price\": 40, \"sold\": 80 },\n    { \"item\": \"Maggi\", \"price\": 50, \"sold\": 45 }\n]);\n\ndikha \"Total Menu Items:\", df.col(\"item\").lambai();"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. JavaScript & NPM Interop"
+                },
+                {
+                    "type": "text",
+                    "text": "Tap into the npm registry for real-time messaging, WebSockets, or cloud databases:"
+                },
+                {
+                    "type": "code",
+                    "title": "npm_interop.meme",
+                    "code": "// Realtime messaging via Ably\nbula \"npm:ably\" jaise ably;\n\npakad client = ably.Realtime(\"API_KEY\");\npakad channel = client.channels.get(\"orders\");\nchannel.publish(\"new_order\", {\n    \"item\": \"Kullad Chai\",\n    \"qty\": 3,\n    \"timestamp\": systumm.ab()\n});\n\n// Cloud Document DB via Firebase\nbula \"npm:firebase\" jaise fb;\npakad db = fb.firestore();\ndb.collection(\"orders\").add({ \"status\": \"pending\", \"total\": 90 });"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Rust High-Performance Interop"
+                },
+                {
+                    "type": "text",
+                    "text": "Leverage Rust's blistering speed for cryptographic hashing, UUID generation, or parallel iteration:"
+                },
+                {
+                    "type": "code",
+                    "title": "rust_interop.meme",
+                    "code": "// Cryptographic operations & UUIDs\nbula \"rust:crypto\" jaise crypto;\n\npakad secretHash = crypto.sha256(\"MEMElang_Ultra_Secret\");\npakad traceId = crypto.uuid_v4();\n\ndikha \"SHA-256 Digest:\", secretHash;\ndikha \"Trace UUID:\", traceId;\n\n// Parallel computing via Rayon\nbula \"rust:rayon\" jaise rayon;\npakad dataset = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];\npakad parallelSquares = rayon.par_map(dataset, x => x * x);\ndikha \"Parallel Squared:\", parallelSquares;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Cross-Language Type Marshaling"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "MEMElang Value",
+                        "Python Type",
+                        "JavaScript Type",
+                        "Rust Type"
+                    ],
+                    "rows": [
+                        [
+                            "sankhya (42)",
+                            "int",
+                            "number",
+                            "i64 / u64"
+                        ],
+                        [
+                            "point (3.14)",
+                            "float",
+                            "number",
+                            "f64"
+                        ],
+                        [
+                            "bol (\"namaste\")",
+                            "str",
+                            "string",
+                            "String / &str"
+                        ],
+                        [
+                            "sach (han / real)",
+                            "bool (True)",
+                            "boolean (true)",
+                            "bool"
+                        ],
+                        [
+                            "suchi ([1, 2, 3])",
+                            "list",
+                            "Array",
+                            "Vec<T>"
+                        ],
+                        [
+                            "nakshe ({\"a\": 1})",
+                            "dict",
+                            "Object",
+                            "HashMap<K, V>"
+                        ],
+                        [
+                            "nalla (null)",
+                            "None",
+                            "null / undefined",
+                            "Option::None"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "tapri-package-manager",
+            "title": "Tapri Package Manager, Workspaces & Storage",
+            "badge": "Tooling & Storage",
+            "description": "Manage project manifests (tapri.json), lockfiles, root path resolution, persistent local storage, and automated testing.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Tapri is the official package manager, workspace orchestrator, and persistent runtime companion for MEMElang, named after India's ubiquitous roadside tea stalls where every conversation and idea comes together."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. tapri.json Project Manifest"
+                },
+                {
+                    "type": "text",
+                    "text": "Every MEMElang project is defined by a `tapri.json` file detailing project scripts, entrypoints, and cross-ecosystem dependencies:"
+                },
+                {
+                    "type": "code",
+                    "title": "tapri.json",
+                    "code": "{\n  \"name\": \"notes-desktop\",\n  \"version\": \"1.0.0\",\n  \"main\": \"src/App.meme\",\n  \"scripts\": {\n    \"dev\": \"meme dev src/App.meme --platform=desktop\",\n    \"web\": \"meme dev src/App.meme --platform=web\",\n    \"start\": \"meme src/App.meme\",\n    \"test\": \"meme test tests\"\n  },\n  \"dependencies\": {\n    \"py:numpy\": \"^1.24.0\",\n    \"rust:crypto\": \"latest\"\n  }\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. tapri.lock Determinism"
+                },
+                {
+                    "type": "text",
+                    "text": "When dependencies are installed, Tapri computes exact versions and integrity hashes, writing them to `.meme_env/tapri.lock`. This guarantees identical, deterministic builds across every developer machine and CI/CD environment."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Tapri CLI Commands Reference"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Command",
+                        "Purpose",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "meme naya <name>",
+                            "Scaffold project with templates (react, api, fullstack)",
+                            "meme naya my-app --template=react"
+                        ],
+                        [
+                            "meme tapri init",
+                            "Initialize tapri.json in current directory",
+                            "meme tapri init"
+                        ],
+                        [
+                            "meme tapri install",
+                            "Resolve and install dependencies into .meme_env/",
+                            "meme tapri install"
+                        ],
+                        [
+                            "meme tapri add <pkg>",
+                            "Add a package to tapri.json and install it",
+                            "meme tapri add py:numpy"
+                        ],
+                        [
+                            "meme tapri suchi",
+                            "List all installed packages and versions",
+                            "meme tapri suchi"
+                        ],
+                        [
+                            "meme run <script>",
+                            "Execute a script configured in tapri.json",
+                            "meme run test"
+                        ],
+                        [
+                            "meme setup",
+                            "Link meme binary globally into system PATH",
+                            "meme setup"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "4. Root Path Resolution (@/ Aliases)"
+                },
+                {
+                    "type": "text",
+                    "text": "Avoid brittle relative paths like `../../components/Header.meme`. MEMElang automatically resolves the `@/` alias to the root directory where `tapri.json` resides:"
+                },
+                {
+                    "type": "code",
+                    "title": "root_imports.meme",
+                    "code": "// Clean root-relative imports from any nested directory\nbula \"@/components/Header.meme\" jaise Header;\nbula \"@/components/MetricCard.meme\" jaise MetricCard;\nbula \"@/services/PythonService.meme\" jaise PyService;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "5. Tijori: Persistent Local Storage Vault"
+                },
+                {
+                    "type": "text",
+                    "text": "Applications often need persistent key-value and document storage that survives restarts without setting up heavy external databases. MEMElang includes Tijori (the Vault), a lightweight embedded database:"
+                },
+                {
+                    "type": "code",
+                    "title": "tijori_storage.meme",
+                    "code": "// 1. Save data persistently to disk\ntijori.rakh(\"user_preferences\", {\n    \"theme\": \"dark\",\n    \"fontSize\": 14,\n    \"lastOpened\": systumm.ab()\n});\n\n// 2. Retrieve saved data\npakad prefs = tijori.nikal(\"user_preferences\");\nagar prefs != nalla {\n    dikha \"Saved Theme:\", prefs[\"theme\"];\n}\n\n// 3. Remove a specific key\ntijori.hatao(\"temporary_session\");\n\n// 4. Safely clear the vault\n// tijori.saaf();"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "6. Automated Testing Framework"
+                },
+                {
+                    "type": "text",
+                    "text": "Write clean BDD-style unit and integration tests using `test(name, fn)` and `expect(val).toBe(...)`. Run your entire test suite with `meme test`:"
+                },
+                {
+                    "type": "code",
+                    "title": "app_test.meme",
+                    "code": "// tests/notes_test.meme\ntest(\"Notes count parity\", () => {\n    pakad defaultNotes = [\n        { \"id\": 1, \"title\": \"Buy tea\" },\n        { \"id\": 2, \"title\": \"Code MEMElang\" }\n    ];\n    expect(defaultNotes.lambai()).toBe(2);\n    expect(defaultNotes[0].title).toBe(\"Buy tea\");\n});\n\ntest(\"Immutability on note append\", () => {\n    pakad original = [\"A\", \"B\"];\n    pakad updated = [...original, \"C\"];\n    expect(updated.lambai()).toBe(3);\n    expect(original.lambai()).toBe(2);\n});"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "meme test tests/",
+                        "[OK] Tests passed: 2 | Failed: 0 (100% green)"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "native-permissions",
+            "title": "Cross-Platform Runtime Permissions",
+            "badge": "Permissions API",
+            "description": "Check, request, and enforce OS permissions uniformly across iOS, Android, macOS, Windows, Linux, and Web with selective manifest generation.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "The `native.permissions` (or `permissions`) module provides a single unified API modeled after Capacitor, Capawesome, and Tauri plugins. It handles OS dialogs, capability normalization, and per-platform manifest entries from `tapri.json`."
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Standardized Permission States & Dual API Styles",
+                    "text": "Every check or request resolves to a canonical status object (`state`, `granted`, `canAskAgain`, `restricted`, `limited`, `platform`, `reason`). States are `granted`, `denied`, `prompt`, `prompt-with-rationale`, `restricted`, `limited`, or `unavailable`. Both trailing callbacks and `.then()` / `.phir()` thenables work identically across the VM and Native AOT compiler."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Checking, Requesting & Opening Settings"
+                },
+                {
+                    "type": "code",
+                    "title": "permissions_example.meme",
+                    "code": "bula \"permissions\";\nbula \"native\";\n\n// Check without prompting the user\npakad cam = permissions.check(\"camera\");\ndikha \"Camera state:\", cam.state, \"canAskAgain:\", cam.canAskAgain;\n\n// Callback style (non-blocking across UI, iOS, Android, and Web)\npermissions.request(\"notifications\", (res) => {\n    agar (res.granted || res.limited) {\n        native.notify.send(\"MEME-UI\", \"Notifications active on \" + res.platform);\n    } elif (!res.canAskAgain) {\n        permissions.openSettings(\"notifications\");\n    }\n});\n\n// Thenable / Promise style also works seamlessly\npermissions.request(\"location\").then((res) => {\n    dikha \"Location permission:\", res.state;\n});\n\n// Batch-request multiple capabilities\npermissions.requestMany([\"camera\", \"microphone\"], (results) => {\n    dikha \"Camera:\", results.camera.state, \"Mic:\", results.microphone.state;\n});"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Selective Per-Platform tapri.json Permissions"
+                },
+                {
+                    "type": "text",
+                    "text": "Declare only the permissions each OS actually needs inside `tapri.json`. During `meme package`, MEMElang emits only the required native manifest keys (preventing App Store / Play Store over-permission rejections):"
+                },
+                {
+                    "type": "code",
+                    "title": "tapri.json",
+                    "code": "{\n  \"name\": \"camera-notes\",\n  \"bundleId\": \"com.example.cameranotes\",\n  \"permissions\": {\n    \"strict\": true,\n    \"common\": [\"notifications\", \"clipboard\"],\n    \"ios\": {\n      \"camera\": \"Capture whiteboard notes directly inside the editor.\",\n      \"photos\": \"Attach existing photos from your library.\",\n      \"biometrics\": \"Unlock protected vaults with Face ID.\"\n    },\n    \"android\": [\"camera\", \"photos\", \"location\"],\n    \"mac\": {\n      \"camera\": \"Capture photos with your Mac camera.\"\n    },\n    \"web\": [\"notifications\", \"camera\"]\n  }\n}"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Target OS",
+                        "Generated Manifest / Metadata",
+                        "Runtime Mechanism"
+                    ],
+                    "rows": [
+                        [
+                            "iOS (.ipa)",
+                            "Selective NS*UsageDescription keys + UIBackgroundModes",
+                            "UNUserNotificationCenter, AVFoundation, PHPhotoLibrary, CLLocationManager, LAContext"
+                        ],
+                        [
+                            "Android (.apk)",
+                            "Selective <uses-permission> tags + MemeNativeActivity.java classes.dex",
+                            "ActivityCompat checkSelfPermission, requestPermissions, JNI onRequestPermissionsResult"
+                        ],
+                        [
+                            "macOS (.app)",
+                            "Info.plist usage strings + codesign entitlements.plist",
+                            "TCC status queries, UNUserNotificationCenter, x-apple.securitypreferences URLs"
+                        ],
+                        [
+                            "Windows (.exe)",
+                            "Embedded RT_MANIFEST XML + consent query",
+                            "CapabilityAccessManager ConsentStore Registry + ms-settings:privacy*"
+                        ],
+                        [
+                            "Linux (.deb/.rpm/.ipk)",
+                            "/usr/share/<pkg>/capabilities.json",
+                            "Policy/device presence checks, zenity prompt, Control Center settings"
+                        ],
+                        [
+                            "Web (.wasm)",
+                            "<meta http-equiv=\"Permissions-Policy\"> HTML tag",
+                            "Notification API, navigator.permissions.query, getUserMedia, Geolocation API"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "platform-separation",
+            "title": "Platform Separation & Multi-Target Code",
+            "badge": "WORE + Escape Hatches",
+            "description": "Write shared UI once while separating OS-specific adapters cleanly via platform.select(), <Platform /> JSX, and .ios.meme / .android.meme / .web.meme files.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Write-once doesn't mean one-size-fits-all. MEMElang provides three clean layers for platform-specific code across both the Interpreter and Native C++20 AOT compiler:"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Runtime & Compile-Time platform Module"
+                },
+                {
+                    "type": "code",
+                    "title": "platform_api.meme",
+                    "code": "bula \"platform\";\nbula \"platform\" jaise { os, select, is, isMobile, isDesktop };\n\ndikha \"OS:\", os();           // \"ios\" | \"android\" | \"mac\" | \"windows\" | \"linux\" | \"web\"\ndikha \"Mobile?:\", isMobile(), \"Apple?:\", is(\"apple\");\n\npakad driverConfig = select({\n    \"ios\": \"UIKit Metal + Haptic Engine\",\n    \"android\": \"NativeActivity + GLES2\",\n    \"mobile\": \"Generic Mobile Fallback\",\n    \"desktop\": \"High-DPI Window Chrome\",\n    \"web\": \"Browser WebGL2 Canvas\",\n    \"default\": \"Universal Mode\"\n});"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Target-Aware Module File Extensions"
+                },
+                {
+                    "type": "text",
+                    "text": "Import `bula \"./storage_adapter\"` (or `@/adapters/auth`) and place OS-specific implementations beside each other. Both `./meme --platform=<os>` and `./meme package --target=<t>` automatically pick the highest-priority file for the target and only compile that file's code into the final binary:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Target Platform",
+                        "Resolution Order (Highest -> Fallback)"
+                    ],
+                    "rows": [
+                        [
+                            "ios",
+                            ".ios.meme -> .mobile.meme -> .apple.meme -> .native.meme -> platforms/ios/ -> .meme"
+                        ],
+                        [
+                            "android",
+                            ".android.meme -> .mobile.meme -> .native.meme -> platforms/android/ -> .meme"
+                        ],
+                        [
+                            "mac",
+                            ".mac.meme -> .macos.meme -> .desktop.meme -> .apple.meme -> .native.meme -> platforms/mac/ -> .meme"
+                        ],
+                        [
+                            "windows",
+                            ".win.meme -> .windows.meme -> .desktop.meme -> .native.meme -> platforms/windows/ -> .meme"
+                        ],
+                        [
+                            "linux",
+                            ".linux.meme -> .desktop.meme -> .native.meme -> platforms/linux/ -> .meme"
+                        ],
+                        [
+                            "web",
+                            ".web.meme -> .wasm.meme -> platforms/web/ -> .meme"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Declarative <Platform /> JSX Component"
+                },
+                {
+                    "type": "code",
+                    "title": "platform_jsx.meme",
+                    "code": "bula \"ui:shadcn\" jaise { Platform, Card };\n\nkaam Header() {\n    de (\n        <Card class=\"p-4 flex flex-col gap-2\">\n            <Platform ios android>\n                <span>Rendered strictly on Mobile touch devices</span>\n            </Platform>\n            <Platform only=\"mac,windows\" exclude=\"web\" fallback={<span>Browser Toolbar</span>}>\n                <span>Desktop Native Menu Bar</span>\n            </Platform>\n        </Card>\n    );\n}"
+                }
+            ]
+        },
+        {
+            "id": "native-os-apis",
+            "title": "Native OS & Hardware APIs",
+            "badge": "Hardware & Storage",
+            "description": "Access Clipboard, Notifications, Keychain, KV Storage, Biometrics, Haptics, Camera, Location, Sensors, and Window controls across every platform.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Import `bula \"native\"` (or legacy alias `bula \"app\"`) to call native OS capabilities directly without writing Swift, Kotlin, Win32, or JS glue code."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Namespace",
+                        "Key Functions",
+                        "Cross-Platform Backing"
+                    ],
+                    "rows": [
+                        [
+                            "native.clipboard",
+                            "get(), set(text), hasText(), clear()",
+                            "NSPasteboard / UIPasteboard / Android Clipboard / Win32 / xclip / Web"
+                        ],
+                        [
+                            "native.dialog",
+                            "alert, confirm, prompt, pickFile, saveFile, pickFolder",
+                            "NSAlert / UIAlertController / Native File Dialogs / Wasm"
+                        ],
+                        [
+                            "native.notify",
+                            "requestPermission(cb), send(title, body), badge(n)",
+                            "UNUserNotificationCenter / osascript / notify-send / Web Notifications"
+                        ],
+                        [
+                            "native.storage",
+                            "get(k), set(k, v), remove(k), keys()",
+                            "AppData JSON store / localStorage"
+                        ],
+                        [
+                            "native.keychain",
+                            "get(svc, k), set(svc, k, v), remove(svc, k)",
+                            "Apple Keychain Services / Android / Windows / Secret store"
+                        ],
+                        [
+                            "native.biometrics",
+                            "isAvailable(), authenticate(reason, cb)",
+                            "LocalAuthentication TouchID/FaceID / BiometricPrompt"
+                        ],
+                        [
+                            "native.device",
+                            "info(), platform(), screen(), safeArea(), locale(), theme()",
+                            "OS metrics, safe area insets & hardware specs"
+                        ],
+                        [
+                            "native.power",
+                            "battery(), network()",
+                            "Battery charge level, transport type (wifi/cellular/ethernet)"
+                        ],
+                        [
+                            "native.haptics / audio",
+                            "impact(style), vibrate(ms), beep(freq, ms), speak(txt)",
+                            "CoreHaptics / AudioServices / Android Vibrator / WebAudio"
+                        ],
+                        [
+                            "native.location / camera / sensors",
+                            "get(cb), pickPhoto(cb), capture(cb), poll()",
+                            "CoreLocation, AVCapture, UIImagePicker, CoreMotion"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "multiplatform-packaging",
+            "title": "Multi-Platform Packaging & Icons",
+            "badge": "8 Targets Zero-WebView",
+            "description": "Build signed native executables, installers, mobile bundles (.apk / .ipa), Linux packages (.deb / .rpm / .ipk), and Zero-DOM Wasm PWAs from one command.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Run `meme package <entry.meme> --target=...` (or `meme build --target=...`) to cross-compile and package your app with automatic icon generation, manifests, entitlements, and Android `classes.dex`."
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "# Package all 8 targets cleanly from tapri.json",
+                        "meme build --target=all -o dist/",
+                        "",
+                        "# Or package a single target with custom icon, name, bundle ID, and scheme",
+                        "meme package src/App.meme --target=apk --name=\"MyApp\" --id=com.example.myapp --icon=assets/icon.png",
+                        "meme package src/App.meme --target=ipa -o dist/",
+                        "meme package src/App.meme --target=mac -o dist/",
+                        "meme package src/App.meme --target=web -o dist/"
+                    ]
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Target Flag",
+                        "Output Artifact",
+                        "Compiler & Linker Toolchain"
+                    ],
+                    "rows": [
+                        [
+                            "mac",
+                            "<App>.app Bundle + .icns + entitlements.plist",
+                            "clang++ -x objective-c++ (Cocoa, Metal, CoreGraphics, ad-hoc codesign)"
+                        ],
+                        [
+                            "win",
+                            "<app>.exe PE32+ x64 + .ico + RT_MANIFEST",
+                            "zig c++ -target x86_64-windows-gnu + llvm-rc (Win32, Direct2D, DirectWrite)"
+                        ],
+                        [
+                            "deb / rpm / ipk",
+                            ".deb / .rpm / .ipk + capabilities.json + 256px PNG",
+                            "zig c++ -target x86_64-linux-musl (X11/EGL dynamic loader)"
+                        ],
+                        [
+                            "apk",
+                            "<app>.apk Dual-ABI + classes.dex + Mipmaps",
+                            "Android NDK arm64-v8a & x86_64 + javac + d8 + aapt2 + zipalign + apksigner"
+                        ],
+                        [
+                            "ipa",
+                            "<App>.ipa + <App>-Simulator.app + Info.plist",
+                            "xcrun --sdk iphoneos / iphonesimulator arm64 (UIKit, Metal, UserNotifications)"
+                        ],
+                        [
+                            "web",
+                            "web/index.html + .js + .wasm PWA Bundle",
+                            "Emscripten em++ (Zero-DOM WebGL2 Canvas + Permissions-Policy meta)"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "vscode-extension",
+            "title": "VS Code Extension & IntelliSense Tooling",
+            "badge": "IDE & Developer Experience",
+            "description": "First-class Visual Studio Code support with context-aware autocomplete, syntax highlighting, hover documentation, parameter signatures, and snippets.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang includes an official Visual Studio Code extension located at `tools/vscode-memelang`. It provides instant syntax suggestions, context-aware completions, parameter signature help, hover documentation, and productivity snippets for all language features."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Intelligent Context-Aware Suggestions"
+                },
+                {
+                    "type": "list",
+                    "items": [
+                        "Server Autocomplete (`app.` / `router.`): Type `app.` to see all Express and Elysia methods (`get`, `post`, `put`, `delete`, `use`, `listen`, `state`, `derive`, `decorate`, `onRequest`).",
+                        "TypeBox Schema Builder (`t.` / `schema.`): Type `t.` to autocomplete TypeBox validation rules (`String`, `Integer`, `Number`, `Boolean`, `Object`, `Array`, `Optional`, `Union`, `Literal`, `Record`, `Any`).",
+                        "Request, Response & Context (`req.` / `res.` / `ctx.`): Autocomplete `req.params`, `req.query`, `req.body`, `res.status().json()`, `res.sendFile()`, `ctx.body`, `ctx.store`, and `ctx.set`.",
+                        "Preinstalled Modules (`math.`, `crypto.`, `random.`, `file.`, `rasta.`, `dhaga.`, `kaamgar.`, `Vaada.`): Type `.` after any standard library identifier to get tailored method suggestions.",
+                        "Type Annotations (`: `): Typing `:` after variables offers instant suggestions for all 15 primitive and composite types (`ank`, `int32`, `byte`, `point`, `float32`, `char`, `bol`, `bytes`, `sach`, `soochi`, `khata`, `set`, `tuple`, `har_kism`).",
+                        "Tantrik Magic Methods (`__`): Typing `__` suggests all dunder operator overloading methods (`__jod__`, `__ghata__`, `__barabar__`, `__chota__`, `__la__`, `__daal__`, `__dikha__`, etc.)."
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Hover Documentation & Signature Help"
+                },
+                {
+                    "type": "text",
+                    "text": "Hovering over any keyword, standard library function, or framework method displays interactive Markdown documentation with signatures and code examples. Typing `(` inside functions like `fetch()`, `app.get()`, or `useState()` displays active parameter signature help."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Installation"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "# 1. Symlink directly into your VS Code extensions folder (Instant live sync)",
+                        "ln -s \"$(pwd)/tools/vscode-memelang\" ~/.vscode/extensions/memelang",
+                        "",
+                        "# 2. Or package and install the official .vsix bundle",
+                        "cd tools/vscode-memelang",
+                        "npx @vscode/vsce package",
+                        "code --install-extension memelang-2.0.0.vsix"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "hosting-deploy",
+            "title": "Hosting & Deployment (Vercel, Netlify, Pages)",
+            "description": "Host 100% pure MEMElang web apps built with --target=web on Vercel, Netlify, Cloudflare Pages, and GitHub Pages with SPA routing and Wasm MIME headers.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "When you package a MEMElang UI app with `--target=web`, the packager compiles your `.meme` source via AOT C++ + Emscripten (`em++`) into a self-contained static directory containing `index.html`, `<name>.js`, `<name>.wasm`, `manifest.webmanifest`, app icons, `vercel.json`, `_redirects`, and `404.html`. Because zero backend server is needed, any static host can serve your MEMElang app."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Package Static Web Bundle"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "./meme package docs/src/App.meme --target=web -o docs/.build",
+                        "ls -la docs/dist  # index.html, 404.html, memelang_docs.js, .wasm, vercel.json, _redirects"
+                    ]
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Automatic SPA Routing & MIME Config",
+                    "text": "`--target=web` emits `<base href=\"/\">` in `index.html`, `vercel.json` (rewrites `/(.*) -> /index.html` + `application/wasm` immutable caching + `Permissions-Policy` headers), `_redirects` for Netlify/Cloudflare Pages, and `404.html` for GitHub Pages. `<Router>`, `<Route>`, `<Link>`, and `useRouter()` stay synced with `window.history.pushState` automatically."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Deploying to Vercel (Two Workflows)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Workflow",
+                        "When to Use",
+                        "Setup"
+                    ],
+                    "rows": [
+                        [
+                            "Prebuilt Static Directory (docs/dist)",
+                            "Instant Vercel deploys on git push without Emscripten in Vercel",
+                            "Framework Preset: Other | Build Command: (empty) | Output Directory: docs/dist"
+                        ],
+                        [
+                            "GitHub Actions -> Vercel CLI",
+                            "Keep compiled .wasm binaries out of git history",
+                            "CI compiles ./meme + emsdk, packages --target=web, and runs vercel deploy --prebuilt"
+                        ],
+                        [
+                            "Netlify / Cloudflare Pages / GitHub Pages",
+                            "Zero-config alternative CDNs",
+                            "Point publish directory to docs/dist (_redirects & 404.html included)"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "route_sync_example.meme",
+                    "code": "bula \"ui\" jaise { useState, useRouter, Router, Route, Link };\n\njugaad Home() {\n    ye_le <div className=\"p-4 text-zinc-100\">Welcome to MEMElang Web App!</div>;\n}\n\njugaad About() {\n    ye_le <div className=\"p-4 text-emerald-300\">Hosted on Vercel Edge CDN</div>;\n}\n\njugaad App() {\n    pakad router = useRouter();\n    ye_le (\n        <div className=\"min-h-screen bg-zinc-950 p-6 flex flex-col gap-4\">\n            <div className=\"flex flex-row gap-3\">\n                <Link to=\"/\">Home</Link>\n                <Link to=\"/about\">About</Link>\n            </div>\n            <span>Route: {router.path}</span>\n            <Router>\n                <Route path=\"/\" component={Home} />\n                <Route path=\"/about\" component={About} />\n            </Router>\n        </div>\n    );\n}\n\nui.mount(App);"
+                }
+            ]
+        }
+    ];
+}

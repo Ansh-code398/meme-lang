@@ -1,0 +1,309 @@
+bula "ui" jaise { useState, useRouter };
+bula "ui:shadcn" jaise { ScrollArea };
+bula "native";
+bula "platform";
+bula "meme";
+bula "./data/categories.meme" jaise catsMod;
+bula "./data/sections_core.meme" jaise coreMod;
+bula "./data/sections_stdlib.meme" jaise stdlibMod;
+bula "./data/sections_platform.meme" jaise platMod;
+bula "./data/presets.meme" jaise presetsMod;
+bula "./data/errors.meme" jaise errsMod;
+bula "./components/DocView.meme" jaise docViewMod;
+bula "./components/PlaygroundView.meme" jaise pgViewMod;
+bula "./components/ErrorsView.meme" jaise errViewMod;
+
+pakad DocContentComp = docViewMod.DocContentView;
+pakad PlaygroundComp = pgViewMod.PlaygroundView;
+pakad ErrorsComp = errViewMod.ErrorsView;
+
+pakad DOCS_CATEGORIES = catsMod.getCategories();
+pakad DOCS_CORE = coreMod.getSectionsCore();
+pakad DOCS_STDLIB = stdlibMod.getSectionsStdlib();
+pakad DOCS_PLATFORM = platMod.getSectionsPlatform();
+pakad PLAYGROUND_RECIPES = presetsMod.getPlaygroundPresets();
+pakad ERROR_ITEMS = errsMod.getErrorsCatalog();
+
+jugaad collectAllSections() {
+    pakad all = [];
+    pakad i = 0;
+    jabtak i < size(DOCS_CORE) { all.push(DOCS_CORE[i]); i = i + 1; }
+    i = 0;
+    jabtak i < size(DOCS_STDLIB) { all.push(DOCS_STDLIB[i]); i = i + 1; }
+    i = 0;
+    jabtak i < size(DOCS_PLATFORM) { all.push(DOCS_PLATFORM[i]); i = i + 1; }
+    ye_le all;
+}
+
+pakad ALL_SECTIONS = collectAllSections();
+
+jugaad resolveRouteState(routePath, routeQuery, fallbackSection) {
+    dekh routePath == "/playground" {
+        ye_le {"tab": "playground", "section": fallbackSection};
+    }
+    dekh routePath == "/errors" {
+        ye_le {"tab": "errors", "section": fallbackSection};
+    }
+    dekh routePath.startsWith("/docs/") {
+        pakad secId = routePath.slice(6, size(routePath));
+        dekh secId != "" {
+            ye_le {"tab": "docs", "section": secId};
+        }
+    }
+    dekh routeQuery != nalla && routeQuery.has("section") && routeQuery["section"] != "" {
+        ye_le {"tab": "docs", "section": routeQuery["section"]};
+    }
+    ye_le {"tab": "docs", "section": fallbackSection};
+}
+
+jugaad SidebarPanel(sections, activeSecId, searchQuery, setSearchQuery, onSelectSection) {
+    pakad qLow = searchQuery.to_lower();
+
+    pakad findSectionById = jugaad(sid) {
+        pakad k = 0;
+        jabtak k < size(sections) {
+            dekh sections[k].id == sid {
+                ye_le sections[k];
+            }
+            k = k + 1;
+        }
+        ye_le nalla;
+    };
+
+    pakad navNodes = [];
+    dekh qLow != "" {
+        pakad matches = [];
+        pakad si = 0;
+        jabtak si < size(sections) {
+            pakad s = sections[si];
+            pakad tOk = s.title.to_lower().find(qLow) >= 0;
+            pakad dOk = s.description.to_lower().find(qLow) >= 0;
+            pakad idOk = s.id.to_lower().find(qLow) >= 0;
+            dekh tOk || dOk || idOk {
+                matches.push(
+                    <button
+                        key={si}
+                        className={activeSecId == s.id ? "w-full text-left px-3 py-2 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "w-full text-left px-3 py-2 rounded-lg text-zinc-400 text-xs"}
+                        onClick={() => onSelectSection(s.id)}
+                    >
+                        {s.title}
+                    </button>
+                );
+            }
+            si = si + 1;
+        }
+        navNodes.push(
+            <div key={0} className="flex flex-col gap-1">
+                <span className="px-3 py-1 font-mono text-xs text-zinc-400 font-semibold">{"SEARCH RESULTS (" + string(size(matches)) + ")"}</span>
+                {size(matches) > 0 ? <div className="flex flex-col gap-1">{matches}</div> : <span className="px-3 py-2 text-xs text-zinc-500">No matching sections</span>}
+            </div>
+        );
+    } warna {
+        pakad ci = 0;
+        jabtak ci < size(DOCS_CATEGORIES) {
+            pakad cat = DOCS_CATEGORIES[ci];
+            pakad sids = cat.sectionIds;
+            pakad catBtns = [];
+            pakad j = 0;
+            jabtak j < size(sids) {
+                pakad secObj = findSectionById(sids[j]);
+                dekh secObj != nalla {
+                    pakad isAct = (activeSecId == secObj.id);
+                    catBtns.push(
+                        <button
+                            key={j}
+                            className={isAct ? "w-full text-left px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "w-full text-left px-3 py-1.5 rounded-lg text-zinc-400 text-xs"}
+                            onClick={() => onSelectSection(secObj.id)}
+                        >
+                            {secObj.title}
+                        </button>
+                    );
+                }
+                j = j + 1;
+            }
+            navNodes.push(
+                <div key={ci} className="flex flex-col gap-1 pb-3">
+                    <span className="px-3 py-1 text-xs font-semibold text-amber-400">{cat.name}</span>
+                    <div className="flex flex-col gap-0.5">{catBtns}</div>
+                </div>
+            );
+            ci = ci + 1;
+        }
+    }
+
+    ye_le (
+        <div className="flex flex-col gap-3">
+            <div className="flex flex-row items-center gap-2">
+                <input
+                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
+                    placeholder="Search docs (e.g. jugaad)..."
+                    value={searchQuery}
+                    onChange={(ev) => setSearchQuery(ev.target.value)}
+                />
+                {searchQuery != "" ? (
+                    <button
+                        className="px-2 py-2 rounded-lg bg-zinc-800 text-xs text-zinc-300"
+                        onClick={() => setSearchQuery("")}
+                    >
+                        X
+                    </button>
+                ) : nalla}
+            </div>
+            <div className="flex flex-col gap-1">
+                {navNodes}
+            </div>
+        </div>
+    );
+}
+
+jugaad App() {
+    pakad router = useRouter();
+    pakad [selectedSecId, setSelectedSecId] = useState("intro");
+    pakad [searchQuery, setSearchQuery] = useState("");
+    pakad [playgroundCode, setPlaygroundCode] = useState("");
+    pakad [mobileMenuOpen, setMobileMenuOpen] = useState(nhi);
+
+    pakad routeInfo = resolveRouteState(router.path, router.query, selectedSecId);
+    pakad activeTab = routeInfo.tab;
+    pakad effectiveSecId = routeInfo.section;
+
+    pakad scr = native.device.screen();
+    pakad isCompact = (scr.width > 0 && scr.width < 820);
+
+    pakad curIndex = 0;
+    pakad idxSearch = 0;
+    jabtak idxSearch < size(ALL_SECTIONS) {
+        dekh ALL_SECTIONS[idxSearch].id == effectiveSecId {
+            curIndex = idxSearch;
+            bas;
+        }
+        idxSearch = idxSearch + 1;
+    }
+    pakad currentSection = ALL_SECTIONS[curIndex];
+    pakad prevSection = curIndex > 0 ? ALL_SECTIONS[curIndex - 1] : nalla;
+    pakad nextSection = curIndex + 1 < size(ALL_SECTIONS) ? ALL_SECTIONS[curIndex + 1] : nalla;
+
+    jugaad navigateToSection(secId) {
+        setSelectedSecId(secId);
+        setMobileMenuOpen(nhi);
+        router.navigate("/docs/" + secId);
+    }
+
+    jugaad openPlaygroundWithCode(code) {
+        setPlaygroundCode(code);
+        setMobileMenuOpen(nhi);
+        router.navigate("/playground");
+    }
+
+    jugaad goTab(tabName) {
+        setMobileMenuOpen(nhi);
+        dekh tabName == "playground" {
+            router.navigate("/playground");
+        } warna dekh tabName == "errors" {
+            router.navigate("/errors");
+        } warna {
+            router.navigate("/docs/" + effectiveSecId);
+        }
+    }
+
+    ye_le (
+        <div className="h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-zinc-800 bg-zinc-950 px-4 py-3 flex flex-row items-center justify-between gap-3 flex-wrap">
+                <div className="flex flex-row items-center gap-3">
+                    {isCompact && activeTab == "docs" ? (
+                        <button
+                            className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-200"
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                        >
+                            {mobileMenuOpen ? "Close Menu" : "Topics"}
+                        </button>
+                    ) : nalla}
+                    <button
+                        className="flex flex-row items-center gap-2 bg-transparent p-0"
+                        onClick={() => navigateToSection("intro")}
+                    >
+                        <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 font-bold text-amber-400 text-sm">M</span>
+                        <span className="font-bold text-base text-zinc-100">MEMElang</span>
+                    </button>
+                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400">
+                        {"100% Pure .meme (" + platform.os() + ")"}
+                    </span>
+                </div>
+
+                <div className="flex flex-row items-center gap-1.5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+                    <button
+                        className={activeTab == "docs" ? "px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "px-3 py-1.5 rounded-lg text-zinc-400 text-xs"}
+                        onClick={() => goTab("docs")}
+                    >
+                        Documentation
+                    </button>
+                    <button
+                        className={activeTab == "playground" ? "px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "px-3 py-1.5 rounded-lg text-zinc-400 text-xs"}
+                        onClick={() => goTab("playground")}
+                    >
+                        Playground & REPL
+                    </button>
+                    <button
+                        className={activeTab == "errors" ? "px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-100 text-xs font-semibold" : "px-3 py-1.5 rounded-lg text-zinc-400 text-xs"}
+                        onClick={() => goTab("errors")}
+                    >
+                        Meme Errors
+                    </button>
+                </div>
+
+                {!isCompact ? (
+                    <div className="flex flex-row items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400">
+                            Wasm Eval Ready
+                        </span>
+                        <button
+                            className="px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-xs"
+                            onClick={() => goTab("playground")}
+                        >
+                            Try Live
+                        </button>
+                    </div>
+                ) : nalla}
+            </div>
+
+            {activeTab == "docs" ? (
+                <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
+                    {!isCompact ? (
+                        <ScrollArea className="w-72 shrink-0 h-full overflow-y-auto border-r border-zinc-800 p-4 bg-zinc-950">
+                            {SidebarPanel(ALL_SECTIONS, effectiveSecId, searchQuery, setSearchQuery, navigateToSection)}
+                        </ScrollArea>
+                    ) : nalla}
+
+                    <ScrollArea key={"doc-" + effectiveSecId} className="flex-1 h-full overflow-y-auto p-6">
+                        {isCompact && mobileMenuOpen ? (
+                            <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900">
+                                {SidebarPanel(ALL_SECTIONS, effectiveSecId, searchQuery, setSearchQuery, navigateToSection)}
+                            </div>
+                        ) : nalla}
+                        <DocContentComp section={currentSection} prevSection={prevSection} nextSection={nextSection} onNavigateSection={navigateToSection} onOpenPlayground={openPlaygroundWithCode} />
+                    </ScrollArea>
+                </div>
+            ) : activeTab == "playground" ? (
+                <ScrollArea key="pg-scroll" className="flex-1 h-full overflow-y-auto p-6">
+                    <PlaygroundComp presets={PLAYGROUND_RECIPES} initialCode={playgroundCode} />
+                </ScrollArea>
+            ) : (
+                <ScrollArea key="err-scroll" className="flex-1 h-full overflow-y-auto p-6">
+                    <ErrorsComp errorsList={ERROR_ITEMS} onOpenPlayground={openPlaygroundWithCode} />
+                </ScrollArea>
+            )}
+
+            <div className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-2.5 flex flex-row items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-zinc-400">
+                    MEMElang v1.0 • Built 100% in Pure MEMElang, C++20 & WebAssembly
+                </span>
+                <span className="font-mono text-xs text-amber-400">
+                    Wah bete mauj kardi!
+                </span>
+            </div>
+        </div>
+    );
+}
+
+ui.mount(App);
+ui.show("MEMElang Docs & Playground");

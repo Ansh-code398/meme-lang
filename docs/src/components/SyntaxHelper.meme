@@ -1,0 +1,81 @@
+bula "ui" jaise { useState };
+
+jugaad stripAnsiCodes(rawText) {
+    dekh rawText == nalla || rawText == "" {
+        ye_le "";
+    }
+    pakad esc = akshar_bana(27);
+    pakad out = "";
+    pakad idx = 0;
+    pakad n = size(rawText);
+    jabtak idx < n {
+        pakad ch = rawText.slice(idx, idx + 1);
+        dekh ch == esc && idx + 1 < n && rawText.slice(idx + 1, idx + 2) == "[" {
+            idx = idx + 2;
+            jabtak idx < n {
+                pakad mc = rawText.slice(idx, idx + 1);
+                idx = idx + 1;
+                dekh mc == "m" || mc == "K" || mc == "J" || mc == "H" {
+                    bas;
+                }
+            }
+        } warna {
+            out = out + ch;
+            idx = idx + 1;
+        }
+    }
+    ye_le out;
+}
+
+jugaad classifyCodeLineColor(lineText) {
+    pakad trimmed = lineText.trim();
+    dekh trimmed == "" {
+        ye_le "text-zinc-400";
+    }
+    dekh trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("/*") || trimmed.startsWith("*") {
+        ye_le "text-zinc-500";
+    }
+    dekh trimmed.startsWith("bula ") || trimmed.startsWith("import ") || trimmed.startsWith("chura ") {
+        ye_le "text-cyan-400";
+    }
+    dekh trimmed.startsWith("jugaad ") || trimmed.startsWith("kaam ") || trimmed.startsWith("biradari ") || trimmed.startsWith("avtar ") {
+        ye_le "text-amber-300";
+    }
+    dekh trimmed.startsWith("dekh ") || trimmed.startsWith("warna") || trimmed.startsWith("jabtak ") || trimmed.startsWith("ghoom ") || trimmed.startsWith("jaanch ") || trimmed.startsWith("panga") || trimmed.startsWith("lafda") || trimmed.startsWith("pakka") {
+        ye_le "text-fuchsia-300";
+    }
+    dekh trimmed.startsWith("ye_le ") || trimmed.startsWith("wapas ") || trimmed.startsWith("de ") || trimmed.startsWith("chillao ") {
+        ye_le "text-emerald-300";
+    }
+    dekh trimmed.startsWith("dikha") || trimmed.startsWith("pakad ") || trimmed.startsWith("ui.") {
+        ye_le "text-sky-300";
+    }
+    ye_le "text-zinc-200";
+}
+
+jugaad renderHighlightedCode(codeText) {
+    dekh codeText == nalla || codeText == "" {
+        ye_le <span className="font-mono text-xs text-zinc-500">{"// empty snippet"}</span>;
+    }
+    pakad lines = codeText.split("\n");
+    pakad lineNodes = [];
+    pakad i = 0;
+    pakad total = size(lines);
+    jabtak i < total {
+        pakad ln = lines[i];
+        pakad colCls = classifyCodeLineColor(ln);
+        pakad dispLn = ln == "" ? " " : ln;
+        pakad lnNum = string(i + 1);
+        dekh i + 1 < 10 {
+            lnNum = " " + lnNum;
+        }
+        lineNodes.push(
+            <div key={i} className="flex flex-row items-start gap-3">
+                <span className="font-mono text-xs text-zinc-600 select-none shrink-0">{lnNum}</span>
+                <span className={"font-mono text-xs " + colCls}>{dispLn}</span>
+            </div>
+        );
+        i = i + 1;
+    }
+    ye_le <div className="flex flex-col gap-0.5">{lineNodes}</div>;
+}

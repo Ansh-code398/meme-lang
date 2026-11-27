@@ -1,0 +1,125 @@
+jugaad getPlaygroundPresets() {
+    ye_le [
+        {
+            "id": "chaivault-desktop",
+            "name": "[UI] ChaiVault Native Desktop App (CoreGraphics 60 FPS)",
+            "description": "Hardware-accelerated native macOS desktop notes app with Tailwind v4 layout, category filter, and persistent Tijori storage",
+            "code": "// ChaiVault Native Desktop App in MEMElang\nbula \"ui:shadcn\" jaise { Button, Badge }\n\nkaam App() {\n    [notes, setNotes] = useState([\n        { \"id\": 1, \"title\": \"Compiler Optimizations\", \"category\": \"Dev\", \"priority\": \"High\" },\n        { \"id\": 2, \"title\": \"Chai break at 5 PM\", \"category\": \"Personal\", \"priority\": \"Low\" },\n        { \"id\": 3, \"title\": \"Zero-WebView GPU Profiling\", \"category\": \"Dev\", \"priority\": \"Urgent\" }\n    ]);\n    [filter, setFilter] = useState(\"all\");\n\n    visibleNotes = notes.filter(n => filter == \"all\" || n.category == filter);\n\n    de (\n        <div className=\"p-8 bg-slate-950 text-white min-h-screen\">\n            <div className=\"max-w-4xl mx-auto\">\n                <div className=\"flex items-center justify-between pb-6 border-b border-slate-800\">\n                    <div>\n                        <h1 className=\"text-3xl font-extrabold text-amber-400\">ChaiVault</h1>\n                        <p className=\"text-sm text-slate-400\">Native Cocoa NSWindow • 60 FPS CoreGraphics</p>\n                    </div>\n                    <div className=\"flex gap-2\">\n                        <button className=\"px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs\" onClick={() => setFilter(\"all\")}>All</button>\n                        <button className=\"px-3 py-1 bg-amber-500/20 text-amber-300 rounded-lg text-xs\" onClick={() => setFilter(\"Dev\")}>Dev</button>\n                        <button className=\"px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs\" onClick={() => setFilter(\"Personal\")}>Personal</button>\n                    </div>\n                </div>\n\n                <div className=\"grid grid-cols-3 gap-4 mt-6\">\n                    {visibleNotes.map(n => (\n                        <div key={n.id} className=\"p-4 bg-slate-900 border border-slate-800 rounded-2xl\">\n                            <span className=\"text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold\">{n.priority}</span>\n                            <h3 className=\"text-lg font-bold mt-2\">{n.title}</h3>\n                            <p className=\"text-xs text-slate-500 mt-1\">Category: {n.category}</p>\n                        </div>\n                    ))}\n                </div>\n            </div>\n        </div>\n    );\n}\n\nui.mount(<App />, \"ChaiVault Desktop\");"
+        },
+        {
+            "id": "shadcn-gpu-ui",
+            "name": "[GPU] Zero-WebView Native GPU UI (JSX + Shadcn + Tailwind)",
+            "description": "Direct GPU Canvas rendering powered by React JSX syntax, Shadcn components, and mathematical Tailwind CSS engine",
+            "code": "// [GPU] Zero-WebView Native GPU UI in MEMElang\nbula \"ui:shadcn\" jaise { Card, Button, Badge, CardHeader, CardTitle, CardContent }\n\n// 1. React State Hook with Array Destructuring\n[orders, setOrders] = useState([\n    {\"item\": \"Masala Chai\", \"price\": 20, \"badge\": \"Special\"},\n    {\"item\": \"[Snack] Bun Maska\", \"price\": 40, \"badge\": \"Hot\"},\n    {\"item\": \"[Food] Street Maggi\", \"price\": 50, \"badge\": \"Popular\"}\n])\n\n// 2. Pure React JSX Component Tree with Tailwind Utility Classes\nappTree = (\n    <Card className=\"p-6 bg-slate-900 border-slate-800 rounded-3xl w-full text-slate-100 shadow-2xl\">\n        <CardHeader className=\"flex flex-row items-center justify-between pb-4\">\n            <div>\n                <CardTitle className=\"text-2xl font-bold tracking-tight text-white\">\n                    Tapri Point-Of-Sale\n                </CardTitle>\n                <div className=\"text-sm text-slate-400 mt-1\">\n                    Zero-WebView Direct GPU UI Engine • 60 FPS Canvas\n                </div>\n            </div>\n            <Badge variant=\"outline\" className=\"bg-emerald-950/60 text-emerald-400 border-emerald-700/50\">\n                [OK] Live Terminal\n            </Badge>\n        </CardHeader>\n\n        <CardContent className=\"mt-4 flex flex-col gap-3\">\n            <div className=\"text-xs font-semibold uppercase tracking-wider text-slate-400\">\n                Current Active Orders\n            </div>\n            <div className=\"p-3 bg-slate-800/80 rounded-xl flex items-center justify-between border border-slate-700/50\">\n                <div>\n                    <span className=\"font-medium text-white\">Masala Chai</span>\n                    <span className=\"text-xs text-slate-400 ml-2\">Rs.20</span>\n                </div>\n                <Badge variant=\"default\" className=\"bg-amber-500 text-slate-950 font-bold\">Ready</Badge>\n            </div>\n            <div className=\"p-3 bg-slate-800/80 rounded-xl flex items-center justify-between border border-slate-700/50\">\n                <div>\n                    <span className=\"font-medium text-white\">[Snack] Bun Maska</span>\n                    <span className=\"text-xs text-slate-400 ml-2\">Rs.40</span>\n                </div>\n                <Badge variant=\"secondary\">Cooking</Badge>\n            </div>\n            <div className=\"p-3 bg-slate-800/80 rounded-xl flex items-center justify-between border border-slate-700/50\">\n                <div>\n                    <span className=\"font-medium text-white\">[Food] Street Maggi</span>\n                    <span className=\"text-xs text-slate-400 ml-2\">Rs.50</span>\n                </div>\n                <Badge variant=\"destructive\">Pending</Badge>\n            </div>\n            <Button variant=\"default\" size=\"lg\" className=\"w-full mt-2 bg-gradient-to-r from-amber-500 to-orange-500 font-bold text-slate-950\">\n                [GPU] Process Next Order\n            </Button>\n        </CardContent>\n    </Card>\n)\n\n// 3. Mount to Direct GPU Canvas & Terminal\nui.dikha(appTree, \"Tapri Direct GPU App\")"
+        },
+        {
+            "id": "ecosystem-bridge",
+            "name": "[Web] Universal Ecosystem Bridge (NumPy, Pandas & Crypto)",
+            "description": "Call Python NumPy / Pandas and Rust cryptographic libraries natively in MEMElang with zero configuration",
+            "code": "// [Web] Universal Ecosystem Bridge in MEMElang\n\n// 1. Python NumPy Math & Vector Operations\nbula \"py:numpy\" jaise np\nnumbers = np.arange(10, 110, 10)\ndikha \"[hara bold]NumPy Vector:[/] \" + numbers\ndikha \"Sum = \" + np.sum(numbers) + \", Mean = \" + np.mean(numbers)\n\nv1 = np.array([1, 2, 3])\nv2 = np.array([4, 5, 6])\ndikha \"Dot Product (v1 • v2) = \" + np.dot(v1, v2)\n\n// 2. Python Pandas DataFrames\nbula \"py:pandas\" jaise pd\nsales = pd.DataFrame([\n    {\"item\": \"Chai\", \"price\": 20, \"sold\": 150},\n    {\"item\": \"Samosa\", \"price\": 15, \"sold\": 80},\n    {\"item\": \"Maggi\", \"price\": 50, \"sold\": 45}\n])\ndikha \"\\n[asmani bold]Pandas DataFrame Summary:[/] Total Rows = \" + sales.col(\"item\").lambai()\n\n// 3. Rust Cryptography (SHA-256 & UUID v4)\nbula \"rust:crypto\" jaise crypto\nsecretKey = crypto.sha256(\"MEMElang_Secret_2026\")\ntraceId = crypto.uuid_v4()\ndikha \"\\n[peela bold]Rust SHA-256:[/] \" + secretKey\ndikha \"[peela bold]Rust UUID v4:[/] \" + traceId"
+        },
+        {
+            "id": "tapri-pos-fullstack",
+            "name": "Tapri POS Full-Stack (DB, Dhaba & UI)",
+            "description": "Tijori (persistent local DB), Dhaba (FastAPI server), and Declarative Cross-Platform UI Framework",
+            "code": "// Tapri POS Full-Stack Application in MEMElang\n\n// 1. Persistent Document Database (Tijori)\ntijori.rakh(\"orders\", [\n    {\"item\": \"Masala Chai\", \"price\": 20, \"status\": \"Ready\"},\n    {\"item\": \"Bun Maska\", \"price\": 40, \"status\": \"Cooking\"}\n])\n\n// 2. FastAPI-style Backend Server (Dhaba)\ndhaba.get(\"/orders\", (req) => {\n    de {\"ok\": han, \"maal\": tijori.nikal(\"orders\")}\n})\n\n// Test the Dhaba endpoint directly\nres = dhaba.request(\"GET\", \"/orders\")\ndikha \"[hara bold]HTTP \" + res[\"status\"] + \" OK:[/] \" + res[\"body\"]\n\n// 3. Declarative Cross-Platform UI Framework\nscreen = ui.khamba([\n    ui.likh(\"Tapri POS App\", \"heading\"),\n    ui.katar([\n        ui.dabba([\n            ui.likh(\"Masala Chai - Rs.20\"),\n            ui.badge(\"Ready\", \"hara\")\n        ], \"Order #1\"),\n        ui.dabba([\n            ui.likh(\"Bun Maska - Rs.40\"),\n            ui.badge(\"Cooking\", \"peela\")\n        ], \"Order #2\")\n    ]),\n    ui.puch(\"Naya order likho...\"),\n    ui.button(\"Order Bhej\", () => {\n        dikha \"[hara mota]Naya order lag gaya![/]\"\n    })\n])\n\n// 4. Render to Terminal Screen\nui.dikha(screen, \"Tapri Multi-Platform App\")\n\n// 5. Trigger Interactive Button Callback\nui.click(screen, \"Order Bhej\")"
+        },
+        {
+            "id": "rich-terminal-stdlib",
+            "name": "[UI] Rich Terminal, UI Widgets & Stdlib",
+            "description": "Inline style tags, Unicode tables (dikha.mez), box panels (dikha.dabba), string styling (.laal, .hara), systumm & cli",
+            "code": "// [UI] Rich dikha styling, Unicode tables, boxes, and standard libraries!\n\n// 1. Rich Inline Tags in dikha\ndikha \"[hara bold][OK] Success:[/] Server chalu ho gaya on [asmani line]http://localhost:8080[/]\"\ndikha \"[laal]Error 404:[/] [peela]Resource gayab ho gaya![/]\"\n\n// 2. Chainable Color & Style Methods on Strings\nstatus = \"ONLINE\".hara().mota()\ndikha f\"Database Status: {status}\"\ndikha \"Raw plain text without ANSI: \" + status.rang_hata()\n\n// 3. Unicode Box Panels (dikha.dabba / box)\ndikha.dabba(\"MEMElang v2.0\\nRich UI, Stdlib & WebAssembly Ready!\", \"[Fast] Release Announcement\")\n\n// 4. Unicode Bordered Tables (dikha.mez / table)\ntasks = [\n    { task: \"Lexer & Parser\", status: \"Done\".hara(), priority: \"High\".laal() },\n    { task: \"Rich dikha & Widgets\", status: \"Done\".hara(), priority: \"High\".laal() },\n    { task: \"Standard Libraries\", status: \"Done\".hara(), priority: \"Medium\".peela() },\n    { task: \"Deploy to Production\", status: \"Ready\".asmani(), priority: \"Urgent\".laal().mota() }\n]\ndikha.mez(tasks)\n\n// 5. Expanded Array & String Methods\narr = [10, 20, 30]\narr.daal(40)\ndikha \"Pehla item:\", arr.pehla(), \"| Aakhri:\", arr.aakhri()\ndikha \"Chunked by 2:\", arr.tukde(2)\n\ncode = \"42\"\ndikha \"Padded ID:\", code.aage_bhar(6, \"0\")\ndikha \"Is digit:\", code.number_hai()\n\n// 6. Systumm & CLI APIs\ndikha \"Running on platform:\", systumm.kaun()\nargs = cli.args_samajh([\"--mode=turbo\", \"--workers=4\", \"serve\"])\ndikha \"CLI args parsed:\", args"
+        },
+        {
+            "id": "whatsapp-hinglish",
+            "name": "WhatsApp Hinglish (Effortless & Clean)",
+            "description": "Zero semicolons, no pakad/le boilerplate, kaam, de, agar/elif, har...mein, .chhan, .badal, .saja, .kul, .dhund",
+            "code": "// WhatsApp Hinglish MEMElang - Clean, Pythonic, Zero Keystroke Waste!\n\n// 1. Python-style variable creation (No pakad / le needed) & optional semicolons\nnumbers = [5, 12, 8, 20, 3, 42, 17]\n\n// 2. Short, natural keywords: 'kaam' (function) and 'de' (return)\nkaam process_scores(arr) {\n    // 3. Underscore-free collection methods: .chhan (filter), .badal (map), .saja (sort)\n    big_doubled = arr\n        .chhan(x => x >= 10)\n        .badal(x => x * 2)\n        .saja()\n\n    de big_doubled\n}\n\ndikha \"Processed Scores:\", process_scores(numbers)\n\n// 4. Clean conditionals with agar, elif, warna\nkaam rank(score) {\n    agar score >= 80 {\n        de \"Aura +10000 (Topper)\"\n    } elif score >= 33 {\n        de \"Pass ho gaye mauj karo\"\n    } warna {\n        de \"Raju, padhai likhai mein dhyan lagao\"\n    }\n}\n\ndikha rank(85)\ndikha rank(12)\n\n// 5. Har item mein list iteration\ntotal = 0\nhar n mein [10, 20, 30] {\n    total = total + n\n}\ndikha \"Total sum:\", total\n\n// 6. Underscore-free .kul (reduce), .dhund (find), .koi (some), .sab (every)\ndikha \"Sum via .kul():\", [1, 2, 3, 4, 5].kul((acc, x) => acc + x, 0)\ndikha \"First > 20:\", [5, 12, 25, 30].dhund(x => x > 20)\ndikha \"Any even? (.koi):\", [1, 3, 4, 7].koi(x => x % 2 == 0)\ndikha \"All positive? (.sab):\", [2, 4, 6].sab(x => x > 0)"
+        },
+        {
+            "id": "pythonic",
+            "name": "[Py] Pythonic Transforms & Tantrik Methods",
+            "description": "Arrow lambdas, collection pipelines (.chhaan, .sab_pe, .nichod), Tantrik dunders (__jod__, __dikha__), F-strings, and destructuring",
+            "code": "// [Py] Pythonic Superpowers in MEMElang\n\n// 1. Arrow Lambdas & Collection Pipeline\npakad scores = [15, 42, 88, 23, 95, 60];\npakad toppers = scores\n    .chhaan(s => s >= 50)\n    .sab_pe(s => s + 5)\n    .line_mein((a, b) => a > b); // Sort descending\n\ndikha \"Toppers bonus scores:\", toppers;\n\n// 2. Tantrik Operator Overloading & F-Strings\nbiradari Wallet {\n    jugaad shuru(rupaye) {\n        khud.bal = rupaye;\n    }\n    jugaad __jod__(other) {\n        ye_le Wallet(khud.bal + other.bal);\n    }\n    jugaad __dikha__() {\n        ye_le f\"Wallet(Rs.{khud.bal})\";\n    }\n}\n\npakad w1 = Wallet(500);\npakad w2 = Wallet(250);\npakad total = w1 + w2;\ndikha f\"Total money: {total}\";\n\n// 3. Array & Map Destructuring\npakad [first, second, *rest] = [10, 20, 30, 40, 50];\ndikha f\"first: {first}, second: {second}, rest: {rest}\";\n\npakad {naam, city} = { \"naam\": \"Gabbru\", \"city\": \"Delhi\" };\ndikha f\"Player: {naam} from {city}\";"
+        },
+        {
+            "id": "hello",
+            "name": "Hi Hello World",
+            "description": "Basic variables, printing, and string multiplication",
+            "code": "// Welcome to MEMElang WebAssembly Edition!\npakad welcome = \"Namaste Sansaar!\";\ndikha welcome;\n\npakad laughter = \"ha\" * 6;\ndikha \"Desi laughter:\", laughter;\n\npakad a = 25;\npakad b = 17;\ndikha \"25 + 17 =\", a + b;"
+        },
+        {
+            "id": "input",
+            "name": "Console Input (pooch / bata)",
+            "description": "Interactive and pre-fed standard input with pooch()",
+            "stdin": "Baburao Apte\nMumbai\n50",
+            "code": "// Interactive Input with pooch() / bata()\ndikha \"=== MEMElang Desi Survey ===\";\npakad naam = pooch(\"Aapka naam kya hai? \");\npakad shahar = pooch(\"Kaunse shahar se ho? \");\npakad umar = pooch(\"Aapki umar kitni hai? \");\n\ndikha \"\";\ndikha \"Swagat hai\", naam, \"dost from\", shahar + \"!\";\ndikha \"5 saal baad aapki umar hogi:\", bina_point(umar) + 5;"
+        },
+        {
+            "id": "fibonacci",
+            "name": "[Py] Fibonacci Recursion",
+            "description": "Recursive algorithm with range loop generator",
+            "code": "// Recursive Fibonacci in MEMElang\njugaad fib(n) {\n    dekh n <= 0 {\n        ye_le 0;\n    }\n    dekh n == 1 {\n        ye_le 1;\n    }\n    ye_le fib(n - 1) + fib(n - 2);\n}\n\ndikha \"--- Pehle 8 Fibonacci Numbers ---\";\nghuma i se 0 se 7 {\n    dikha \"fib(\" + kya_hai(i) + \" \" + i + \") =\", fib(i);\n}"
+        },
+        {
+            "id": "fizzbuzz",
+            "name": "[GPU] FizzBuzz Challenge",
+            "description": "Conditionals and modulo loops from 1 to 15",
+            "code": "// Classic FizzBuzz with Desi Memes\nghuma n se 1 se 15 {\n    dekh (n % 15 == 0) {\n        dikha n, \": FizzBuzz (Full Masala)\";\n    } warna dekh (n % 3 == 0) {\n        dikha n, \": Fizz\";\n    } warna dekh (n % 5 == 0) {\n        dikha n, \": Buzz\";\n    } warna {\n        dikha n;\n    }\n}"
+        },
+        {
+            "id": "oop",
+            "name": "[VIP] OOP & Nepotism",
+            "description": "Classes, nepo inheritance, and dynamic methods",
+            "code": "// Classes & Nepotism\nbiradari Actor {\n    jugaad shuru(naam) {\n        apun.naam = naam;\n        apun.talent = 10;\n    }\n\n    jugaad dialogue() {\n        dikha apun.naam, \"bolta hai: Mere paas talent hai!\";\n    }\n}\n\nbiradari StarKid nepo Actor {\n    jugaad shuru(naam, launch_budget) {\n        apun.naam = naam;\n        apun.budget = point_wala(launch_budget);\n    }\n\n    jugaad interview() {\n        dikha apun.naam, \"says: Humne bohot struggle kiya hai, budget only Rs.\", apun.budget;\n    }\n}\n\npakad kid = StarKid(\"Shanaya\", \"50000000.0\");\nkid.dialogue();  // Inherited from Actor\nkid.interview(); // Defined on StarKid"
+        },
+        {
+            "id": "errors",
+            "name": "[Meme] Meme Error Showcase",
+            "description": "Uncomment any line to trigger iconic meme error dialogues",
+            "code": "// Uncomment ONE line at a time to test meme errors:\n\n// 1. Baburao divide by zero:\ndikha 100 / 0;\n\n// 2. Rasode mein kaun tha (undeclared variable):\n// dikha rasode_ki_rashi;\n\n// 3. Ashneer Grover Doglapan error:\n// (x) = 50;\n\n// 4. Moye Moye unclosed string:\n// pakad s = \"khula chhod diya;\n\n// 5. Gangs of Wasseypur (Beta tumse na ho payega):\n// pakad num = 42; num();"
+        },
+        {
+            "id": "borrow-checker",
+            "name": "Rust-Style Borrow Checker",
+            "description": "Single ownership, moves, udhaar (&), udhaar_badal (&mut), and RAII alvida()",
+            "code": "// MEMElang Rust-Style Memory Safety Showcase\n\n// 1. Explicit Cloning with nakal()\npakad secret = \"Tees Maar Khan Khazana\";\npakad safe_copy = nakal(secret);\ndikha \"Safe copy cloned:\", safe_copy;\n\n// 2. Shared Borrowing (udhaar)\npakad hero = \"Majnu Seth\";\npakad r1 = udhaar hero;\npakad r2 = udhaar hero;\ndikha \"Shared read 1:\", r1;\ndikha \"Shared read 2:\", r2;\n\n// 3. Mutable Borrowing (udhaar_badal) in Scopes\npakad score = 10;\n{\n    pakad m = udhaar_badal score;\n    m = 100;\n    dikha \"Mutated through exclusive borrow:\", m;\n}\ndikha \"Score after scope borrow release:\", score;\n\n// 4. RAII Destructors (alvida)\nbiradari SafeLocker {\n    jugaad shuru(name) {\n        apun.name = name;\n        dikha \"[Open] [RAII] Locker opened:\", apun.name;\n    }\n    jugaad alvida() {\n        dikha \"[Lock] [RAII] Locker auto-dropped and sealed:\", apun.name;\n    }\n}\n\n{\n    pakad locker = SafeLocker(\"Swiss Vault\");\n    dikha \"Vault is in active use...\";\n}\ndikha \"Scope finished, locker was cleanly dropped!\";"
+        },
+        {
+            "id": "collections-demo",
+            "name": "Native Collections & Maps",
+            "description": "Dynamic arrays, hash maps with dot notation, and ghuma ... mein iteration",
+            "code": "// Native Collections Showcase\npakad team = [\"Kabir\", \"Bikram\", \"Guddu\"];\nteam.ghusa(\"Bablu\");\ndikha \"Initial team:\", team;\ndikha \"Captain (negative index):\", team[-1];\n\n// Hash map with dot notation\npakad stats = {\n    \"runs\": 85,\n    \"wickets\": 3,\n    \"mvp\": han\n};\ndikha \"Player runs:\", stats.runs;\ndikha \"All stat keys:\", stats.chaabi();\n\n// Iteration with ghuma ... mein\ndikha \"\\n--- Roster ---\";\nghuma player mein team {\n    dikha \"Player:\", player;\n}"
+        },
+        {
+            "id": "error-handling-demo",
+            "name": "[!] Error Handling (panga / lafda)",
+            "description": "panga/lafda/pakka try-catch-finally and chillao exception raising",
+            "code": "// [!] User-Level Error Handling Demo\njugaad withdraw(balance, amount) {\n    dekh amount > balance {\n        chillao {\n            \"code\": 402,\n            \"msg\": \"Aukaat ke bahar! Bank mein itna paisa nahi hai!\"\n        };\n    }\n    ye_le balance - amount;\n}\n\npanga {\n    pakad bal = 500;\n    dikha \"Balance after 200 withdrawal:\", withdraw(bal, 200);\n    dikha \"Attempting 1000 withdrawal...\";\n    dikha withdraw(bal, 1000); // Throws!\n} lafda err {\n    dikha \"[ERR] Lafda pakda gaya!\";\n    dikha \"Error Code:\", err.code;\n    dikha \"Error Msg:\", err.msg;\n} pakka {\n    dikha \"[Vault] Transaction session closed cleanly (pakka block always runs)!\";\n}"
+        },
+        {
+            "id": "enums-pattern-matching",
+            "name": "[Target] Enums & Pattern Matching",
+            "description": "Type-safe avtar enums and jaanch pattern matching with baaki/warna guards",
+            "code": "// [Target] Enums (avtar) & Pattern Matching (jaanch)\navtar OrderState {\n    Cart,\n    Placed,\n    Shipped,\n    Delivered\n}\n\njugaad trackOrder(state) {\n    jaanch state {\n        OrderState.Cart => {\n            dikha \"Cart mein samaan pada hai, checkout karo!\";\n        }\n        OrderState.Placed => {\n            dikha \"Order place ho gaya, packing shuru!\";\n        }\n        OrderState.Shipped => {\n            dikha \"Delivery boy raste mein hai!\";\n        }\n        OrderState.Delivered => {\n            dikha \"[!] Samaan mil gaya! Rating de do bro!\";\n        }\n        baaki => {\n            dikha \"Aayein? Unknown status!\";\n        }\n    }\n}\n\ntrackOrder(OrderState.Shipped);\ntrackOrder(OrderState.Delivered);"
+        },
+        {
+            "id": "stdlib-demo",
+            "name": "Built-in Stdlib (hisab, waqt, json)",
+            "description": "Math, high-precision timing, and JSON serialization/deserialization",
+            "code": "// Built-in Standard Library Showcase\n\n// 1. Math (hisab)\ndikha \"Math PI:\", hisab.pi;\ndikha \"Square root of 81:\", hisab.jadd(81);\ndikha \"Round 7.8:\", hisab.gol(7.8);\ndikha \"Random lucky number (1-100):\", hisab.tukka_num(1, 100);\n\n// 2. JSON Serialization\npakad player = {\n    \"name\": \"Virat\",\n    \"century\": 80,\n    \"active\": han\n};\npakad jsonStr = json.likh(player);\ndikha \"Serialized JSON:\", jsonStr;\n\npakad decoded = json.samajh(jsonStr);\ndikha \"Decoded player name:\", decoded.name;\n\n// 3. Time (waqt)\npakad start = waqt.ab();\nso_ja(0.05); // Sleep 50ms\ndikha \"Elapsed seconds:\", waqt.ab() - start;"
+        },
+        {
+            "id": "platform-separation-demo",
+            "name": "Platform Separation & platform.select",
+            "description": "Inspect target OS, architecture, boolean platform predicates, and React Native-style platform.select()",
+            "code": "// Platform Detection & Target Separation in MEMElang\nbula \"platform\";\nbula \"platform\" jaise { os, arch, is, isWeb, isMobile, select };\n\ndikha \"Platform OS:\", os();\ndikha \"Arch:\", arch();\ndikha \"Is Web Target:\", is(\"web\"), \"isWeb():\", isWeb(), \"isMobile():\", isMobile();\n\npakad backend = select({\n    \"ios\": \"UIKit + Metal Zero-WebView\",\n    \"android\": \"Android NativeActivity + GLES2\",\n    \"mac\": \"Cocoa AppKit + Metal\",\n    \"web\": \"WebAssembly Zero-DOM Canvas\",\n    \"default\": \"Universal Engine\"\n});\ndikha \"Select Result:\", backend;"
+        },
+        {
+            "id": "native-permissions-demo",
+            "name": "Cross-Platform Runtime Permissions",
+            "description": "Check capability availability, normalize aliases, and inspect permission states safely",
+            "code": "// Unified Cross-Platform Permissions API\nbula \"permissions\";\nbula \"permissions\" jaise { check, isSupported };\n\npakad cam = check(\"cam\");\npakad loc = check(\"location\");\npakad bioSupported = isSupported(\"biometrics\");\n\ndikha \"Check Camera:\", cam.permission, cam.state, \"canAskAgain:\", cam.canAskAgain;\ndikha \"Check Location:\", loc.permission, loc.state;\ndikha \"Biometrics Supported Here:\", bioSupported;\ndikha \"Permissions Checked: OK\";"
+        }
+    ];
+}

@@ -1,4 +1,6 @@
 #include "Interpreter.h"
+#include "../lexer/Lexer.h"
+#include "../types/TypeChecker.h"
 #include "../ui/TailwindEngine.h"
 #include "../ui/DevServerState.h"
 #include "../ui/NativeDesktopWindow.h"
@@ -6473,6 +6475,112 @@ static std::shared_ptr<MemeMap> createAppModule(Interpreter &interpreter)
     return m;
 }
 
+extern "C" int meme_eval_sandbox(const char *source_code,
+                                 const char *stdin_text,
+                                 const char **out_stdout,
+                                 const char **out_error,
+                                 const char **out_gpu_json,
+                                 double *out_duration_ms) {
+    struct EvalBufs {
+        std::string stdoutText;
+        std::string errorText;
+        std::string gpuCmdsJson = "[]";
+    };
+    static EvalBufs buf;
+    buf.stdoutText.clear();
+    buf.errorText.clear();
+    buf.gpuCmdsJson = "[]";
+    if (out_stdout) *out_stdout = "";
+    if (out_error) *out_error = "";
+    if (out_gpu_json) *out_gpu_json = "[]";
+    if (out_duration_ms) *out_duration_ms = 0.0;
+
+    if (!source_code || source_code[0] == '\0') return 0;
+
+    std::ostringstream outStream;
+    std::istringstream inStream(stdin_text ? stdin_text : "");
+    auto t0 = std::chrono::steady_clock::now();
+    int isErr = 0;
+    try {
+        Lexer lexer(source_code);
+        auto tokens = lexer.tokenize();
+        Parser parser(tokens);
+        auto program = parser.parseProgram();
+        TypeChecker typeChecker;
+        typeChecker.check(program);
+
+        Interpreter interp(outStream, inStream);
+        interp.setHeadless(true);
+        interp.interpret(program);
+
+        buf.stdoutText = outStream.str();
+        if (!interp.lastGpuCommandsJson.empty()) {
+            buf.gpuCmdsJson = interp.lastGpuCommandsJson;
+        }
+    } catch (const std::exception &e) {
+        buf.stdoutText = outStream.str();
+        buf.errorText = e.what();
+        if (!buf.stdoutText.empty() && buf.stdoutText.back() != '\n') buf.stdoutText += "\n";
+        buf.stdoutText += "\xE2\x9D\x8C Gadbad ho gayi:\n" + buf.errorText + "\n";
+        isErr = 1;
+    } catch (...) {
+        buf.stdoutText = outStream.str();
+        buf.errorText = "Anjaan gadbad ho gayi!";
+        if (!buf.stdoutText.empty() && buf.stdoutText.back() != '\n') buf.stdoutText += "\n";
+        buf.stdoutText += "\xE2\x9D\x8C Anjaan gadbad ho gayi!\n";
+        isErr = 1;
+    }
+    auto t1 = std::chrono::steady_clock::now();
+    if (out_duration_ms) {
+        *out_duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    }
+    if (out_stdout) *out_stdout = buf.stdoutText.c_str();
+    if (out_error) *out_error = buf.errorText.c_str();
+    if (out_gpu_json) *out_gpu_json = buf.gpuCmdsJson.c_str();
+    return isErr;
+}
+
+static std::shared_ptr<MemeMap> createMemeEvalModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto evalFn = Value(std::make_shared<NativeMethodCallable>("eval", 1, 2, [](Interpreter &, const std::vector<Value> &args) -> Value {
+        std::string code = args.empty() ? "" : args[0].deref().toString();
+        std::string stdinStr = args.size() > 1 ? args[1].deref().toString() : "";
+        const char *outStdout = "";
+        const char *outErr = "";
+        const char *outGpu = "[]";
+        double ms = 0.0;
+        int isErr = meme_eval_sandbox(code.c_str(), stdinStr.c_str(), &outStdout, &outErr, &outGpu, &ms);
+        std::string gpuStr = outGpu ? outGpu : "[]";
+        Value gpuList(std::make_shared<MemeList>());
+        try {
+            MemeJson::Parser jp(gpuStr);
+            Value parsed = jp.parseValue();
+            if (parsed.isList()) gpuList = parsed;
+        } catch (...) {}
+        bool hasUi = gpuList.isList() && gpuList.getList() && !gpuList.getList()->elements.empty();
+        auto res = std::make_shared<MemeMap>();
+        res->set("output", Value(std::string(outStdout ? outStdout : "")));
+        res->set("error", Value(std::string(outErr ? outErr : "")));
+        res->set("isError", Value(isErr != 0));
+        res->set("durationMs", Value(ms));
+        res->set("gpuCommands", gpuList);
+        res->set("gpuCommandsJson", Value(gpuStr));
+        res->set("hasUi", Value(hasUi));
+        return Value(res);
+    }));
+    m->set("eval", evalFn);
+    m->set("run", evalFn);
+    m->set("exec", evalFn);
+    m->set("chala", evalFn);
+    m->set("version", Value(std::make_shared<NativeMethodCallable>("version", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(std::string("MEMElang v1.0 [Ye Bik Gayi Hai Gormint Edition]"));
+    })));
+    return m;
+}
+
 struct TijoriStore {
     std::shared_ptr<MemeMap> dbData = std::make_shared<MemeMap>();
     std::string filePath = ".tijori.json";
@@ -9418,11 +9526,11 @@ static std::shared_ptr<MemeMap> createUiModule(Interpreter &interpreter)
 
     auto showFn = [&interpreter](Interpreter &, const std::vector<Value> &args) -> Value {
         std::string winTitle = args.size() > 0 ? args[0].deref().toString() : "MEMElang Native Desktop";
-        bool isHeadless = (std::getenv("MEME_HEADLESS") != nullptr);
+        bool isHeadless = interpreter.getHeadless() || (std::getenv("MEME_HEADLESS") != nullptr);
         if (isHeadless) {
             return Value(true);
         }
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(MEME_NO_INTERP_DESKTOP)
         static auto s_state = std::make_shared<DevServerState>();
         s_state->appName = winTitle;
         s_state->interpreter = &interpreter;
@@ -12260,6 +12368,10 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     importedModules["permissions"] = permsMod;
     importedModules["perms"] = permsMod;
 
+    auto memeEvalMod = Value(createMemeEvalModule());
+    globals->define("meme", memeEvalMod);
+    importedModules["meme"] = memeEvalMod;
+
     auto appMod = Value(createAppModule(*this));
     globals->define("app", appMod);
     importedModules["app"] = appMod;
@@ -12526,15 +12638,31 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     // Router API
     auto useRouterFn = [](Interpreter &interp, const std::vector<Value> &) -> Value {
         auto rMap = std::make_shared<MemeMap>();
-        rMap->set("path", Value(interp.getRouterPath()));
-        rMap->set("push", Value(std::make_shared<NativeMethodCallable>("push", 1, [&interp, rMap](Interpreter &, const std::vector<Value> &rArgs) -> Value {
+        std::string curRaw = interp.getRouterPath();
+        std::string curPath = curRaw;
+        auto qMap = std::make_shared<MemeMap>();
+        size_t qPos = curRaw.find('?');
+        if (qPos != std::string::npos) {
+            curPath = curRaw.substr(0, qPos);
+            std::istringstream qss(curRaw.substr(qPos + 1));
+            std::string pair;
+            while (std::getline(qss, pair, '&')) {
+                size_t eq = pair.find('=');
+                if (eq != std::string::npos) qMap->set(pair.substr(0, eq), Value(pair.substr(eq + 1)));
+            }
+        }
+        rMap->set("path", Value(curPath));
+        rMap->set("query", Value(qMap));
+        auto pushCallable = Value(std::make_shared<NativeMethodCallable>("push", 1, [&interp, rMap](Interpreter &, const std::vector<Value> &rArgs) -> Value {
             if (!rArgs.empty()) {
                 std::string newPath = rArgs[0].deref().toString();
                 rMap->set("path", Value(newPath));
                 interp.setRouterPath(newPath);
             }
             return Value(std::monostate{});
-        })));
+        }));
+        rMap->set("push", pushCallable);
+        rMap->set("navigate", pushCallable);
         rMap->set("back", Value(std::make_shared<NativeMethodCallable>("back", 0, [&interp, rMap](Interpreter &, const std::vector<Value> &) -> Value {
             if (!interp.routerHistory.empty()) {
                 interp.routerHistory.pop_back();
@@ -12778,10 +12906,10 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
                 cb = a[0];
             }
             setupImmediateFn(interp, cb, vw, vh);
-            if (std::getenv("MEME_HEADLESS") != nullptr) {
+            if (interp.getHeadless() || std::getenv("MEME_HEADLESS") != nullptr) {
                 return Value(true);
             }
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(MEME_NO_INTERP_DESKTOP)
             static auto s_eguiState = std::make_shared<DevServerState>();
             s_eguiState->appName = title;
             s_eguiState->interpreter = &interp;
@@ -13385,7 +13513,7 @@ Value Interpreter::importModule(const std::string &path, int line)
         return mod;
     }
     if (path == "native" || path == "app" || path == "device" ||
-        path == "platform" || path == "permissions" || path == "perms")
+        path == "platform" || path == "permissions" || path == "perms" || path == "meme")
     {
         return importedModules[path];
     }

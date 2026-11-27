@@ -26,7 +26,7 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 test:
-	$(CXX) $(CXXFLAGS) src/tests/test_suite.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp $(MM_SRCS) -o test_runner $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -DMEME_HAS_EVAL src/tests/test_suite.cpp src/interpreter/Interpreter.cpp src/types/TypeChecker.cpp src/compiler/NativeCompiler.cpp $(MM_SRCS) -o test_runner $(LDFLAGS)
 	./test_runner
 	rm -f test_runner
 
@@ -36,11 +36,14 @@ clean:
 wasm:
 	./scripts/build-wasm.sh
 
-docs: wasm
-	cd docs && npm run build
+docs: $(TARGET)
+	./meme package docs/src/App.meme --target=web -o docs/.build
+	rm -rf docs/dist
+	mv docs/.build/web docs/dist
+	rm -rf docs/.build
 
-docs-dev: wasm
-	cd docs && npm run dev
+docs-dev: $(TARGET)
+	./meme dev docs/src/App.meme --port 4173
 
 test-lowlevel: $(TARGET)
 	python3 tests/lowlevel/test_e2e_runner.py

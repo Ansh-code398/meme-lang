@@ -1,0 +1,180 @@
+jugaad getErrorsCatalog() {
+    ye_le [
+        {
+            "title": "Baburao Divide By Zero",
+            "scenario": "Division by 0 (e.g. 10 / 0)",
+            "quote": "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!",
+            "origin": "Hera Pheri (Baburao)",
+            "category": "Arithmetic",
+            "code": "pakad a = 10;\npakad b = 0;\ndikha a / b;"
+        },
+        {
+            "title": "Baburao Modulo By Zero",
+            "scenario": "Modulo by 0 (e.g. 15 % 0)",
+            "quote": "0 se modulo (%) karne chale ho? Maths teacher ko heart attack aa jayega!",
+            "origin": "School Trauma / Hera Pheri",
+            "category": "Arithmetic",
+            "code": "pakad x = 15;\ndikha x % 0;"
+        },
+        {
+            "title": "Chhoti Bachi Ho Kya (Missing Semicolon)",
+            "scenario": "Statement without trailing semicolon ';'",
+            "quote": "Chhoti bachi ho kya?! Line ke end mein ';' lagana bhool gaye!",
+            "origin": "Tiger Shroff (Heropanti)",
+            "category": "Syntax",
+            "code": "pakad a = 42\ndikha a;"
+        },
+        {
+            "title": "Ashneer Grover Doglapan",
+            "scenario": "Invalid left-hand side in assignment (e.g. (x) = 5)",
+            "quote": "Ye sab doglapan hai! '=' ke left side mein sirf seedha variable ya property aata hai, koi equation ya bracket nahi!",
+            "origin": "Ashneer Grover (Shark Tank India)",
+            "category": "Syntax",
+            "code": "pakad x = 10;\n(x) = 20;"
+        },
+        {
+            "title": "Control Uday Control",
+            "scenario": "Using single '=' inside an if condition",
+            "quote": "Control Uday, control! 'dekh' mein '=' (assign) nahi, '==' (compare) lagta hai!",
+            "origin": "Majnu Seth / Uday Shetty (Welcome)",
+            "category": "Syntax",
+            "code": "pakad x = 5;\ndekh x = 10 {\n    dikha \"Condition met\";\n}"
+        },
+        {
+            "title": "Rasode Mein Kaun Tha (Undeclared Read)",
+            "scenario": "Referencing an undeclared identifier",
+            "quote": "Rasode mein kaun tha?! Ye '<name>' bina bataye kahan se aaya? Pehle 'pakad <name>;' se declare kar!",
+            "origin": "Kokilaben (Saath Nibhaana Saathiya)",
+            "category": "Runtime",
+            "code": "dikha rasode_ki_rashi;"
+        },
+        {
+            "title": "Chuna Laga Diya (Undeclared Assignment)",
+            "scenario": "Assigning to a variable that wasn't declared with pakad",
+            "quote": "Chuna laga diya! '<name>' naam ka koi variable hi nahi hai. Pehle 'pakad <name>;' likh!",
+            "origin": "Panchayat / Indian Memes",
+            "category": "Runtime",
+            "code": "chuna = 500;"
+        },
+        {
+            "title": "String Khol Ke Chhod Diya",
+            "scenario": "Unterminated string literal",
+            "quote": "[!] String khol ke chhod diya... band tera baap karega?",
+            "origin": "Classic Desi Parent Scolding",
+            "category": "Lexer",
+            "code": "pakad s = \"khula reh gaya;\ndikha s;"
+        },
+        {
+            "title": "Moye Moye (EOF Mid-Expression)",
+            "scenario": "Code cuts off abruptly mid-expression",
+            "quote": "Moye Moye! Expression adhoori chhod ke code beech mein hi khatam kar diya.",
+            "origin": "Viral Moye Moye Meme",
+            "category": "Parser",
+            "code": "pakad x = 10 +"
+        },
+        {
+            "title": "Chi Sasura (Alien Symbol)",
+            "scenario": "Typing unmapped symbols like @ or $",
+            "quote": "[ERR] Chi sasura! Ye kaisa alien symbol ghusa diye ho code mein: @",
+            "origin": "Gangs of Wasseypur",
+            "category": "Lexer",
+            "code": "pakad x = @123;"
+        },
+        {
+            "title": "Paisa Double Overflow",
+            "scenario": "64-bit integer addition overflow",
+            "quote": "25 din mein paisa double karte-karte integer overflow ho gaya! Aukaat ke bahar chala gaya jod.",
+            "origin": "Anuradha / Phir Hera Pheri",
+            "category": "Arithmetic",
+            "code": "// Max 64-bit int overflow\npakad big = 9223372036854775807;\ndikha big + 1;"
+        },
+        {
+            "title": "Delulu is Not the Solulu",
+            "scenario": "Multiplying a string by a negative number",
+            "quote": "Delulu is not the solulu! String ko negative baar kaise multiply karoge?",
+            "origin": "Gen-Z Pop Culture",
+            "category": "Arithmetic",
+            "code": "pakad str = \"swag\" * -3;"
+        },
+        {
+            "title": "Seb Ko Santre Se Mat Tolo",
+            "scenario": "Comparing incompatible types (e.g. 10 < 'hello')",
+            "quote": "Seb ko santre se mat tolo! 'int' aur 'string' ko compare nahi kar sakte!",
+            "origin": "Desi Idiom",
+            "category": "Type Error",
+            "code": "dekh 10 < \"hello\" {\n    dikha \"Kamaal hai\";\n}"
+        },
+        {
+            "title": "Beta Tumse Na Ho Payega",
+            "scenario": "Calling a non-function value (e.g. 42())",
+            "quote": "Beta, tumse na ho payega! '42' koi jugaad (function) thodi hai jo call kar rahe ho!",
+            "origin": "Ramadhir Singh (Gangs of Wasseypur)",
+            "category": "Runtime",
+            "code": "pakad x = 42;\nx();"
+        },
+        {
+            "title": "Khopdi Tod Saale Ka (Missing OOP Property)",
+            "scenario": "Accessing a non-existent method or property on an object",
+            "quote": "Khopdi tod saale ka! 'Influencer' biradari ke paas 'humble' naam ka kuch nahi hai!",
+            "origin": "Baburao (Hera Pheri)",
+            "category": "OOP",
+            "code": "biradari Influencer {\n    jugaad shuru(naam) {\n        apun.naam = naam;\n    }\n}\npakad i = Influencer(\"Orry\");\ndikha i.humble;"
+        },
+        {
+            "title": "Fake Nepotism",
+            "scenario": "Inheriting from a primitive value instead of a class",
+            "quote": "Fake nepotism! 'fake_parent' koi biradari (class) nahi hai, isko inherit kaise karoge?",
+            "origin": "Bollywood Industry Debate",
+            "category": "OOP",
+            "code": "pakad fake_parent = 42;\nbiradari Starkid nepo fake_parent {\n}"
+        },
+        {
+            "title": "Gaddari Korbe (Arity Mismatch)",
+            "scenario": "Calling a function with wrong number of arguments",
+            "quote": "Gaddari korbe! Jugaad ne 2 arguments maange the, aur tumne 1 chipka diye!",
+            "origin": "Viral Bengali Meme",
+            "category": "Runtime",
+            "code": "jugaad jod(a, b) {\n    ye_le a + b;\n}\njod(10);"
+        },
+        {
+            "title": "Pehli Fursat Mein Nikal (Use After Move)",
+            "scenario": "Reading a heap variable after transferring its ownership",
+            "quote": "Pehli fursat mein nikal! 'a' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!",
+            "origin": "Hindustani Bhau",
+            "category": "Ownership & Borrowing",
+            "code": "pakad a = \"Baburao ka khazana\";\npakad b = a;\ndikha a;"
+        },
+        {
+            "title": "Doglapan (Mutating While Borrowed)",
+            "scenario": "Attempting to modify a variable while an immutable borrow (udhaar) is active",
+            "quote": "Doglapan! 'x' abhi udhaar (borrowed) pe hai, isko modify nahi kar sakte!",
+            "origin": "Ashneer Grover (Shark Tank India)",
+            "category": "Ownership & Borrowing",
+            "code": "pakad x = \"shuru\";\npakad r = udhaar x;\nx = \"badal diya\";"
+        },
+        {
+            "title": "Beech Mein Mat Bolo (Exclusive Borrow Access)",
+            "scenario": "Accessing owner directly while exclusively borrowed (udhaar_badal)",
+            "quote": "Beech mein mat bolo! 'x' abhi kisi aur ko udhaar diya hua hai!",
+            "origin": "TV News Debate Meme",
+            "category": "Ownership & Borrowing",
+            "code": "pakad x = \"Pavitra data\";\npakad m = udhaar_badal x;\ndikha x;"
+        },
+        {
+            "title": "Ek Mawaali Ek Time Pe (Borrow Conflict)",
+            "scenario": "Attempting a mutable borrow while a shared borrow is active",
+            "quote": "Ek mawaali ek time pe ek hi jagah! 'x' already udhaar (borrowed) pe hai, exclusive borrow nahi mil sakta!",
+            "origin": "Welcome Movie",
+            "category": "Ownership & Borrowing",
+            "code": "pakad x = \"Khandaani haar\";\npakad r = udhaar x;\npakad m = udhaar_badal x;"
+        },
+        {
+            "title": "Baburao Ka Chashma (Dangling Reference Escape)",
+            "scenario": "Returning or escaping a reference to a temporary local variable",
+            "quote": "Baburao ka chashma! Local variable 'local_var' ka udhaar wapas nahi bhej sakte, scope khatam hote hi mar jayega!",
+            "origin": "Hera Pheri (Baburao)",
+            "category": "Ownership & Borrowing",
+            "code": "jugaad leaky() {\n    pakad local_var = \"Temporary secret\";\n    ye_le udhaar local_var;\n}\npakad r = leaky();"
+        }
+    ];
+}

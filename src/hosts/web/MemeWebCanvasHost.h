@@ -20,6 +20,7 @@ namespace MemeWebHost {
 
 inline MemeUI::UiSession *g_activeSession = nullptr;
 inline std::function<void()> g_rerenderFn = nullptr;
+inline std::function<bool(const std::string &)> g_setRouteFn = nullptr;
 inline std::string g_lastBatchesJson = "[]";
 inline std::string g_lastCommandsJson = "[]";
 inline std::string g_lastHitsJson = "[]";
@@ -84,6 +85,7 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<base href="/" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 )HTML") + pwaHead + R"HTML(<title>)HTML" + title + R"HTML(</title>
 <style>
@@ -239,10 +241,52 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
     }
   }
 
+  const getBrowserRoute = () => {
+    const h = window.location.hash || "";
+    if (h.startsWith("#/")) return h.slice(1);
+    const p = (window.location.pathname || "/") + (window.location.search || "");
+    if (!p || p.endsWith(".html")) return "/";
+    return p;
+  };
+  window.__MEME_PUSH_ROUTE__ = (target) => {
+    try {
+      const nextRoute = target && target.startsWith("/") ? target : ("/" + String(target || ""));
+      if (window.location.protocol === "file:") {
+        if (window.location.hash !== "#" + nextRoute) window.location.hash = "#" + nextRoute;
+      } else {
+        const cur = (window.location.pathname || "/") + (window.location.search || "");
+        if (cur !== nextRoute) window.history.pushState(null, "", nextRoute);
+      }
+    } catch (_) {}
+  };
+  window.addEventListener("popstate", () => {
+    if (Mod && Mod._meme_web_set_route) {
+      Mod.ccall("meme_web_set_route", "number", ["string"], [getBrowserRoute()]);
+      renderFrame();
+    }
+  });
+  window.addEventListener("hashchange", () => {
+    if (Mod && Mod._meme_web_set_route) {
+      Mod.ccall("meme_web_set_route", "number", ["string"], [getBrowserRoute()]);
+      renderFrame();
+    }
+  });
+
   window.__MEME_AGENT__ = {
     snapshot: () => Mod ? JSON.parse(Mod.UTF8ToString(Mod._meme_web_get_agent_snapshot())) : null,
-    act: (target, action, val = "") => Mod ? Mod.ccall("meme_web_agent_act", "number", ["string", "string", "string"], [String(target), action, String(val)]) : 0,
-    tick: (ms) => Mod ? Mod._meme_web_tick(ms) : 0
+    act: (target, action, val = "") => {
+      if (!Mod) return 0;
+      const res = Mod.ccall("meme_web_agent_act", "number", ["string", "string", "string"], [String(target), action, String(val)]);
+      if (Mod._meme_web_tick) Mod._meme_web_tick(0);
+      renderFrame();
+      return res;
+    },
+    tick: (ms) => {
+      if (!Mod) return 0;
+      const dirty = Mod._meme_web_tick(ms);
+      if (dirty) renderFrame();
+      return dirty;
+    }
   };
 
   window.Module = {
@@ -251,7 +295,9 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
       const splash = document.getElementById("meme-splash");
       if (splash) splash.remove();
       initGl();
+      if (Mod._meme_web_set_route) Mod.ccall("meme_web_set_route", "number", ["string"], [getBrowserRoute()]);
       if (Mod._meme_web_start) Mod._meme_web_start();
+      if (Mod._meme_web_set_route) Mod.ccall("meme_web_set_route", "number", ["string"], [getBrowserRoute()]);
       renderFrame();
       const loop = () => {
         if (Mod._meme_web_tick(16.67)) renderFrame();
@@ -374,7 +420,7 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
       } catch (_) {}
     }
     const text = (e.key.length === 1 && !e.ctrlKey && !e.metaKey) ? e.key : "";
-    if (e.key === "Tab" || e.key === "Backspace" || e.key === " ") e.preventDefault();
+    if (e.key === "Tab" || e.key === "Backspace" || e.key === " " || e.key === "Enter" || e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
     if (Mod.ccall("meme_web_key_event", "number", ["string", "string", "number", "number", "number", "number"],
         [e.key, text, e.shiftKey ? 1 : 0, e.ctrlKey ? 1 : 0, e.altKey ? 1 : 0, e.metaKey ? 1 : 0])) {
       renderFrame();
@@ -562,6 +608,16 @@ MEME_WEB_EXPORT inline int meme_web_agent_act(const char *target, const char *ac
     }
     if (MemeWebHost::g_rerenderFn) MemeWebHost::g_rerenderFn();
     return ok ? 1 : 0;
+}
+
+MEME_WEB_EXPORT inline int meme_web_set_route(const char *path) {
+    std::string route = path ? path : "/";
+    if (MemeWebHost::g_setRouteFn) {
+        bool changed = MemeWebHost::g_setRouteFn(route);
+        if (changed && MemeWebHost::g_rerenderFn) MemeWebHost::g_rerenderFn();
+        return changed ? 1 : 0;
+    }
+    return 0;
 }
 
 } // extern "C"

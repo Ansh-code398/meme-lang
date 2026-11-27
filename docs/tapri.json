@@ -1,0 +1,16 @@
+{
+  "name": "memelang-docs",
+  "displayName": "MEMElang Docs & Playground",
+  "bundleId": "dev.memelang.docs",
+  "version": "1.0.0",
+  "description": "MEMElang Documentation, Live WebAssembly Playground, and Meme Error Catalog - Written 100% in MEMElang.",
+  "themeColor": "#09090b",
+  "bgColor": "#09090b",
+  "scheme": "memedocs",
+  "entry": "src/App.meme",
+  "output": "dist",
+  "permissions": {
+    "strict": false,
+    "common": ["clipboard"]
+  }
+}

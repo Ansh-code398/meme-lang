@@ -3451,6 +3451,54 @@ dikha o + "|" + s + "|" + c1.permission + "|" + cbSt + "|" + thSt + "|" + string
     std::cout << "PASSED\n";
 }
 
+void testPureMemeEvalAndWebHostingArtifacts()
+{
+    std::cout << "Testing meme.eval(), akshar_bana/size(), max-w-6xl, and Web Router/Hosting Shell... ";
+
+    // 1. meme.eval() sandboxed stdout, error trapping, and GPU UI command capture
+    {
+        std::string out = runAndCapture(R"(
+bula "meme";
+pakad okRes = meme.eval("dikha 2 + 3 * 4;");
+pakad errRes = meme.eval("pakad bad = 1 / 0;");
+pakad uiRes = meme.eval("bula \"ui\" jaise { useState }; jugaad App() { ye_le <div className=\"p-4 max-w-6xl\"><span>Hi</span></div>; } ui.mount(App); ui.show(\"EvalUi\");");
+pakad ch = akshar_bana(65) + ":" + string(code_de("A")) + ":" + string(size([1, 2, 3])) + ":" + string(size("meme"));
+dikha string(!okRes.isError) + "|" + okRes.output.trim() + "|" + string(okRes.hasUi);
+dikha string(!errRes.isError) + "|" + string(size(errRes.error) > 0);
+dikha string(!uiRes.isError) + "|" + string(uiRes.hasUi) + "|" + string(size(uiRes.gpuCommands) > 0);
+dikha ch;
+)");
+        assert(out.find("han|14|nhi") != std::string::npos);
+        assert(out.find("nhi|han") != std::string::npos);
+        assert(out.find("han|han|han") != std::string::npos);
+        assert(out.find("A:65:3:4") != std::string::npos);
+    }
+
+    // 2. Tailwind numeric strictness & max-w-6xl / max-w-7xl
+    {
+        assert(MemeUI::parseTwNumericOrArb("6xl") == 0.0f);
+        assert(MemeUI::parseTwNumericOrArb("12") == 48.0f);
+        MemeUI::ComputedStyle st6;
+        MemeUI::applySingleTailwindToken("max-w-6xl", st6);
+        assert(st6.maxWidth == 1152.0f);
+        MemeUI::ComputedStyle st7;
+        MemeUI::applySingleTailwindToken("max-w-7xl", st7);
+        assert(st7.maxWidth == 1280.0f);
+    }
+
+    // 3. Web Canvas HTML shell <base href="/"> + Router history sync
+    {
+        std::string shell = MemeWebHost::generateZeroDomHtmlShell("docs.js", "MEMElang Docs", "#09090b", true, "clipboard-write=(self)");
+        assert(shell.find("<base href=\"/\"") != std::string::npos);
+        assert(shell.find("window.__MEME_PUSH_ROUTE__") != std::string::npos);
+        assert(shell.find("meme_web_set_route") != std::string::npos);
+        assert(shell.find("<canvas id=\"meme-canvas\"") != std::string::npos);
+        assert(shell.find("Permissions-Policy") != std::string::npos);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -3485,6 +3533,7 @@ int main()
     testNativeUiPrimitivesTextEngineAndTessellator();
     testInnerContainerScrollAndNativeApisAndIcons();
     testPlatformAndPermissionsAndManifest();
+    testPureMemeEvalAndWebHostingArtifacts();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

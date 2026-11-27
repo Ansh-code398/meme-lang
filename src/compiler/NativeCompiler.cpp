@@ -53,6 +53,24 @@ std::filesystem::path getRuntimeHeaderPath() {
     return "";
 }
 
+std::filesystem::path resolveRepoSourceFile(const std::string &relPath) {
+    std::vector<std::filesystem::path> candidates;
+    candidates.push_back(std::filesystem::current_path() / relPath);
+    if (const char *mh = std::getenv("MEME_HOME")) {
+        candidates.push_back(std::filesystem::path(mh) / relPath);
+    }
+    if (const char *rt = std::getenv("MEME_RUNTIME_DIR")) {
+        candidates.push_back(std::filesystem::path(rt) / relPath);
+    }
+    for (const auto &p : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(p, ec)) {
+            return std::filesystem::canonical(p, ec);
+        }
+    }
+    return std::filesystem::path(relPath);
+}
+
 bool ensurePchReady(const CompileOptions &options, std::filesystem::path &outPchPath) {
     if (!options.usePch) return false;
 
@@ -106,6 +124,7 @@ private:
     std::unordered_map<std::string, std::string> renamedImports;
     std::unordered_set<std::string> emittedPass0NamedImports;
     bool programUsesUi = false;
+    bool programUsesEval = false;
     bool inMainPass = false;
     int tempCounter = 0;
 
@@ -418,10 +437,68 @@ public:
         return false;
     }
 
+    bool detectEvalInExpr(const Expr *expr) const {
+        if (!expr) return false;
+        if (auto *id = dynamic_cast<const IdentifierExpr *>(expr)) {
+            if (id->name == "meme") return true;
+        }
+        if (auto *u = dynamic_cast<const UnaryExpr *>(expr)) return detectEvalInExpr(u->operand.get());
+        if (auto *b = dynamic_cast<const BinaryExpr *>(expr)) return detectEvalInExpr(b->left.get()) || detectEvalInExpr(b->right.get());
+        if (auto *c = dynamic_cast<const CallExpr *>(expr)) {
+            if (detectEvalInExpr(c->callee.get())) return true;
+            for (const auto &a : c->args) if (detectEvalInExpr(a.get())) return true;
+        }
+        if (auto *g = dynamic_cast<const GetExpr *>(expr)) return detectEvalInExpr(g->object.get());
+        if (auto *a = dynamic_cast<const AssignExpr *>(expr)) return detectEvalInExpr(a->value.get());
+        if (auto *da = dynamic_cast<const DestructureAssignExpr *>(expr)) return detectEvalInExpr(da->value.get());
+        if (auto *arr = dynamic_cast<const ArrayLiteralExpr *>(expr)) {
+            for (const auto &el : arr->elements) if (detectEvalInExpr(el.get())) return true;
+        }
+        if (auto *mp = dynamic_cast<const MapLiteralExpr *>(expr)) {
+            for (const auto &kv : mp->entries) {
+                if (detectEvalInExpr(kv.first.get()) || detectEvalInExpr(kv.second.get())) return true;
+            }
+        }
+        if (auto *l = dynamic_cast<const LambdaExpr *>(expr)) {
+            if (l->declaration && detectEvalInStmt(l->declaration->body.get())) return true;
+        }
+        if (auto *t = dynamic_cast<const TernaryExpr *>(expr)) {
+            return detectEvalInExpr(t->condition.get()) || detectEvalInExpr(t->thenBranch.get()) || detectEvalInExpr(t->elseBranch.get());
+        }
+        if (auto *sp = dynamic_cast<const SpreadExpr *>(expr)) return detectEvalInExpr(sp->expr.get());
+        return false;
+    }
+
+    bool detectEvalInStmt(const Stmt *stmt) const {
+        if (!stmt) return false;
+        if (auto *imp = dynamic_cast<const ImportStmt *>(stmt)) {
+            if (imp->path == "meme") return true;
+        }
+        if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt)) return detectEvalInExpr(v->initializer.get());
+        if (auto *ads = dynamic_cast<const ArrayDestructureStmt *>(stmt)) return detectEvalInExpr(ads->initializer.get());
+        if (auto *mds = dynamic_cast<const MapDestructureStmt *>(stmt)) return detectEvalInExpr(mds->initializer.get());
+        if (auto *e = dynamic_cast<const ExprStmt *>(stmt)) return detectEvalInExpr(e->expression.get());
+        if (auto *r = dynamic_cast<const ReturnStmt *>(stmt)) return detectEvalInExpr(r->value.get());
+        if (auto *b = dynamic_cast<const BlockStmt *>(stmt)) {
+            for (const auto &s : b->statements) if (detectEvalInStmt(s.get())) return true;
+        }
+        if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt)) return detectEvalInStmt(f->body.get());
+        if (auto *i = dynamic_cast<const IfStmt *>(stmt)) {
+            return detectEvalInExpr(i->condition.get()) || detectEvalInStmt(i->thenBranch.get()) || detectEvalInStmt(i->elseBranch.get());
+        }
+        if (auto *w = dynamic_cast<const WhileStmt *>(stmt)) return detectEvalInExpr(w->condition.get()) || detectEvalInStmt(w->body.get());
+        if (auto *g = dynamic_cast<const GhoomStmt *>(stmt)) return detectEvalInExpr(g->start.get()) || detectEvalInExpr(g->end.get()) || detectEvalInStmt(g->body.get());
+        if (auto *gm = dynamic_cast<const GhumaMeinStmt *>(stmt)) return detectEvalInExpr(gm->collection.get()) || detectEvalInStmt(gm->body.get());
+        return false;
+    }
+
     void scanDeclarations(const std::vector<std::unique_ptr<Stmt>> &program) {
         for (const auto &stmt : program) {
             if (detectUiInStmt(stmt.get())) {
                 programUsesUi = true;
+            }
+            if (detectEvalInStmt(stmt.get())) {
+                programUsesEval = true;
             }
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
                 knownClasses.insert(c->name);
@@ -448,7 +525,7 @@ public:
                 if (imp->path != "ui" && imp->path != "egui" && imp->path != "view" && imp->path != "gui" &&
                     imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui" &&
                     imp->path != "native" && imp->path != "app" && imp->path != "device" &&
-                    imp->path != "platform" && imp->path != "permissions" && imp->path != "perms") {
+                    imp->path != "platform" && imp->path != "permissions" && imp->path != "perms" && imp->path != "meme") {
                     std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
                     if (!alias.empty() && imp->namedImports.empty()) {
                         knownModuleAliases.insert(sanitizeIdentifier(alias));
@@ -860,6 +937,12 @@ public:
             std::string calleeStr;
             std::string spreadCalleeStr;
             if (auto *id = dynamic_cast<const IdentifierExpr *>(e->callee.get())) {
+                if ((id->name == "size" || id->name == "len" || id->name == "length" || id->name == "lambai") &&
+                    e->args.size() == 1 &&
+                    knownFunctions.find(id->name) == knownFunctions.end() &&
+                    !isVarDeclaredInScope(id->name) && !topLevelVars.count(id->name)) {
+                    return "static_cast<int64_t>(meme_length(" + generateExpr(e->args[0].get()) + "))";
+                }
                 if (knownFunctions.count(id->name) && !isVarDeclaredInScope(id->name) && !topLevelVars.count(id->name)) {
                     calleeStr = sanitizeIdentifier(id->name);
                     spreadCalleeStr = sanitizeIdentifier(id->name) + "_fn";
@@ -1860,7 +1943,13 @@ public:
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
                 }
             } else if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui") {
+                static const std::unordered_set<std::string> kUiGlobalFns = {
+                    "useState", "state_bana", "useEffect", "useMemo", "useCallback",
+                    "useReducer", "useRef", "createContext", "useContext", "useRouter",
+                    "Router", "Route", "Link", "Platform"
+                };
                 for (const auto &ni : imp->namedImports) {
+                    if (programUsesUi && kUiGlobalFns.count(ni)) continue;
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << (imp->path == "egui" ? "egui" : "ui") << ", \"" << escapeString(ni) << "\");\n";
                 }
             } else if (imp->path == "native" || imp->path == "app" || imp->path == "device" ||
@@ -1881,6 +1970,14 @@ public:
                     }
                 } else if (!alias.empty() && alias != "native" && alias != "app" && alias != "platform" && alias != "permissions" && alias != "perms") {
                     out << indent() << "MemeValue " << alias << " = " << srcMod << ";\n";
+                }
+            } else if (imp->path == "meme") {
+                if (!imp->namedImports.empty()) {
+                    for (const auto &ni : imp->namedImports) {
+                        out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(meme, \"" << escapeString(ni) << "\");\n";
+                    }
+                } else if (!alias.empty() && alias != "meme") {
+                    out << indent() << "MemeValue " << alias << " = meme;\n";
                 }
             }
             return;
@@ -2467,6 +2564,9 @@ public:
         out << "// ==================================================================\n";
         out << "// Automatically generated by MEMElang AOT Native Compiler\n";
         out << "// ==================================================================\n\n";
+        if (programUsesEval) {
+            out << "#ifndef MEME_HAS_EVAL\n#define MEME_HAS_EVAL 1\n#endif\n";
+        }
         out << "#include \"src/compiler/MemeRuntime.h\"\n";
         if (programUsesUi) {
             out << "#include \"src/compiler/MemeRuntimeUi.h\"\n";
@@ -2508,6 +2608,7 @@ public:
     }
 
     std::unordered_set<std::string> importedModulesProcessed;
+    std::unordered_map<std::string, std::string> processedModulePrimaryAlias;
 
     std::filesystem::path resolveModuleFile(const std::string &modPath) {
         std::vector<std::filesystem::path> candidates;
@@ -2552,7 +2653,21 @@ public:
         std::filesystem::path resolved = resolveModuleFile(path);
         if (resolved.empty()) return;
         std::string canStr = resolved.string();
-        if (importedModulesProcessed.find(canStr) != importedModulesProcessed.end()) return;
+        if (importedModulesProcessed.find(canStr) != importedModulesProcessed.end()) {
+            std::string reqAlias = alias.empty() ? std::filesystem::path(path).stem().string() : alias;
+            reqAlias = sanitizeIdentifier(reqAlias);
+            auto pit = processedModulePrimaryAlias.find(canStr);
+            if (!reqAlias.empty() && pit != processedModulePrimaryAlias.end() && reqAlias != pit->second &&
+                emittedPass0NamedImports.insert("_mod_" + reqAlias).second) {
+                if (programUsesUi) {
+                    knownModuleAliases.erase(reqAlias);
+                    globalDecls << "inline MemeValue " << reqAlias << " = " << pit->second << ";\n";
+                } else {
+                    globalDecls << "inline auto &" << reqAlias << " = " << pit->second << ";\n";
+                }
+            }
+            return;
+        }
         importedModulesProcessed.insert(canStr);
 
         std::ifstream file(resolved);
@@ -2569,19 +2684,22 @@ public:
 
             scanDeclarations(modStmts);
 
-            // Process nested imports first
+            // Hoist module top-level vars if UI is active so nested functions can read module constants
+            if (programUsesUi) {
+                for (const auto &stmt : modStmts) {
+                    if (auto *v = dynamic_cast<const VarDeclStmt *>(stmt.get())) {
+                        std::string vn = sanitizeIdentifier(v->name);
+                        if (!v->name.empty() && topLevelVars.insert(v->name).second) {
+                            globalDecls << "inline MemeValue " << vn << ";\n";
+                        }
+                    }
+                }
+            }
+
+            // Process nested imports first (both builtin modules and local .meme modules)
             for (const auto &stmt : modStmts) {
                 if (auto *nestedImp = dynamic_cast<const ImportStmt *>(stmt.get())) {
-                    if (nestedImp->path != "samay" && nestedImp->path != "itertools" && nestedImp->path != "math" &&
-                        nestedImp->path != "sys" && nestedImp->path != "systumm" && nestedImp->path != "os" &&
-                        nestedImp->path != "env" && nestedImp->path != "paryavaran" && nestedImp->path != "dotenv" &&
-                        nestedImp->path != "file" && nestedImp->path != "fs" && nestedImp->path != "dastavez" &&
-                        nestedImp->path != "json" && nestedImp->path != "csv" && nestedImp->path != "net" &&
-                        nestedImp->path != "socket" && nestedImp->path != "ui" && nestedImp->path != "egui" &&
-                        nestedImp->path != "view" && nestedImp->path != "gui" && nestedImp->path != "ui:shadcn" &&
-                        nestedImp->path != "ui:primitives" && nestedImp->path != "primitives" && nestedImp->path != "vercel:ui" &&
-                        nestedImp->path != "native" && nestedImp->path != "app" && nestedImp->path != "device" &&
-                        nestedImp->path != "platform" && nestedImp->path != "permissions" && nestedImp->path != "perms") {
+                    if (!emitBuiltinOrStdImport(nestedImp)) {
                         std::string nAlias = nestedImp->alias.empty() ? std::filesystem::path(nestedImp->path).stem().string() : nestedImp->alias;
                         processModuleImport(nestedImp->path, sanitizeIdentifier(nAlias));
                     }
@@ -2626,7 +2744,8 @@ public:
                 modAlias = std::filesystem::path(path).stem().string();
             }
             modAlias = sanitizeIdentifier(modAlias);
-            if (!modAlias.empty()) {
+            if (!modAlias.empty() && emittedPass0NamedImports.insert("_mod_" + modAlias).second) {
+                processedModulePrimaryAlias[canStr] = modAlias;
                 std::vector<std::string> exportedFns;
                 for (const auto &stmt : modStmts) {
                     if (auto *f = dynamic_cast<const FuncDeclStmt *>(stmt.get())) {
@@ -2657,6 +2776,147 @@ public:
         currentSourceFile = prevSourceFile;
     }
 
+    bool emitBuiltinOrStdImport(const ImportStmt *imp) {
+        if (!imp) return false;
+        std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
+        alias = sanitizeIdentifier(alias);
+        if (imp->path == "samay") {
+            if (alias != "samay" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline SamayModule &" << alias << " = samay;\n";
+            }
+            return true;
+        }
+        if (imp->path == "itertools") {
+            if (alias != "itertools" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline ItertoolsModule &" << alias << " = itertools;\n";
+            }
+            return true;
+        }
+        if (imp->path == "math") {
+            if (alias != "math" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MathModule &" << alias << " = math;\n";
+            }
+            return true;
+        }
+        if (imp->path == "sys" || imp->path == "systumm" || imp->path == "os") {
+            if (alias != "sys" && alias != "systumm" && alias != "os" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline SystummModule &" << alias << " = sys;\n";
+            }
+            return true;
+        }
+        if (imp->path == "env" || imp->path == "paryavaran" || imp->path == "dotenv") {
+            if (alias != "env" && alias != "paryavaran" && alias != "dotenv" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline EnvModule &" << alias << " = env;\n";
+            }
+            return true;
+        }
+        if (imp->path == "file" || imp->path == "fs" || imp->path == "dastavez") {
+            if (alias != "file" && alias != "fs" && alias != "dastavez" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline FileModule &" << alias << " = file;\n";
+            }
+            return true;
+        }
+        if (imp->path == "json") {
+            if (alias != "json" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline JsonModule &" << alias << " = json;\n";
+            }
+            return true;
+        }
+        if (imp->path == "csv") {
+            if (alias != "csv" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline CsvModule &" << alias << " = csv;\n";
+            }
+            return true;
+        }
+        if (imp->path == "net" || imp->path == "socket") {
+            if (alias != "net" && alias != "m_socket" && alias != "socket" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline NetModule &" << alias << " = net;\n";
+            }
+            return true;
+        }
+        if (imp->path == "ui:shadcn") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (ni == "Router" || ni == "Route" || ni == "Link" || ni == "Platform") continue;
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui_shadcn" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_shadcn;\n";
+            }
+            return true;
+        }
+        if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui_primitives" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_primitives;\n";
+            }
+            return true;
+        }
+        if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui") {
+            std::string srcMod = (imp->path == "egui") ? "egui" : "ui";
+            static const std::unordered_set<std::string> kUiGlobalFns = {
+                "useState", "state_bana", "useEffect", "useMemo", "useCallback",
+                "useReducer", "useRef", "createContext", "useContext", "useRouter",
+                "Router", "Route", "Link", "Platform"
+            };
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    if (programUsesUi && kUiGlobalFns.count(ni)) continue;
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui" && alias != "egui" && alias != "view" && alias != "gui" &&
+                       emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
+            }
+            return true;
+        }
+        if (imp->path == "native" || imp->path == "app" || imp->path == "device" ||
+            imp->path == "platform" || imp->path == "permissions" || imp->path == "perms") {
+            std::string srcMod = (imp->path == "app") ? "app"
+                : (imp->path == "device" ? "meme_index(native, \"device\")"
+                : ((imp->path == "permissions" || imp->path == "perms") ? "permissions"
+                : (imp->path == "platform" ? "platform" : "native")));
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string targetSym = isCollidingGlobalSymbol(ni) ? ("_imp_" + sanitizeIdentifier(ni)) : sanitizeIdentifier(ni);
+                    if (isCollidingGlobalSymbol(ni)) renamedImports[ni] = targetSym;
+                    if (!emittedPass0NamedImports.insert(targetSym).second) continue;
+                    if (imp->path == "platform" && ni == "Platform" && programUsesUi) {
+                        globalDecls << "inline MemeValue " << targetSym << " = Platform_fn;\n";
+                    } else {
+                        globalDecls << "inline MemeValue " << targetSym << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                    }
+                }
+            } else if (!alias.empty() && alias != "native" && alias != "app" && alias != "platform" && alias != "permissions" && alias != "perms" &&
+                       emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
+            }
+            return true;
+        }
+        if (imp->path == "meme") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(meme, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "meme" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = meme;\n";
+            }
+            return true;
+        }
+        return false;
+    }
+
     void generateProgram(const std::vector<std::unique_ptr<Stmt>> &program) {
         currentProgram = &program;
         currentScopeBody = nullptr;
@@ -2665,91 +2925,9 @@ public:
         // Pass 0: Top-level imports
         for (const auto &stmt : program) {
             if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
-                std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
-                alias = sanitizeIdentifier(alias);
-                if (imp->path == "samay") {
-                    if (alias != "samay") {
-                        globalDecls << "inline SamayModule &" << alias << " = samay;\n";
-                    }
-                } else if (imp->path == "itertools") {
-                    if (alias != "itertools") {
-                        globalDecls << "inline ItertoolsModule &" << alias << " = itertools;\n";
-                    }
-                } else if (imp->path == "math") {
-                    if (alias != "math") {
-                        globalDecls << "inline MathModule &" << alias << " = math;\n";
-                    }
-                } else if (imp->path == "sys" || imp->path == "systumm" || imp->path == "os") {
-                    if (alias != "sys" && alias != "systumm" && alias != "os") {
-                        globalDecls << "inline SystummModule &" << alias << " = sys;\n";
-                    }
-                } else if (imp->path == "env" || imp->path == "paryavaran" || imp->path == "dotenv") {
-                    if (alias != "env" && alias != "paryavaran" && alias != "dotenv") {
-                        globalDecls << "inline EnvModule &" << alias << " = env;\n";
-                    }
-                } else if (imp->path == "file" || imp->path == "fs" || imp->path == "dastavez") {
-                    if (alias != "file" && alias != "fs" && alias != "dastavez") {
-                        globalDecls << "inline FileModule &" << alias << " = file;\n";
-                    }
-                } else if (imp->path == "json") {
-                    if (alias != "json") {
-                        globalDecls << "inline JsonModule &" << alias << " = json;\n";
-                    }
-                } else if (imp->path == "csv") {
-                    if (alias != "csv") {
-                        globalDecls << "inline CsvModule &" << alias << " = csv;\n";
-                    }
-                } else if (imp->path == "net" || imp->path == "socket") {
-                    if (alias != "net" && alias != "m_socket" && alias != "socket") {
-                        globalDecls << "inline NetModule &" << alias << " = net;\n";
-                    }
-                } else if (imp->path == "ui:shadcn") {
-                    if (!imp->namedImports.empty()) {
-                        for (const auto &ni : imp->namedImports) {
-                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
-                        }
-                    } else if (!alias.empty() && alias != "ui_shadcn") {
-                        globalDecls << "inline MemeValue " << alias << " = ui_shadcn;\n";
-                    }
-                } else if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
-                    if (!imp->namedImports.empty()) {
-                        for (const auto &ni : imp->namedImports) {
-                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
-                        }
-                    } else if (!alias.empty() && alias != "ui_primitives") {
-                        globalDecls << "inline MemeValue " << alias << " = ui_primitives;\n";
-                    }
-                } else if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui") {
-                    std::string srcMod = (imp->path == "egui") ? "egui" : "ui";
-                    if (!imp->namedImports.empty()) {
-                        for (const auto &ni : imp->namedImports) {
-                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
-                        }
-                    } else if (!alias.empty() && alias != "ui" && alias != "egui" && alias != "view" && alias != "gui") {
-                        globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
-                    }
-                } else if (imp->path == "native" || imp->path == "app" || imp->path == "device" ||
-                           imp->path == "platform" || imp->path == "permissions" || imp->path == "perms") {
-                    std::string srcMod = (imp->path == "app") ? "app"
-                        : (imp->path == "device" ? "meme_index(native, \"device\")"
-                        : ((imp->path == "permissions" || imp->path == "perms") ? "permissions"
-                        : (imp->path == "platform" ? "platform" : "native")));
-                    if (!imp->namedImports.empty()) {
-                        for (const auto &ni : imp->namedImports) {
-                            std::string targetSym = isCollidingGlobalSymbol(ni) ? ("_imp_" + sanitizeIdentifier(ni)) : sanitizeIdentifier(ni);
-                            if (isCollidingGlobalSymbol(ni)) renamedImports[ni] = targetSym;
-                            if (!emittedPass0NamedImports.insert(targetSym).second) continue;
-                            if (imp->path == "platform" && ni == "Platform" && programUsesUi) {
-                                globalDecls << "inline MemeValue " << targetSym << " = Platform_fn;\n";
-                            } else {
-                                globalDecls << "inline MemeValue " << targetSym << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
-                            }
-                        }
-                    } else if (!alias.empty() && alias != "native" && alias != "app" && alias != "platform" && alias != "permissions" && alias != "perms") {
-                        globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
-                    }
-                } else {
-                    processModuleImport(imp->path, alias);
+                if (!emitBuiltinOrStdImport(imp)) {
+                    std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
+                    processModuleImport(imp->path, sanitizeIdentifier(alias));
                 }
             }
         }
@@ -2901,10 +3079,11 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
         result.binaryPath = binPath.string();
 
         bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
+        bool usesEval = (cppCode.find("#define MEME_HAS_EVAL 1") != std::string::npos);
 
         // Build clang++ command with PCH acceleration
         std::filesystem::path pchPath;
-        bool usePch = (!usesUi) && ensurePchReady(options, pchPath);
+        bool usePch = (!usesUi && !usesEval) && ensurePchReady(options, pchPath);
 
         auto buildClangCmd = [&](bool withPch) {
             std::string c = "clang++ -std=c++20 ";
@@ -2920,6 +3099,9 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
                 }
             }
             c += "-I. ";
+            if (usesEval) {
+                c += "-DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP ";
+            }
             if (withPch && !options.tsan) {
                 c += "-include-pch \"" + pchPath.string() + "\" ";
             }
@@ -2931,6 +3113,10 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
 #endif
             }
             c += "\"" + cppPath.string() + "\" ";
+            if (usesEval) {
+                c += "-x c++ \"" + resolveRepoSourceFile("src/interpreter/Interpreter.cpp").string() + "\" \"" +
+                     resolveRepoSourceFile("src/types/TypeChecker.cpp").string() + "\" ";
+            }
             if (usesUi) {
 #if defined(__APPLE__)
                 if (options.target == "host" || options.target == "mac") {

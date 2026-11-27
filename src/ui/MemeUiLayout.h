@@ -59,7 +59,12 @@ inline float parseTwNumericOrArb(const std::string &valStr, float multiplier = 4
         }
         try { return std::stof(inner); } catch (...) { return 0.0f; }
     }
-    try { return std::stof(valStr) * multiplier; } catch (...) { return 0.0f; }
+    try {
+        size_t end = 0;
+        float v = std::stof(valStr, &end);
+        if (end != valStr.size()) return 0.0f;
+        return v * multiplier;
+    } catch (...) { return 0.0f; }
 }
 
 inline void applySingleTailwindToken(const std::string &token, ComputedStyle &style) {
@@ -171,8 +176,16 @@ inline void applySingleTailwindToken(const std::string &token, ComputedStyle &st
     if (token == "max-w-3xl") { style.maxWidth = 768.0f; return; }
     if (token == "max-w-4xl") { style.maxWidth = 896.0f; return; }
     if (token == "max-w-5xl") { style.maxWidth = 1024.0f; return; }
-    if (token == "max-w-full") { style.maxWidth = 1e6f; return; }
-    if (token.rfind("max-w-", 0) == 0) { style.maxWidth = parseTwNumericOrArb(token.substr(6)); return; }
+    if (token == "max-w-6xl") { style.maxWidth = 1152.0f; return; }
+    if (token == "max-w-7xl") { style.maxWidth = 1280.0f; return; }
+    if (token == "max-w-screen-lg") { style.maxWidth = 1024.0f; return; }
+    if (token == "max-w-screen-xl") { style.maxWidth = 1280.0f; return; }
+    if (token == "max-w-full" || token == "max-w-none") { style.maxWidth = 1e6f; return; }
+    if (token.rfind("max-w-", 0) == 0) {
+        float parsed = parseTwNumericOrArb(token.substr(6));
+        if (parsed > 0.0f) style.maxWidth = parsed;
+        return;
+    }
 
     if (token == "h-full") { style.heightPercent = 100.0f; style.height = -1.0f; style.heightVh = -1.0f; return; }
     if (token == "h-screen" || token == "h-dvh" || token == "h-svh") { style.heightVh = 100.0f; style.height = -1.0f; style.heightPercent = -1.0f; return; }
@@ -629,11 +642,13 @@ inline void estimateNodeSize(const UiNode &node, float availW, const ComputedSty
         bool mono = (inherited.fontFamily == FontFamily::MONO);
         float singleW = measureTextWidth(txt, inherited.fontSize, mono);
         float lineH = inherited.fontSize * 1.35f;
-        if (availW > 24.0f && singleW > availW + 1.5f && !inherited.truncate) {
-            auto lines = wrapTextLines(txt, availW, inherited.fontSize, mono);
+        bool hasNewline = (txt.find('\n') != std::string::npos);
+        if ((hasNewline || (availW > 24.0f && singleW > availW + 1.5f)) && !inherited.truncate) {
+            float wrapW = (availW > 24.0f) ? availW : 1e6f;
+            auto lines = wrapTextLines(txt, wrapW, inherited.fontSize, mono);
             float maxW = 0.0f;
             for (const auto &ln : lines) maxW = std::max(maxW, ln.width);
-            outW = std::min(availW, maxW);
+            outW = (availW > 24.0f) ? std::min(availW, maxW) : maxW;
             outH = std::max(1, static_cast<int>(lines.size())) * lineH;
         } else {
             outW = (inherited.truncate && availW > 0) ? std::min(singleW, availW) : singleW;
@@ -835,14 +850,16 @@ inline void solveUiNode(
             }
         };
 
-        if (parentW > 24.0f && singleW > parentW + 1.5f && !inherited.truncate) {
-            auto lines = wrapTextLines(txt, parentW, inherited.fontSize, isMono);
+        bool hasNewline = (txt.find('\n') != std::string::npos);
+        if ((hasNewline || (parentW > 24.0f && singleW > parentW + 1.5f)) && !inherited.truncate) {
+            float wrapW = (parentW > 24.0f) ? parentW : 1e6f;
+            auto lines = wrapTextLines(txt, wrapW, inherited.fontSize, isMono);
             float maxW = 0.0f;
             for (size_t r = 0; r < lines.size(); ++r) {
                 emitTextLine(lines[r].text, lines[r].width, parentY + r * lineH);
                 maxW = std::max(maxW, lines[r].width);
             }
-            outW = std::min(parentW, maxW);
+            outW = (parentW > 24.0f) ? std::min(parentW, maxW) : maxW;
             outH = std::max(1, static_cast<int>(lines.size())) * lineH;
         } else if (inherited.truncate && parentW > 24.0f && singleW > parentW + 1.5f) {
             std::string trimmed;

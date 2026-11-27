@@ -2147,9 +2147,17 @@ static void handlePackage(int argc, char *argv[])
     for (int i = 2; i < argc; ++i)
     {
         std::string a = argv[i];
-        if ((a == "-o" || a == "--output") && i + 1 < argc)
+        if ((a == "-o" || a == "--output" || a == "--out") && i + 1 < argc)
         {
             outDir = argv[++i];
+        }
+        else if (a.rfind("--out=", 0) == 0)
+        {
+            outDir = a.substr(6);
+        }
+        else if (a.rfind("--output=", 0) == 0)
+        {
+            outDir = a.substr(9);
         }
         else if (a.rfind("--target=", 0) == 0)
         {

@@ -1,0 +1,965 @@
+jugaad getSectionsCore() {
+    ye_le [
+        {
+            "id": "intro",
+            "title": "Introduction & Philosophy",
+            "badge": "Overview",
+            "description": "Learn why MEMElang exists and how it transforms standard compiler misery into Desi meme humor.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang is a dynamically typed, interpreted programming language written in clean C++20 and compiled to WebAssembly. It blends genuine modern language features (lexical closures, recursive descent parser with precedence climbing, class-based OOP with single inheritance, dynamic field binding, and short-circuit boolean evaluation) with unfiltered Desi internet culture and Bollywood meme energy."
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Core Philosophy: No Cap, Pure Vibe",
+                    "text": "Every programming error message you've ever hated (\"Segmentation fault\", \"TypeError: undefined is not a function\", \"SyntaxError: Unexpected token\") has been replaced with iconic dialogues from Hera Pheri, Shark Tank India, CID, Gangs of Wasseypur, and Indian meme culture."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Language Feature Highlights"
+                },
+                {
+                    "type": "list",
+                    "items": [
+                        "Zero Dependencies Runtime: Tree-walk interpreter built from scratch in C++20.",
+                        "100% WebAssembly Compatible: Compiles via Emscripten and runs natively in any browser with zero server roundtrips.",
+                        "Full Object-Oriented Programming: `biradari` classes, `nepo` inheritance, `apun` self-reference, and automatic `shuru` constructors.",
+                        "Functional Goodies: First-class functions (`jugaad`), lexical closures, and recursion.",
+                        "Desi Arithmetic: Built-in string multiplication (`\"ha\" * 5` -> `\"hahahahaha\"`), safe division, and 64-bit integer overflow checks.",
+                        "Humorous Diagnostic Engine: Every syntax and runtime trap yields an iconic meme error message instead of cryptic stack traces."
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "First Taste: Hello MEMElang"
+                },
+                {
+                    "type": "code",
+                    "title": "hello_world.meme",
+                    "code": "// Welcome to MEMElang!\npakad naam = \"MEMElang\";\ndikha \"Welcome to\", naam;\ndikha \"Hasi ruki nahi: \" + (\"ha\" * 6);"
+                }
+            ]
+        },
+        {
+            "id": "quickstart",
+            "title": "Quickstart & Installation",
+            "badge": "Getting Started",
+            "description": "How to install and run MEMElang on macOS, Linux, or directly in your browser.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You can use MEMElang in three ways: natively via the CLI binary, interactively in the REPL, or right here in the web browser through WebAssembly."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Build & Run Native CLI"
+                },
+                {
+                    "type": "text",
+                    "text": "Clone the repository and compile using any C++20 compiler (`clang++` or `g++`):"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "git clone https://github.com/your-username/memelang.git",
+                        "cd memelang",
+                        "make",
+                        "./meme examples/influence.meme"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Interactive REPL"
+                },
+                {
+                    "type": "text",
+                    "text": "Launch the interactive shell by running `./meme` with no arguments:"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "./meme",
+                        "meme > pakad swag = 100;",
+                        "meme > dikha swag * 2;",
+                        "200",
+                        "meme > bas;"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Run Inline Expressions from Terminal"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "./meme -e 'pakad a = 10; pakad b = 32; dikha \"Jod:\", a + b;'"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "4. Global CLI Setup & Project Scaffolding"
+                },
+                {
+                    "type": "text",
+                    "text": "Link the binary globally to run `meme` from any directory, then scaffold modern apps with built-in templates:"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "./meme setup",
+                        "meme naya my-app --template=react",
+                        "cd my-app"
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "5. Multiplatform Dev Server & Test Suite"
+                },
+                {
+                    "type": "text",
+                    "text": "Run your application across platforms (Zero-WebView native macOS desktop, browser, or terminal) with instant hot-reload:"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "meme dev src/App.meme --platform=desktop",
+                        "meme test tests"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "variables",
+            "title": "Variables & Lexical Scope",
+            "badge": "Basics",
+            "description": "Declaring variables with pakad, mutating values, and lexical scope rules.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Variables in MEMElang are declared using the keyword `pakad` (or the tolerated alias `le`). Uninitialized variables default to `nalla` (null)."
+                },
+                {
+                    "type": "code",
+                    "title": "variables.meme",
+                    "code": "// Declare variables\npakad balance = 500;\npakad user = \"Baburao\";\npakad khali_variable; // Evaluates to 'nalla'\n\n// Reassignment\nbalance = balance + 250;\ndikha \"User:\", user, \"| Paisa:\", balance;\ndikha \"Khali kya hai?\", khali_variable;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Block Scoping"
+                },
+                {
+                    "type": "text",
+                    "text": "MEMElang uses block scoping via braces `{ ... }`. Inner blocks shadow outer declarations and can read/write enclosing scopes seamlessly:"
+                },
+                {
+                    "type": "code",
+                    "title": "scoping.meme",
+                    "code": "pakad x = \"global\";\n{\n    pakad x = \"local\";\n    dikha \"Inside block:\", x;\n}\ndikha \"Outside block:\", x;"
+                },
+                {
+                    "type": "callout",
+                    "variant": "warning",
+                    "title": "Undeclared Variable Errors",
+                    "text": "Reading an undeclared variable triggers: \"Rasode mein kaun tha?! Ye '<name>' bina bataye kahan se aaya? Pehle 'pakad <name>;' se declare kar!\""
+                }
+            ]
+        },
+        {
+            "id": "types",
+            "title": "Data Types & Literals",
+            "badge": "Types",
+            "description": "Dynamic typing, numbers, strings with repetition, booleans, and null.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang is dynamically typed. Every value belongs to one of the following fundamental types:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Type",
+                        "Literal Example",
+                        "Truthy / Falsy",
+                        "Notes"
+                    ],
+                    "rows": [
+                        [
+                            "byte",
+                            "255b, 0xffb, 0b1010b",
+                            "0 is falsy, others truthy",
+                            "8-bit unsigned integer (`uint8_t`) with literal suffixes"
+                        ],
+                        [
+                            "int32",
+                            "int32(42), ank32(100)",
+                            "0 is falsy, others truthy",
+                            "32-bit fast integer ALU path with auto-promotion on overflow"
+                        ],
+                        [
+                            "int / long",
+                            "42, -100, 0x1F, 0b101",
+                            "0 is falsy, others truthy",
+                            "64-bit signed integer (`long long`)"
+                        ],
+                        [
+                            "float32",
+                            "3.14f, -0.5f",
+                            "0.0 is falsy, others truthy",
+                            "32-bit single-precision IEEE 754 float (`float`)"
+                        ],
+                        [
+                            "float / double",
+                            "3.14, -0.5, 1e-4",
+                            "0.0 is falsy, others truthy",
+                            "64-bit double-precision IEEE 754 float (`double`)"
+                        ],
+                        [
+                            "char",
+                            "char(\"Namaste\"), 'A'",
+                            "Empty or '\\0' is falsy",
+                            "Single character primitive (`char`)"
+                        ],
+                        [
+                            "string",
+                            "\"namaste\", 'bro'",
+                            "Empty \"\" is falsy",
+                            "Supports string multiplication `\"ha\" * 3`"
+                        ],
+                        [
+                            "bytes",
+                            "b\"Hello\\x00World\"",
+                            "Empty buffer is falsy",
+                            "Raw binary buffer with hex decode, mutation & binary I/O"
+                        ],
+                        [
+                            "set",
+                            "{1, 2, 3}, { \"a\", \"b\" }",
+                            "Empty set() is falsy",
+                            "Order-preserving O(1) hash set with union `+` & diff `-`"
+                        ],
+                        [
+                            "tuple",
+                            "(1, \"two\", 3.0), (1,)",
+                            "Empty () is falsy",
+                            "Fixed-size immutable sequence with indexing and slicing"
+                        ],
+                        [
+                            "list",
+                            "[1, 2, 3], [\"a\", \"b\"]",
+                            "Empty [] is falsy",
+                            "Dynamic growable list with spread, push, and pop"
+                        ],
+                        [
+                            "map",
+                            "{\"key\": \"value\"}",
+                            "Empty {} is falsy",
+                            "Key-value hash map with destructuring and spread"
+                        ],
+                        [
+                            "bool",
+                            "real / han, cap / nhi",
+                            "real is truthy, cap is falsy",
+                            "Gen-Z: `real`/`cap`, Desi: `han`/`nhi`"
+                        ],
+                        [
+                            "nalla",
+                            "nalla / kuch_nhi",
+                            "Always falsy",
+                            "Null value (\"unemployed / empty\")"
+                        ],
+                        [
+                            "function",
+                            "jugaad add(a, b) { ... }",
+                            "Always truthy",
+                            "First-class callable entity"
+                        ],
+                        [
+                            "object",
+                            "Influencer(\"Orry\")",
+                            "Always truthy",
+                            "Instance of a `biradari` class"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Extended Primitives: bytes, set & tuple"
+                },
+                {
+                    "type": "code",
+                    "title": "extended_primitives.meme",
+                    "code": "// 1. Raw Bytes Buffer\npakad buf = b\"Hello\";\nbuf[0] = 104; // mutable: 'h'\ndikha buf.to_string(); // \"hello\"\ndikha buf.to_hex();    // \"68656c6c6f\"\n\n// Static hex parsing & binary I/O\npakad decoded = bytes.from_hex(\"43686169\"); // \"Chai\"\nfs.write_bytes(\"drink.bin\", decoded);\npakad readBack = fs.read_bytes(\"drink.bin\");\n\n// 2. Set with Deduplication & Algebraic Operations\npakad s = {1, 2, 2, 3}; // size: 3\ns.add(4);\ndikha s.has(2); // han\npakad unionSet = s + {4, 5, 6};\npakad diffSet = unionSet - {1, 2};\n\n// 3. Tuples (Immutable Sequences)\npakad coords = (10, 20, 30);\ndikha coords[0]; // 10\npanga {\n    coords[0] = 99; // Throws error: tuples are immutable!\n} lafda (err) {\n    dikha \"Tuple cannot be modified!\";\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Interactive Type Inspection with kya_hai()"
+                },
+                {
+                    "type": "code",
+                    "title": "types.meme",
+                    "code": "dikha kya_hai(255b);     // byte\ndikha kya_hai(int32(42)); // int32\ndikha kya_hai(100);       // int\ndikha kya_hai(3.14f);     // float32\ndikha kya_hai(3.14);      // float\ndikha kya_hai(char(\"A\")); // char\ndikha kya_hai(b\"Data\");   // bytes\ndikha kya_hai({1, 2, 3}); // set\ndikha kya_hai((1, 2, 3)); // tuple\ndikha kya_hai(\"Sholay\");  // string\ndikha kya_hai(real);      // bool\ndikha kya_hai(nalla);     // nalla"
+                }
+            ]
+        },
+        {
+            "id": "operators",
+            "title": "Operators & Short-Circuit Logic",
+            "badge": "Operators",
+            "description": "Arithmetic, comparison, logical short-circuiting, and string multiplication.",
+            "content": [
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Arithmetic Operators"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Operator",
+                        "Name",
+                        "Example",
+                        "Result"
+                    ],
+                    "rows": [
+                        [
+                            "+",
+                            "Addition / Concatenation",
+                            "10 + 20 or \"Paisa \" + \"Double\"",
+                            "30 or \"Paisa Double\""
+                        ],
+                        [
+                            "-",
+                            "Subtraction",
+                            "100 - 35",
+                            "65"
+                        ],
+                        [
+                            "*",
+                            "Multiplication / Repetition",
+                            "\"Yo \" * 3",
+                            "\"Yo Yo Yo \""
+                        ],
+                        [
+                            "/",
+                            "Division (Safe)",
+                            "10 / 2",
+                            "5"
+                        ],
+                        [
+                            "%",
+                            "Modulo",
+                            "17 % 5",
+                            "2"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Logical Operators with Short-Circuiting"
+                },
+                {
+                    "type": "text",
+                    "text": "Logical operators `aur` (AND) and `ya` (OR) perform short-circuit evaluation. If the left operand determines the outcome, the right operand is completely skipped:"
+                },
+                {
+                    "type": "code",
+                    "title": "short_circuit.meme",
+                    "code": "// Safe short-circuit: Division by zero on right is never evaluated!\npakad safe_and = cap aur (10 / 0);\npakad safe_or = real ya (10 / 0);\n\ndikha \"Safe AND result:\", safe_and;\ndikha \"Safe OR result:\", safe_or;"
+                }
+            ]
+        },
+        {
+            "id": "control-flow",
+            "title": "Control Flow: dekh, warna, jabtak, ghuma",
+            "badge": "Logic & Loops",
+            "description": "Conditional statements and loop constructs with break and continue.",
+            "content": [
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Conditionals: dekh & warna"
+                },
+                {
+                    "type": "code",
+                    "title": "conditionals.meme",
+                    "code": "pakad score = 88;\n\ndekh score >= 90 {\n    dikha \"Full marks! Sharma ji ke ladke jaisa.\";\n} warna dekh score >= 60 {\n    dikha \"First division! Thoda aur jugaad laga lete.\";\n} warna {\n    dikha \"Moye moye! Agli baar padh lena.\";\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Loops: jabtak (While Loop)"
+                },
+                {
+                    "type": "code",
+                    "title": "while_loop.meme",
+                    "code": "pakad count = 1;\njabtak count <= 5 {\n    dikha \"Count hai:\", count;\n    count = count + 1;\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Range Loops: ghuma (For Loop)"
+                },
+                {
+                    "type": "text",
+                    "text": "Spin loops over integer ranges using `ghuma <var> se <start> se <end> [se <step>]`:"
+                },
+                {
+                    "type": "code",
+                    "title": "range_loop.meme",
+                    "code": "// Spin from 1 to 10 with step 2\nghuma i se 1 se 10 se 2 {\n    dekh i == 5 {\n        dikha \"Mil gaya 5, aage badho!\";\n        aage_badh; // continue\n    }\n    dikha \"Step number:\", i;\n}"
+                }
+            ]
+        },
+        {
+            "id": "collections",
+            "title": "Native Collections (Lists & Hash Maps)",
+            "badge": "Data Structures",
+            "description": "Dynamic Arrays (Lists `[]`), Hash Maps (`{}`), negative indexing, and `ghuma ... mein` iteration.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang features native high-performance Collections with reference semantics (`std::shared_ptr`). Lists and Maps are mutable by default and changes persist across references."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Dynamic Arrays (Lists)"
+                },
+                {
+                    "type": "text",
+                    "text": "Define arrays with square brackets `[elem1, elem2, ...]`. Arrays support positive (0-based) and negative indexing (`arr[-1]` returns the last element)."
+                },
+                {
+                    "type": "code",
+                    "title": "arrays_demo.meme",
+                    "code": "// Array literals & indexing\npakad gangs = [\"Sardar\", \"Faizal\", \"Definite\"];\ndikha gangs[0];   // Sardar\ndikha gangs[-1];  // Definite (negative indexing)\n\n// Array mutation & index assignment\ngangs[1] = \"Perpendicular\";\ndikha gangs; // [\"Sardar\", \"Perpendicular\", \"Definite\"]\n\n// Built-in Array methods\ngangs.ghusa(\"Tangent\");       // push element\npakad out = gangs.laat_maar(); // pop last element (\"Tangent\")\ndikha gangs.hai_kya(\"Faizal\"); // nhi\ndikha gangs.size();           // 3\ndikha gangs.chipka(\" -> \");    // \"Sardar -> Perpendicular -> Definite\""
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Hash Maps (Dicts / Khata)"
+                },
+                {
+                    "type": "text",
+                    "text": "Define key-value maps with curly braces `{ key: value, ... }`. Access properties with bracket indexing `map[\"key\"]` or object dot notation `map.key`."
+                },
+                {
+                    "type": "code",
+                    "title": "maps_demo.meme",
+                    "code": "// Map literal\npakad villain = {\n    \"naam\": \"Mogambo\",\n    \"dialogue\": \"Mogambo khush hua!\",\n    \"power\": 9000\n};\n\n// Bracket & dot notation access\ndikha villain[\"naam\"];      // Mogambo\ndikha villain.dialogue;     // Mogambo khush hua!\n\n// Map methods\ndikha villain.chaabi();     // [\"naam\", \"dialogue\", \"power\"]\ndikha villain.maal();       // [\"Mogambo\", \"Mogambo khush hua!\", 9000]\ndikha villain.hai_kya(\"power\"); // han\nvillain.hata(\"power\");      // delete key"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "For-Each Iteration (ghuma ... mein)"
+                },
+                {
+                    "type": "text",
+                    "text": "Iterate cleanly over Lists, Maps, or Strings using `ghuma item mein collection { ... }`:"
+                },
+                {
+                    "type": "code",
+                    "title": "for_each_demo.meme",
+                    "code": "// Iterate over array elements\nghuma role mein [\"Hero\", \"Villain\", \"Comedian\"] {\n    dikha \"Role:\", role;\n}\n\n// Iterate over characters of a string\nghuma ch mein \"MEME\" {\n    dikha ch;\n}\n\n// Iterate over keys of a map\npakad scores = {\"Munna\": 95, \"Guddu\": 88};\nghuma student mein scores {\n    dikha student, \"scored:\", scores[student];\n}"
+                }
+            ]
+        },
+        {
+            "id": "pattern-matching",
+            "title": "Enums (avtar) & Pattern Matching (jaanch)",
+            "badge": "Control Flow",
+            "description": "Type-safe Enums (`avtar`) and pattern matching (`jaanch`) with fallback guards (`baaki` / `warna`).",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Define type-safe enumeration constants with `avtar` (or `kism`) and dispatch cleanly with `jaanch` (or `parakh`) pattern matching."
+                },
+                {
+                    "type": "code",
+                    "title": "enums_and_matching.meme",
+                    "code": "// Define an Enum\navtar PaymentStatus {\n    Pending,\n    Approved,\n    Rejected\n}\n\npakad current = PaymentStatus.Approved;\n\n// Pattern match with jaanch\njaanch current {\n    PaymentStatus.Pending => {\n        dikha \"Paisa raste mein hai, intezaar karo!\";\n    }\n    PaymentStatus.Approved => {\n        dikha \"Party shuru! Payment ho gaya!\";\n    }\n    PaymentStatus.Rejected => {\n        dikha \"Khatam, tata, bye-bye! Payment reject!\";\n    }\n    baaki => {\n        dikha \"Aayein? Ye kaisa status hai!\";\n    }\n}"
+                }
+            ]
+        },
+        {
+            "id": "functions",
+            "title": "Functions (jugaad) & Closures",
+            "badge": "Functions",
+            "description": "Writing functions, recursive algorithms, and lexical environment capture.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Every function in MEMElang is a `jugaad`. Functions return values via `ye_le` (or `wapas`). Functions are first-class citizens and capture their lexical scope:"
+                },
+                {
+                    "type": "code",
+                    "title": "functions.meme",
+                    "code": "// Function declaration\njugaad jod(a, b) {\n    ye_le a + b;\n}\n\npakad ans = jod(15, 27);\ndikha \"15 + 27 =\", ans;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Recursion: Factorial"
+                },
+                {
+                    "type": "code",
+                    "title": "factorial.meme",
+                    "code": "jugaad factorial(n) {\n    dekh n <= 1 {\n        ye_le 1;\n    }\n    ye_le n * factorial(n - 1);\n}\n\ndikha \"Factorial of 6 is:\", factorial(6);"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Lexical Closures"
+                },
+                {
+                    "type": "code",
+                    "title": "closures.meme",
+                    "code": "jugaad createMultiplier(multiplier) {\n    jugaad mult(val) {\n        ye_le val * multiplier;\n    }\n    ye_le mult;\n}\n\npakad triple = createMultiplier(3);\ndikha \"Triple of 9 is:\", triple(9);"
+                }
+            ]
+        },
+        {
+            "id": "oop",
+            "title": "Object-Oriented Programming (biradari)",
+            "badge": "OOP",
+            "description": "Classes, inheritance with nepo, apun self-reference, and constructor shuru.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang brings Desi culture to Object-Oriented Programming. Blueprints are defined with `biradari`, inheritance uses `nepo`, instances refer to themselves via `apun`, and constructors are initialized with `shuru`."
+                },
+                {
+                    "type": "code",
+                    "title": "oop_inheritance.meme",
+                    "code": "// Base community class\nbiradari AmeeroKiAulaad {\n    jugaad shuru(naam, bank_balance) {\n        apun.naam = naam;\n        apun.balance = point_wala(bank_balance);\n    }\n\n    jugaad kothi_bangle_check() {\n        dikha apun.naam, \"ke paas hai Rs.\", apun.balance;\n    }\n}\n\n// Inherit using 'nepo'\nbiradari Influencer nepo AmeeroKiAulaad {\n    jugaad show_swag() {\n        dekh apun.balance > 50000.0 {\n            dikha apun.naam, \"says: Guys, welcome to my humble struggle vlog!\";\n            ye_le real;\n        } warna {\n            dikha \"Paisa khatam, camera band!\";\n            ye_le cap;\n        }\n    }\n}\n\npakad star = Influencer(\"Orry\", \"99999.50\");\nstar.kothi_bangle_check(); // Inherited from AmeeroKiAulaad\nstar.show_swag();          // Defined on Influencer"
+                }
+            ]
+        },
+        {
+            "id": "error-handling",
+            "title": "Structured try / catch / finally / throw (panga / lafda)",
+            "badge": "Universal Aliases & Structured Errors",
+            "description": "Structured Error objects with .baat/.message, .kism/.type, .line, Galti() constructor, and full Python/JS keyword aliases.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang provides robust, structured exception handling with full keyword aliases across WhatsApp Hinglish, Python, and JavaScript/TypeScript. Caught errors are rich Error objects with full backward compatibility (printing cleanly in `dikha` and supporting string methods)."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "WhatsApp Hinglish",
+                        "Universal Alias",
+                        "Role / Purpose"
+                    ],
+                    "rows": [
+                        [
+                            "panga { ... }",
+                            "try { ... } / koshish",
+                            "Block of code that might fail or throw an exception"
+                        ],
+                        [
+                            "lafda (err) { ... }",
+                            "catch (err) { ... } / except (err)",
+                            "Catches structured errors or runtime exceptions (optional parens or bare)"
+                        ],
+                        [
+                            "pakka { ... }",
+                            "finally { ... } / hamesha",
+                            "Guaranteed execution block, runs whether an error occurred or not"
+                        ],
+                        [
+                            "chillao expr",
+                            "throw expr / raise expr / fek",
+                            "Throws custom error string, Map, or Galti(msg, type) instance"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Structured Error Object Properties"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Property",
+                        "Universal Alias",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "err.baat",
+                            "err.message",
+                            "Human-readable error description string",
+                            "\"Something went wrong\""
+                        ],
+                        [
+                            "err.kism",
+                            "err.type",
+                            "Categorized error category",
+                            "\"NetworkLafda\", \"FileLafda\", \"MathLafda\", \"UserLafda\""
+                        ],
+                        [
+                            "err.line",
+                            "err.line",
+                            "Source code line number where exception was raised",
+                            "42"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "structured_errors.meme",
+                    "code": "// Throwing structured error with Galti / Error\npanga {\n    chillao Galti(\"Database connection timed out\", \"NetworkLafda\");\n} lafda (err) {\n    dikha \"Caught error message:\", err.baat;      // or err.message\n    dikha \"Error category:\", err.kism;            // or err.type\n    dikha \"Source line:\", err.line;\n    dikha \"Direct print:\", err;                   // Formats cleanly as plain message string\n} pakka {\n    dikha \"Connection cleaned up!\";\n}\n\n// Full Python / JS keyword parity\ntry {\n    raise Error(\"Invalid payload schema\", \"TypeLafda\");\n} catch (e) {\n    dikha f\"Type error: {e.message} (kind: {e.type})\";\n}"
+                }
+            ]
+        },
+        {
+            "id": "async-await-promises",
+            "title": "Async / Await (sabar) & Promises (Vaada)",
+            "badge": "True Asynchrony",
+            "description": "Non-blocking async task scheduling backed by C++ worker threads and Promises with Promise.all and Promise.race.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang delivers non-blocking asynchronous execution with standard `async / await` semantics and WhatsApp Hinglish aliases (`sabar` / `side_mein kaam`). Async functions automatically return a `Vaada` (`Promise`)."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "WhatsApp Hinglish",
+                        "Universal Alias",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "async kaam fn() / side_mein kaam fn()",
+                            "async def fn() / async fn()",
+                            "Declares an asynchronous function returning a Promise"
+                        ],
+                        [
+                            "sabar expr",
+                            "await expr",
+                            "Awaits a Promise, Thread handle, or async fetch request"
+                        ],
+                        [
+                            "Vaada.de(val)",
+                            "Promise.resolve(val)",
+                            "Creates an instantly resolved Promise"
+                        ],
+                        [
+                            "Vaada.radh(err)",
+                            "Promise.reject(err)",
+                            "Creates an instantly rejected Promise"
+                        ],
+                        [
+                            "Vaada.sab([p1, p2])",
+                            "Promise.all([p1, p2])",
+                            "Runs promises in parallel and resolves to a list of all results"
+                        ],
+                        [
+                            "Vaada.race([p1, p2])",
+                            "Promise.race([p1, p2])",
+                            "Resolves or rejects as soon as the first promise settles"
+                        ],
+                        [
+                            "Vaada.ruk(ms)",
+                            "Promise.sleep(ms)",
+                            "Non-blocking asynchronous delay in milliseconds"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "async_demo.meme",
+                    "code": "// 1. Asynchronous functions\nasync kaam fetchUserData(id) {\n    sabar Vaada.ruk(50); // non-blocking 50ms pause\n    ye_le {\"id\": id, \"name\": \"Raju\", \"role\": \"Dev\"};\n}\n\n// 2. Awaiting Promises with 'sabar' or 'await'\npakad user = sabar fetchUserData(101);\ndikha f\"Fetched user: {user.name} ({user.role})\";\n\n// 3. Parallel concurrency with Promise.all (Vaada.sab)\npakad p1 = fetchUserData(1);\npakad p2 = fetchUserData(2);\npakad allUsers = sabar Promise.all([p1, p2]);\ndikha f\"Total loaded users: {allUsers.lambai()}\";\n\n// 4. Promise method chaining (.then / .phir and .catch / .pakad)\nfetchUserData(99)\n    .then(u => dikha f\"Chained user: {u.name}\")\n    .catch(err => dikha f\"Lafda: {err.message}\");"
+                }
+            ]
+        },
+        {
+            "id": "fetch-http-client",
+            "title": "Full-Featured fetch() & jaal (http) Client",
+            "badge": "HTTP & Networking",
+            "description": "REST client supporting GET, POST, PUT, PATCH, DELETE, custom headers, query params, Bearer auth, timeouts, and rich Response objects.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "The global `fetch(url, options)` (alias `mangwa`) and `jaal` (alias `http`) client provide native HTTP networking with Bearer authentication, auto-serialized JSON bodies, query parameter encoding, and deterministic 0ms offline mock testing via `mock://` URLs."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Option / Property",
+                        "Type",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "method",
+                            "string",
+                            "HTTP verb: \"GET\", \"POST\", \"PUT\", \"PATCH\", \"DELETE\", \"HEAD\", \"OPTIONS\" (default: \"GET\")"
+                        ],
+                        [
+                            "headers",
+                            "Map",
+                            "Custom HTTP headers map (e.g. {\"Content-Type\": \"application/json\", \"X-Custom\": \"val\"})"
+                        ],
+                        [
+                            "params",
+                            "Map",
+                            "Query parameters auto-encoded into ?k1=v1&k2=v2 URL query string"
+                        ],
+                        [
+                            "auth / token",
+                            "string",
+                            "Bearer authorization token auto-injected into Authorization: Bearer <token>"
+                        ],
+                        [
+                            "body / json",
+                            "Map / List / string",
+                            "Request payload (maps and lists are auto-serialized to JSON string)"
+                        ],
+                        [
+                            "timeout",
+                            "number",
+                            "Timeout duration in milliseconds"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Response Object Properties & Methods"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "Type",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "res.status",
+                            "int",
+                            "HTTP status code (e.g. 200, 201, 404, 500)"
+                        ],
+                        [
+                            "res.ok / res.sahi",
+                            "bool",
+                            "True if status code is in 200..299 range"
+                        ],
+                        [
+                            "res.url",
+                            "string",
+                            "Final requested URL including encoded query parameters"
+                        ],
+                        [
+                            "res.method",
+                            "string",
+                            "HTTP request method utilized"
+                        ],
+                        [
+                            "res.headers",
+                            "Map",
+                            "Map of response headers"
+                        ],
+                        [
+                            "res.body / res.raw",
+                            "string",
+                            "Raw response body text"
+                        ],
+                        [
+                            "res.data / res.maal",
+                            "Value",
+                            "Parsed JSON map/list if body is JSON, otherwise raw string"
+                        ],
+                        [
+                            "res.time_ms",
+                            "int",
+                            "Elapsed request duration in milliseconds"
+                        ],
+                        [
+                            "res.json()",
+                            "Callable",
+                            "Method parsing response body into a Map / List"
+                        ],
+                        [
+                            "res.text()",
+                            "Callable",
+                            "Method returning raw string body"
+                        ],
+                        [
+                            "res.raise_for_status()",
+                            "Callable",
+                            "Throws a structured NetworkLafda if res.ok is false"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "http_fetch_demo.meme",
+                    "code": "// Global fetch with POST, query params, Bearer auth, and JSON body\npakad res = sabar fetch(\"https://api.example.com/items\", {\n    \"method\": \"POST\",\n    \"params\": {\"category\": \"chai\", \"page\": 1},\n    \"token\": \"secret_bearer_token_123\",\n    \"body\": {\"name\": \"Masala Chai\", \"price\": 20},\n    \"timeout\": 5000\n});\n\ndekh res.ok {\n    pakad item = res.json();\n    dikha f\"Item added in {res.time_ms}ms: {item.name}\";\n} warna {\n    dikha f\"Request failed with status {res.status}\";\n}\n\n// Clean shorthand methods on jaal / http\npakad items = sabar jaal.get(\"mock://items\", {\"params\": {\"q\": \"chai\"}});\npakad updated = sabar jaal.put(\"mock://items/1\", {\"price\": 25});\npakad patched = sabar jaal.patch(\"mock://items/1\", {\"stock\": 100});\npakad deleted = sabar jaal.delete(\"mock://items/1\");"
+                }
+            ]
+        },
+        {
+            "id": "concurrency-threads-mp",
+            "title": "Multi-Threading (dhaga) & Multi-Processing (kaamgar)",
+            "badge": "Hardware Concurrency",
+            "description": "Hardware threads (dhaga.chala), Mutex locks (dhaga.tala), Go channels (dhaga.naali), parallel work-stealing pool (mp.map), and OS child processes (mp.spawn).",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang provides first-class primitives for hardware concurrency. Multi-threading is exposed via `dhaga` (`thread`), thread synchronization via recursive Mutex locks and Go-style channels, parallel data processing via `kaamgar` (`mp`), and OS subprocess execution."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "WhatsApp Hinglish",
+                        "Universal Alias",
+                        "Capability"
+                    ],
+                    "rows": [
+                        [
+                            "dhaga.chala(fn, ...args)",
+                            "thread.spawn(fn, ...args)",
+                            "Spawns an isolated hardware thread running fn with args"
+                        ],
+                        [
+                            "t.jod() / sabar t",
+                            "t.join() / await t",
+                            "Waits for thread execution and returns its result"
+                        ],
+                        [
+                            "dhaga.sab([fn1, fn2])",
+                            "thread.all([fn1, fn2])",
+                            "Spawns and joins multiple threads concurrently, returning results list"
+                        ],
+                        [
+                            "dhaga.tala()",
+                            "thread.mutex()",
+                            "Recursive mutex with .band() (lock), .khol() (unlock), and .surakshit(fn) (with_lock)"
+                        ],
+                        [
+                            "dhaga.naali(capacity?)",
+                            "thread.channel(capacity?)",
+                            "Go-style channel with .bhej(val) (send), .le() (recv), and .band()"
+                        ],
+                        [
+                            "dhaga.cores()",
+                            "thread.cores()",
+                            "Returns number of CPU hardware execution cores"
+                        ],
+                        [
+                            "kaamgar.sab_pe(fn, list, cores?)",
+                            "mp.map(fn, list, workers?)",
+                            "Parallel work-stealing pool mapping across CPU cores"
+                        ],
+                        [
+                            "kaamgar.alag(cmd, args?)",
+                            "mp.spawn(cmd, args?)",
+                            "Spawns OS child process with .ruk() (wait), .code(), and .out() (stdout)"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "concurrency_showcase.meme",
+                    "code": "// 1. Spawning OS threads\npakad t = dhaga.chala((a, b) => a * b, 6, 7);\npakad product = sabar t; // or t.jod()\ndikha f\"Thread product: {product}\"; // 42\n\n// 2. Thread-safe Mutex lock\npakad lock = dhaga.tala();\npakad sharedCounter = 0;\nlock.surakshit(() => {\n    sharedCounter = sharedCounter + 1;\n});\n\n// 3. Go-style channel message passing\npakad ch = dhaga.naali();\ndhaga.chala(() => {\n    ch.bhej(\"packet_from_worker\");\n});\npakad msg = ch.le();\ndikha f\"Received channel message: {msg}\";\n\n// 4. Parallel work-stealing map across CPU cores\npakad numbers = [10, 20, 30, 40, 50];\npakad squares = mp.map(x => x * x, numbers);\ndikha f\"Parallel squares: {squares}\";\n\n// 5. Child processes\npakad proc = mp.spawn(\"echo 'Child process execution'\");\npakad exitCode = proc.ruk();\ndikha f\"Process code {exitCode}: {proc.out()}\";"
+                }
+            ]
+        },
+        {
+            "id": "filesystem-paths",
+            "title": "File System (file / fs) & Paths (rasta / path)",
+            "badge": "File Management",
+            "description": "Complete file operations, CSV table parsing/writing, JSON storage, recursive directory walking, and cross-platform path helpers.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "The `file` (`fs`) and `rasta` (`path`) standard libraries offer full file system management, automated CSV reading and writing into Lists of Maps, JSON serialization, recursive file discovery (glob), and cross-platform path manipulation."
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Category",
+                        "WhatsApp Hinglish",
+                        "Universal Alias",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "Read / Write",
+                            "file.padh(p) / file.likh(p, s)",
+                            "fs.read / fs.write",
+                            "Reads full text file or overwrites file contents"
+                        ],
+                        [
+                            "Append / Lines",
+                            "file.jod(p, s) / file.lines(p)",
+                            "fs.append / fs.read_lines",
+                            "Appends text or reads file into a List of line strings"
+                        ],
+                        [
+                            "JSON Storage",
+                            "file.padh_json(p) / file.likh_json(p, v)",
+                            "fs.read_json / fs.write_json",
+                            "Reads and writes JSON structured files automatically"
+                        ],
+                        [
+                            "CSV Engine",
+                            "file.padh_csv(p) / file.likh_csv(p, rows)",
+                            "fs.read_csv / fs.write_csv",
+                            "Parses CSV into a List of Maps [{\"col\": val}] and writes back"
+                        ],
+                        [
+                            "Copy / Move / Del",
+                            "file.nakal(a, b) / file.hila(a, b)",
+                            "fs.copy / fs.move / fs.remove",
+                            "Recursively copies, renames/moves, or deletes files & directories"
+                        ],
+                        [
+                            "Stats & Meta",
+                            "file.kundli(p)",
+                            "fs.stat(p)",
+                            "Returns {\"size\", \"is_file\", \"is_dir\", \"modified\", \"ext\"} map"
+                        ],
+                        [
+                            "Search & Glob",
+                            "file.khoj(dir, \"*.meme\")",
+                            "fs.glob(dir, pattern)",
+                            "Recursively walks directories matching wildcard pattern"
+                        ],
+                        [
+                            "Path Resolution",
+                            "rasta.jod(a, b) / rasta.asli(p)",
+                            "path.join / path.resolve",
+                            "Joins path components or resolves canonical absolute path"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "fs_path_demo.meme",
+                    "code": "// 1. Reading and writing text files\nfs.write(\"notes.txt\", \"Pehli line\\nDusri line\\n\");\npakad lines = fs.read_lines(\"notes.txt\");\ndikha f\"Total lines: {lines.lambai()}\";\n\n// 2. CSV parsing into List of Maps\npakad staff = [\n    {\"id\": \"1\", \"name\": \"Raju\", \"role\": \"Fullstack Dev\"},\n    {\"id\": \"2\", \"name\": \"Baburao\", \"role\": \"Team Lead\"}\n];\nfs.write_csv(\"staff.csv\", staff);\npakad loadedStaff = fs.read_csv(\"staff.csv\");\ndikha f\"Staff member: {loadedStaff[0].name} ({loadedStaff[0].role})\";\n\n// 3. File statistics\npakad stat = fs.stat(\"staff.csv\");\ndikha f\"File size: {stat.size} bytes, Modified: {stat.modified}\";\n\n// 4. Wildcard globbing\npakad memeFiles = fs.glob(\".\", \"*.meme\");\ndikha f\"Found meme scripts: {memeFiles.lambai()}\";\n\n// 5. Cross-platform path helpers\npakad full = path.join(\"workspace\", \"src\", \"main.meme\");\ndikha f\"Basename: {path.basename(full)}\"; // main.meme\ndikha f\"Stem: {path.stem(full)}\";         // main\ndikha f\"Extension: {path.ext(full)}\";      // .meme\ndikha f\"Dirname: {path.dirname(full)}\";   // workspace/src\n\n// Clean up\nfs.remove(\"notes.txt\");\nfs.remove(\"staff.csv\");"
+                }
+            ]
+        }
+    ];
+}

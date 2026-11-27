@@ -2230,6 +2230,23 @@ inline int64_t meme_find(const MemeValue &val, const std::string &sub) { return 
 
 inline size_t meme_length(const std::string &str) { return str.size(); }
 inline size_t meme_length(const MemeValue &val) { return val.length(); }
+template <typename T>
+inline size_t meme_length(const std::vector<T> &v) { return v.size(); }
+
+inline std::string akshar_bana(int64_t code) {
+    return std::string(1, static_cast<char>(code & 0xFF));
+}
+inline std::string akshar_bana(const MemeValue &code) {
+    return akshar_bana(code.as_int());
+}
+inline std::string chr(int64_t code) { return akshar_bana(code); }
+inline std::string chr(const MemeValue &code) { return akshar_bana(code); }
+inline int64_t code_de(const std::string &s) {
+    return s.empty() ? 0 : static_cast<unsigned char>(s[0]);
+}
+inline int64_t code_de(const MemeValue &v) { return code_de(v.to_string()); }
+inline int64_t ord(const std::string &s) { return code_de(s); }
+inline int64_t ord(const MemeValue &v) { return code_de(v); }
 
 inline std::string meme_trim(const std::string &str) {
     size_t first = str.find_first_not_of(" \t\r\n");
@@ -6161,5 +6178,67 @@ inline MemeValue build_app_module() {
 }
 
 inline MemeValue app = build_app_module();
+
+#ifdef MEME_HAS_EVAL
+extern "C" int meme_eval_sandbox(const char *source_code,
+                                 const char *stdin_text,
+                                 const char **out_stdout,
+                                 const char **out_error,
+                                 const char **out_gpu_json,
+                                 double *out_duration_ms);
+#endif
+
+inline MemeValue build_meme_module() {
+    auto evalFn = meme_fn([](const std::vector<MemeValue> &args) -> MemeValue {
+        std::string src = args.empty() ? "" : args[0].to_string();
+        std::string stdinStr = args.size() > 1 ? args[1].to_string() : "";
+#ifdef MEME_HAS_EVAL
+        const char *outStdout = "";
+        const char *outErr = "";
+        const char *outGpu = "[]";
+        double ms = 0.0;
+        int isErr = meme_eval_sandbox(src.c_str(), stdinStr.c_str(), &outStdout, &outErr, &outGpu, &ms);
+        std::string gpuStr = outGpu ? outGpu : "[]";
+        MemeValue gpuList = MemeValue(std::vector<MemeValue>{});
+        try {
+            MemeValue parsed = MemeRuntimeJson::Parser(gpuStr).parseValue();
+            if (parsed.type == MemeValue::TYPE_LIST) gpuList = parsed;
+        } catch (...) {}
+        bool hasUi = (gpuList.type == MemeValue::TYPE_LIST && gpuList.list_data && !gpuList.list_data->empty());
+        return make_map({
+            {"output", MemeValue(std::string(outStdout ? outStdout : ""))},
+            {"error", MemeValue(std::string(outErr ? outErr : ""))},
+            {"isError", MemeValue(isErr != 0)},
+            {"durationMs", MemeValue(ms)},
+            {"gpuCommands", gpuList},
+            {"gpuCommandsJson", MemeValue(gpuStr)},
+            {"hasUi", MemeValue(hasUi)}
+        });
+#else
+        (void)src; (void)stdinStr;
+        return make_map({
+            {"output", MemeValue(std::string("meme.eval() unavailable: compile with MEME_HAS_EVAL"))},
+            {"error", MemeValue(std::string("MEME_HAS_EVAL not linked"))},
+            {"isError", MemeValue(true)},
+            {"durationMs", MemeValue(0.0)},
+            {"gpuCommands", MemeValue(std::vector<MemeValue>{})},
+            {"gpuCommandsJson", MemeValue(std::string("[]"))},
+            {"hasUi", MemeValue(false)}
+        });
+#endif
+    });
+    auto versionFn = meme_fn([](const std::vector<MemeValue> &) -> MemeValue {
+        return MemeValue(std::string("MEMElang v1.0 [Ye Bik Gayi Hai Gormint Edition]"));
+    });
+    return make_map({
+        {"eval", evalFn},
+        {"run", evalFn},
+        {"exec", evalFn},
+        {"chala", evalFn},
+        {"version", versionFn}
+    });
+}
+
+inline MemeValue meme = build_meme_module();
 
 #endif // MEME_RUNTIME_H

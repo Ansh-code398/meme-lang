@@ -8,7 +8,6 @@ test_ops
 .DS_Store
 tools/emsdk/
 docs/node_modules/
-docs/dist/
 .tijori.json
 benchmarks/data/
 benchmarks/ai/*_bin

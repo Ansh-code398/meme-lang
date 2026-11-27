@@ -230,17 +230,22 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
             fail_test(f"{prefix}_ios_sim_macho", r_sim.stdout)
     pass_test(f"T1_{prefix}_ipa_arm64_and_simulator")
 
-    # 8. Web (.html + .js + .wasm) zero-DOM check + PWA icons
+    # 8. Web (.html + .js + .wasm) zero-DOM check + PWA icons + hosting configs
     web_dir = pkg_dir / "web"
     html_path = web_dir / "index.html"
     js_path = web_dir / f"{pkg_id}.js"
     wasm_path = web_dir / f"{pkg_id}.wasm"
-    for p in (html_path, js_path, wasm_path, web_dir / "favicon.ico", web_dir / "icon-192.png", web_dir / "icon-512.png", web_dir / "manifest.webmanifest"):
+    for p in (html_path, js_path, wasm_path, web_dir / "favicon.ico", web_dir / "icon-192.png", web_dir / "icon-512.png", web_dir / "manifest.webmanifest", web_dir / "vercel.json", web_dir / "_redirects", web_dir / "404.html"):
         if not p.is_file():
             fail_test(f"{prefix}_web_files", f"Missing {p}")
     html_txt = html_path.read_text(encoding="utf-8")
-    if '<canvas id="meme-canvas"' not in html_txt or 'id="meme-splash"' not in html_txt or "<button" in html_txt or "<input" in html_txt:
-        fail_test(f"{prefix}_web_zero_dom", "HTML shell must only render via <canvas id='meme-canvas'> cleanly")
+    if '<canvas id="meme-canvas"' not in html_txt or 'id="meme-splash"' not in html_txt or '<base href="/' not in html_txt or "<button" in html_txt or "<input" in html_txt:
+        fail_test(f"{prefix}_web_zero_dom", "HTML shell must include <base href='/'> and only render via <canvas id='meme-canvas'> cleanly")
+    vercel_cfg = json.loads((web_dir / "vercel.json").read_text(encoding="utf-8"))
+    if not vercel_cfg.get("rewrites") or vercel_cfg["rewrites"][0].get("destination") != "/index.html":
+        fail_test(f"{prefix}_web_vercel_json", "Missing SPA rewrite in generated vercel.json")
+    if "/* /index.html 200" not in (web_dir / "_redirects").read_text(encoding="utf-8"):
+        fail_test(f"{prefix}_web_redirects", "Missing Netlify _redirects fallback")
     wasm_bytes = wasm_path.read_bytes()
     if wasm_bytes[:4] != b"\x00asm":
         fail_test(f"{prefix}_web_wasm_magic", repr(wasm_bytes[:8]))

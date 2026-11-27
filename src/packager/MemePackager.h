@@ -179,16 +179,22 @@ inline std::filesystem::path newestSubdir(const std::filesystem::path &dir) {
 }
 
 inline bool buildLinuxElf(const std::filesystem::path &repoRoot, const std::filesystem::path &cppPath,
-                          const std::filesystem::path &elfOut, std::string &errOut, bool verbose) {
+                          const std::filesystem::path &elfOut, std::string &errOut, bool verbose, bool usesEval = false) {
     std::string zig = findInPathOrPaths("zig", {"/opt/homebrew/bin/zig", "/usr/local/bin/zig"});
     if (zig.empty()) {
         errOut = "zig compiler not found for Linux cross-compilation";
         return false;
     }
     if (std::filesystem::exists(elfOut)) return true;
+    std::string extraEval;
+    if (usesEval) {
+        extraEval = " -DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP \"" +
+                    (repoRoot / "src" / "interpreter" / "Interpreter.cpp").string() + "\" \"" +
+                    (repoRoot / "src" / "types" / "TypeChecker.cpp").string() + "\"";
+    }
     std::string cmd = "\"" + zig + "\" c++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                       "-target x86_64-linux-musl -I\"" + repoRoot.string() + "\" "
-                      "\"" + cppPath.string() + "\" -ldl -lpthread -o \"" + elfOut.string() + "\"";
+                      "\"" + cppPath.string() + "\"" + extraEval + " -ldl -lpthread -o \"" + elfOut.string() + "\"";
     if (verbose) std::cout << "[package] " << cmd << "\n";
     std::string out;
     if (execCmd(cmd, out) != 0) {
@@ -621,6 +627,17 @@ inline PackageResult packageForTarget(
     }
 
     bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
+    bool usesEval = (cppCode.find("#define MEME_HAS_EVAL 1") != std::string::npos);
+    std::string evalFlags = usesEval
+        ? (" -DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP -x c++ \"" +
+           (repoRoot / "src" / "interpreter" / "Interpreter.cpp").string() + "\" \"" +
+           (repoRoot / "src" / "types" / "TypeChecker.cpp").string() + "\"")
+        : "";
+    std::string evalFlagsNoLang = usesEval
+        ? (" -DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP \"" +
+           (repoRoot / "src" / "interpreter" / "Interpreter.cpp").string() + "\" \"" +
+           (repoRoot / "src" / "types" / "TypeChecker.cpp").string() + "\"")
+        : "";
     std::filesystem::path workDir = std::filesystem::temp_directory_path() / ("meme_pkg_" + pkgName);
     std::filesystem::create_directories(workDir);
     std::filesystem::path cppPath = workDir / (pkgName + "_gen.cpp");
@@ -645,7 +662,7 @@ inline PackageResult packageForTarget(
 
         std::string cmd = "clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD -I\"" + repoRoot.string() + "\" ";
         if (usesUi) cmd += "-x objective-c++ ";
-        cmd += "\"" + cppPath.string() + "\" ";
+        cmd += "\"" + cppPath.string() + "\"" + evalFlags + " ";
         if (usesUi) {
             cmd += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
             if (hasDeclaredCap("notifications")) cmd += "-framework UserNotifications ";
@@ -767,7 +784,7 @@ inline PackageResult packageForTarget(
 
         std::string cmd = "\"" + zig + "\" c++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                           "-target x86_64-windows-gnu -I\"" + repoRoot.string() + "\" "
-                          "\"" + cppPath.string() + "\"" + extraResArg + " -luser32 -lgdi32 -ld2d1 -ldwrite -lws2_32 -lole32 "
+                          "\"" + cppPath.string() + "\"" + evalFlagsNoLang + extraResArg + " -luser32 -lgdi32 -ld2d1 -ldwrite -lws2_32 -lole32 "
                           "-o \"" + exePath.string() + "\"";
         if (verbose) std::cout << "[package:win] " << cmd << "\n";
         std::string out;
@@ -806,7 +823,7 @@ inline PackageResult packageForTarget(
     if (target == "deb") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
             res.error = err;
             return res;
         }
@@ -852,7 +869,7 @@ inline PackageResult packageForTarget(
     if (target == "rpm") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
             res.error = err;
             return res;
         }
@@ -876,7 +893,7 @@ inline PackageResult packageForTarget(
     if (target == "ipk") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
             res.error = err;
             return res;
         }
@@ -945,7 +962,7 @@ inline PackageResult packageForTarget(
         auto buildAbi = [&](const std::filesystem::path &cc, const std::string &abi) -> bool {
             std::filesystem::path soOut = stage / "lib" / abi / "libmemeapp.so";
             std::string cmd = "\"" + cc.string() + "\" -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD -DMEME_HOST_PROVIDES_MAIN "
-                              "-shared -fPIC -I\"" + repoRoot.string() + "\" \"" + cppPath.string() + "\" "
+                              "-shared -fPIC -I\"" + repoRoot.string() + "\" \"" + cppPath.string() + "\"" + evalFlagsNoLang + " "
                               "\"" + hostCpp.string() + "\" -landroid -llog -lEGL -lGLESv2 -o \"" + soOut.string() + "\"";
             if (verbose) std::cout << "[package:apk:" << abi << "] " << cmd << "\n";
             std::string out;
@@ -1229,7 +1246,7 @@ public class MemeNativeActivity extends NativeActivity {
         std::string cmdDev = "xcrun --sdk iphoneos clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                              "-arch arm64 -miphoneos-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
-                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
+                             "\"" + hostMm.string() + "\"" + evalFlags + " -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
                              "-o \"" + devBin.string() + "\"";
         if (verbose) std::cout << "[package:ipa] " << cmdDev << "\n";
         std::string out;
@@ -1259,7 +1276,7 @@ public class MemeNativeActivity extends NativeActivity {
         std::string cmdSim = "xcrun --sdk iphonesimulator clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                              "-arch " + simArch + " -mios-simulator-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
-                             "\"" + hostMm.string() + "\" -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
+                             "\"" + hostMm.string() + "\"" + evalFlags + " -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
                              "-o \"" + simBin.string() + "\"";
         if (detail::execCmd(cmdSim, out) == 0) {
             writeIosIcons(simApp);
@@ -1280,6 +1297,9 @@ public class MemeNativeActivity extends NativeActivity {
         std::filesystem::create_directories(webDir);
         std::filesystem::path jsPath = webDir / (pkgName + ".js");
         std::filesystem::path htmlPath = webDir / "index.html";
+        std::filesystem::path notFoundPath = webDir / "404.html";
+        std::filesystem::path vercelPath = webDir / "vercel.json";
+        std::filesystem::path redirectsPath = webDir / "_redirects";
         std::filesystem::path favPath = webDir / "favicon.ico";
         std::filesystem::path icon192Path = webDir / "icon-192.png";
         std::filesystem::path icon512Path = webDir / "icon-512.png";
@@ -1299,12 +1319,12 @@ public class MemeNativeActivity extends NativeActivity {
                                   "\"_meme_web_get_hit_regions_json\",\"_meme_web_get_agent_snapshot\","
                                   "\"_meme_web_pointer_move\",\"_meme_web_pointer_down\",\"_meme_web_pointer_up\","
                                   "\"_meme_web_scroll\",\"_meme_web_key_event\",\"_meme_web_tick\","
-                                  "\"_meme_web_set_clipboard\",\"_meme_web_get_clipboard\",\"_meme_web_agent_act\","
+                                  "\"_meme_web_set_clipboard\",\"_meme_web_get_clipboard\",\"_meme_web_agent_act\",\"_meme_web_set_route\","
                                   "\"_meme_native_complete_async\",\"_meme_native_complete_perm_async\",\"_malloc\",\"_free\"]'";
         std::string cmd = envPrefix + "\"" + empp + "\" -std=c++20 -O3 -fexceptions -DMEME_HOST_PROVIDES_MAIN "
                           "-I\"" + repoRoot.string() + "\" -s WASM=1 -s EXPORTED_FUNCTIONS=" + exportedFns + " "
                           "-s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\",\"HEAPU8\",\"HEAPU32\"]' "
-                          "-s STACK_SIZE=4194304 -s INITIAL_MEMORY=33554432 -s ALLOW_MEMORY_GROWTH=1 \"" + cppPath.string() + "\" -o \"" + jsPath.string() + "\"";
+                          "-s STACK_SIZE=4194304 -s INITIAL_MEMORY=33554432 -s ALLOW_MEMORY_GROWTH=1 \"" + cppPath.string() + "\"" + evalFlagsNoLang + " -o \"" + jsPath.string() + "\"";
         if (verbose) std::cout << "[package:web] " << cmd << "\n";
         std::string out;
         if (detail::execCmd(cmd, out) != 0) {
@@ -1341,9 +1361,45 @@ public class MemeNativeActivity extends NativeActivity {
                 }
             }
         }
-        detail::writeFileText(htmlPath, MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true, permissionsPolicy));
+        std::string htmlShell = MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true, permissionsPolicy);
+        detail::writeFileText(htmlPath, htmlShell);
+        detail::writeFileText(notFoundPath, htmlShell);
+
+        std::string permHeaderEntry;
+        if (!permissionsPolicy.empty()) {
+            permHeaderEntry =
+                "    {\n"
+                "      \"source\": \"/(.*)\",\n"
+                "      \"headers\": [\n"
+                "        { \"key\": \"Permissions-Policy\", \"value\": \"" + MemeNative::detail::jsonEscape(permissionsPolicy) + "\" }\n"
+                "      ]\n"
+                "    },\n";
+        }
+        std::string vercelJson =
+            "{\n"
+            "  \"$schema\": \"https://openapi.vercel.sh/vercel.json\",\n"
+            "  \"rewrites\": [\n"
+            "    { \"source\": \"/(.*)\", \"destination\": \"/index.html\" }\n"
+            "  ],\n"
+            "  \"headers\": [\n" + permHeaderEntry +
+            "    {\n"
+            "      \"source\": \"/(.*)\\\\.wasm\",\n"
+            "      \"headers\": [\n"
+            "        { \"key\": \"Content-Type\", \"value\": \"application/wasm\" },\n"
+            "        { \"key\": \"Cache-Control\", \"value\": \"public, max-age=31536000, immutable\" }\n"
+            "      ]\n"
+            "    }\n"
+            "  ]\n"
+            "}\n";
+        detail::writeFileText(vercelPath, vercelJson);
+        detail::writeFileText(redirectsPath, "/* /index.html 200\n");
+
         std::filesystem::path wasmPath = webDir / (pkgName + ".wasm");
-        return finishOk(htmlPath.string(), {htmlPath.string(), jsPath.string(), wasmPath.string(), favPath.string(), icon192Path.string(), icon512Path.string(), manifestWebPath.string()});
+        return finishOk(htmlPath.string(), {
+            htmlPath.string(), jsPath.string(), wasmPath.string(), favPath.string(),
+            icon192Path.string(), icon512Path.string(), manifestWebPath.string(),
+            vercelPath.string(), redirectsPath.string(), notFoundPath.string()
+        });
     }
 
     if (target == "all") {

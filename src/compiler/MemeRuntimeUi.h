@@ -814,6 +814,13 @@ inline MemeValue useRouter() {
         } else {
             rt2.routerPath = target;
         }
+#ifdef __EMSCRIPTEN__
+        EM_ASM({
+            if (typeof window !== 'undefined' && typeof window.__MEME_PUSH_ROUTE__ === 'function') {
+                window.__MEME_PUSH_ROUTE__(UTF8ToString($0));
+            }
+        }, target.c_str());
+#endif
         rt2.triggerUiRerender();
         return MemeValue(rt2.routerPath);
     });
@@ -846,8 +853,28 @@ inline MemeValue Route(const MemeValue &props = MemeValue()) {
 inline MemeValue Link(const MemeValue &props = MemeValue()) {
     std::string to = props.get("to", props.get("href", MemeValue("/"))).to_string();
     MemeValue onClick = meme_fn([to](const std::vector<MemeValue> &) -> MemeValue {
-        aot_ui().routerPath = to;
-        aot_ui().triggerUiRerender();
+        auto &rt2 = aot_ui();
+        rt2.routerQuery.clear();
+        size_t q = to.find('?');
+        if (q != std::string::npos) {
+            rt2.routerPath = to.substr(0, q);
+            std::istringstream ss(to.substr(q + 1));
+            std::string pair;
+            while (std::getline(ss, pair, '&')) {
+                size_t eq = pair.find('=');
+                if (eq != std::string::npos) rt2.routerQuery[pair.substr(0, eq)] = pair.substr(eq + 1);
+            }
+        } else {
+            rt2.routerPath = to;
+        }
+#ifdef __EMSCRIPTEN__
+        EM_ASM({
+            if (typeof window !== 'undefined' && typeof window.__MEME_PUSH_ROUTE__ === 'function') {
+                window.__MEME_PUSH_ROUTE__(UTF8ToString($0));
+            }
+        }, to.c_str());
+#endif
+        rt2.triggerUiRerender();
         return MemeValue(true);
     });
     MemeValue ch = props.get("children", MemeValue(std::vector<MemeValue>{}));
@@ -2342,6 +2369,26 @@ inline void meme_host_rerender() {
 int meme_user_entrypoint(int argc, char *argv[]);
 #endif
 EMSCRIPTEN_KEEPALIVE inline int meme_web_start() {
+    MemeWebHost::g_setRouteFn = [](const std::string &raw) -> bool {
+        auto &rt2 = MemeAotUI::aot_ui();
+        std::string target = raw.empty() ? "/" : raw;
+        std::string nextPath = target;
+        std::unordered_map<std::string, std::string> nextQuery;
+        size_t q = target.find('?');
+        if (q != std::string::npos) {
+            nextPath = target.substr(0, q);
+            std::istringstream ss(target.substr(q + 1));
+            std::string pair;
+            while (std::getline(ss, pair, '&')) {
+                size_t eq = pair.find('=');
+                if (eq != std::string::npos) nextQuery[pair.substr(0, eq)] = pair.substr(eq + 1);
+            }
+        }
+        bool changed = (rt2.routerPath != nextPath || rt2.routerQuery != nextQuery);
+        rt2.routerPath = nextPath;
+        rt2.routerQuery = nextQuery;
+        return changed;
+    };
 #ifdef MEME_HOST_PROVIDES_MAIN
     char arg0[] = "meme_web";
     char *argv[] = {arg0};

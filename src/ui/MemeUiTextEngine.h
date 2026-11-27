@@ -644,6 +644,9 @@ struct TextFieldState {
                 res.submitEnter = true;
             }
             res.handled = true;
+        } else if (ev.key == "Tab" && multiline && !readOnly) {
+            res.textChanged = insertText("  ");
+            res.handled = true;
         } else if (!ev.text.empty() && !primaryMod) {
             res.textChanged = insertText(ev.text);
             res.handled = true;

@@ -1,0 +1,1203 @@
+jugaad getSectionsStdlib() {
+    ye_le [
+        {
+            "id": "modules",
+            "title": "Module & File Imports (bula / jaise)",
+            "badge": "Architecture",
+            "description": "Multi-file modular architecture with `bula` and `jaise`, canonical caching, and circular import detection.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Organize your project into multiple files using `bula \"<path>\" [jaise <alias>];`. Modules run in isolated namespaces and export top-level variables, functions, and classes."
+                },
+                {
+                    "type": "code",
+                    "title": "imports_demo.meme",
+                    "code": "// Import with alias\nbula \"./math_utils.meme\" jaise mu;\ndikha mu.add(10, 20);\n\n// Import without alias (auto-derives stem 'helpers')\nbula \"./helpers.meme\";\ndikha helpers.formatText(\"namaste\");\n\n// Circular import protection:\n// If a imports b and b imports a, MEMElang aborts with:\n// \"Golmaal hai sab golmaal hai! Circular import pakda gaya: '<path>'\""
+                }
+            ]
+        },
+        {
+            "id": "stdlib",
+            "title": "Preinstalled Standard Library (\"Batteries-Included\")",
+            "badge": "Standard Library",
+            "description": "Comprehensive built-in modules preinstalled just like Python: `math`, `random`, `statistics`, `crypto`, `regex`, `datetime`, `itertools`, `collections`, `csv`, `test`, `json`, `file`, and `systumm`.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang includes a zero-dependency standard library directly available in global scope or via `bula` / `import`:"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. math / hisab (Comprehensive Mathematics)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "WhatsApp Alias",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "math.pi",
+                            "hisab.pi",
+                            "Mathematical constant pi (3.14159...)",
+                            "math.pi"
+                        ],
+                        [
+                            "math.e",
+                            "hisab.e",
+                            "Euler's constant e (2.71828...)",
+                            "math.e"
+                        ],
+                        [
+                            "math.tau",
+                            "hisab.tau",
+                            "Circle constant tau (6.28318...)",
+                            "math.tau"
+                        ],
+                        [
+                            "math.sqrt(x)",
+                            "hisab.jadd(x)",
+                            "Square root of x",
+                            "math.sqrt(49) -> 7.0"
+                        ],
+                        [
+                            "math.cbrt(x)",
+                            "-",
+                            "Cube root of x",
+                            "math.cbrt(27) -> 3.0"
+                        ],
+                        [
+                            "math.pow(b, exp)",
+                            "hisab.taqat(b, exp)",
+                            "Power base^exp",
+                            "math.pow(2, 3) -> 8.0"
+                        ],
+                        [
+                            "math.log(x, base?)",
+                            "hisab.ln(x)",
+                            "Natural or custom base logarithm",
+                            "math.log(100, 10) -> 2.0"
+                        ],
+                        [
+                            "math.sin(x) / cos / tan",
+                            "-",
+                            "Trigonometric functions",
+                            "math.sin(math.pi / 2) -> 1.0"
+                        ],
+                        [
+                            "math.hypot(x, y)",
+                            "-",
+                            "Euclidean distance sqrt(x^2 + y^2)",
+                            "math.hypot(3, 4) -> 5.0"
+                        ],
+                        [
+                            "math.gcd(a, b)",
+                            "hisab.mahatam(a, b)",
+                            "Greatest Common Divisor",
+                            "math.gcd(48, 18) -> 6"
+                        ],
+                        [
+                            "math.lcm(a, b)",
+                            "hisab.laghutam(a, b)",
+                            "Least Common Multiple",
+                            "math.lcm(4, 6) -> 12"
+                        ],
+                        [
+                            "math.factorial(n)",
+                            "hisab.kramgunan(n)",
+                            "Factorial n!",
+                            "math.factorial(6) -> 720"
+                        ],
+                        [
+                            "math.comb(n, k)",
+                            "-",
+                            "Combinations n choose k",
+                            "math.comb(5, 2) -> 10"
+                        ],
+                        [
+                            "math.perm(n, k)",
+                            "-",
+                            "Permutations nPk",
+                            "math.perm(5, 2) -> 20"
+                        ],
+                        [
+                            "math.clamp(val, mn, mx)",
+                            "-",
+                            "Clamps val into [mn, mx]",
+                            "math.clamp(15, 0, 10) -> 10"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. random / tukka (Pseudo-Random Generation)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "random.seed(n)",
+                            "Seeds pseudo-random number generator",
+                            "random.seed(42)"
+                        ],
+                        [
+                            "random.random()",
+                            "Random float in [0.0, 1.0)",
+                            "random.random()"
+                        ],
+                        [
+                            "random.randint(min, max)",
+                            "Random integer in [min, max] inclusive",
+                            "random.randint(1, 100)"
+                        ],
+                        [
+                            "random.uniform(a, b)",
+                            "Random float in [a, b]",
+                            "random.uniform(1.5, 5.5)"
+                        ],
+                        [
+                            "random.choice(list)",
+                            "Returns random element from sequence",
+                            "random.choice([\"chai\", \"samosa\"])"
+                        ],
+                        [
+                            "random.shuffle(list)",
+                            "Returns shuffled copy of list in-place",
+                            "random.shuffle([1, 2, 3])"
+                        ],
+                        [
+                            "random.sample(list, k)",
+                            "Random sample of k unique elements",
+                            "random.sample(cards, 5)"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. statistics / stats / aankde (Descriptive Statistics)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "stats.mean(nums)",
+                            "Arithmetic average of sequence",
+                            "stats.mean([10, 20, 30]) -> 20.0"
+                        ],
+                        [
+                            "stats.median(nums)",
+                            "Middle value in sequence",
+                            "stats.median([1, 3, 2]) -> 2.0"
+                        ],
+                        [
+                            "stats.mode(nums)",
+                            "Most frequently occurring item",
+                            "stats.mode([1, 2, 2, 3]) -> 2"
+                        ],
+                        [
+                            "stats.variance(nums)",
+                            "Sample variance of data",
+                            "stats.variance([2, 4, 4, 4, 5])"
+                        ],
+                        [
+                            "stats.stdev(nums)",
+                            "Standard deviation of data",
+                            "stats.stdev([2, 4, 4, 4, 5])"
+                        ],
+                        [
+                            "stats.min(nums) / max(nums)",
+                            "Extremum value in sequence",
+                            "stats.min([5, 2, 9]) -> 2"
+                        ],
+                        [
+                            "stats.sum(nums)",
+                            "Total sum of elements",
+                            "stats.sum([1, 2, 3, 4]) -> 10"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "4. crypto / hashlib / gupt (Cryptography & Hashes)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "crypto.sha256(data)",
+                            "Computes SHA-256 hex digest",
+                            "crypto.sha256(\"password\")"
+                        ],
+                        [
+                            "crypto.hmac_sha256(k, d)",
+                            "Computes HMAC-SHA256 signature",
+                            "crypto.hmac_sha256(secret, msg)"
+                        ],
+                        [
+                            "crypto.md5(data)",
+                            "Computes MD5 128-bit checksum",
+                            "crypto.md5(\"file_content\")"
+                        ],
+                        [
+                            "crypto.sha1(data)",
+                            "Computes SHA-1 160-bit checksum",
+                            "crypto.sha1(\"data\")"
+                        ],
+                        [
+                            "crypto.base64_encode(str)",
+                            "Encodes text or bytes to Base64",
+                            "crypto.base64_encode(\"hello\")"
+                        ],
+                        [
+                            "crypto.base64_decode(b64)",
+                            "Decodes Base64 to original string",
+                            "crypto.base64_decode(\"aGVsbG8=\")"
+                        ],
+                        [
+                            "crypto.uuid()",
+                            "Generates random RFC 4122 v4 UUID string",
+                            "crypto.uuid()"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "5. regex / re / dhundo (Regular Expressions)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "re.test(pat, str)",
+                            "Returns true if pattern matches string anywhere",
+                            "re.test(\"^[0-9]+$\", \"123\")"
+                        ],
+                        [
+                            "re.search(pat, str)",
+                            "Finds first match with start, end, and groups",
+                            "re.search(\"([a-z]+)@\", email)"
+                        ],
+                        [
+                            "re.match(pat, str)",
+                            "Matches pattern starting from beginning of string",
+                            "re.match(\"[A-Z]+\", \"MEME\")"
+                        ],
+                        [
+                            "re.find_all(pat, str)",
+                            "Returns list of all regex match occurrences",
+                            "re.find_all(\"[0-9]+\", text)"
+                        ],
+                        [
+                            "re.replace(pat, rep, str)",
+                            "Replaces pattern matches with replacement string",
+                            "re.replace(\"chai\", \"coffee\", s)"
+                        ],
+                        [
+                            "re.split(pat, str)",
+                            "Splits string by regex delimiter",
+                            "re.split(\"[,; ]+\", tags)"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "6. datetime / waqt / time & so_ja"
+                },
+                {
+                    "type": "code",
+                    "title": "datetime_demo.meme",
+                    "code": "pakad now = datetime.now();\ndikha \"Current Year:\", datetime.year();\ndikha \"ISO String:\", datetime.iso();\ndikha \"Formatted Date:\", datetime.format(\"%Y-%m-%d %H:%M:%S\");\n\n// Sleep for 100 milliseconds\nso_ja(0.1);\npakad elapsed = datetime.now() - now;\ndikha \"Elapsed seconds:\", elapsed;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "7. itertools & collections (Iterators & Data Structures)"
+                },
+                {
+                    "type": "code",
+                    "title": "itertools_collections_demo.meme",
+                    "code": "// Itertools: range, zip, enumerate, chunk\npakad r = range(0, 10, 2);             // [0, 2, 4, 6, 8]\npakad zipped = zip([1, 2], [\"A\", \"B\"]); // [(1, \"A\"), (2, \"B\")]\npakad pairs = enumerate([\"Chai\", \"Coffee\"]); // [(0, \"Chai\"), (1, \"Coffee\")]\npakad chunks = itertools.chunk([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]\n\n// Collections: Frequency Counter & Double-Ended Queue (deque)\npakad counts = collections.Counter(\"banana\");\ndikha \"Letter 'a':\", counts.a;         // 3\n\npakad dq = collections.deque([1, 2]);\ndq.push_front(0);\ndq.push_back(3);\ndikha \"Popped front:\", dq.pop_front(); // 0\ndikha \"Popped back:\", dq.pop_back();   // 3"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "8. csv (Standalone Parsing & Generation)"
+                },
+                {
+                    "type": "code",
+                    "title": "csv_demo.meme",
+                    "code": "pakad rawCsv = \"name,role,salary\\nRaju,Developer,75000\\nBaburao,Manager,90000\";\npakad records = csv.parse(rawCsv);\ndikha \"First employee:\", records[0].name; // \"Raju\"\n\n// Convert back to CSV string\npakad csvOut = csv.stringify(records);\ndikha \"Serialized CSV:\\n\" + csvOut;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "9. test & assert (Built-in Assertions)"
+                },
+                {
+                    "type": "code",
+                    "title": "test_demo.meme",
+                    "code": "assert(10 > 5, \"Ten must be greater than five\");\nassert_eq(2 + 2, 4);\nassert_ne(\"chai\", \"coffee\");\nassert_throws(() => {\n    chillao \"Error condition!\";\n});\ndikha \"All test assertions passed!\";"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "10. json (Serialization & Parsing)"
+                },
+                {
+                    "type": "code",
+                    "title": "json_demo.meme",
+                    "code": "pakad hero = {\n    \"name\": \"Shaktimaan\",\n    \"powers\": [\"Fly\", \"Spin\", \"Laser\"],\n    \"alter_ego\": \"Pandit Gangadhar\"\n};\n\n// Stringify to JSON\npakad serialized = json.likh(hero);\ndikha \"JSON String:\", serialized;\n\n// Parse back into MEMElang Objects & Lists\npakad parsed = json.samajh(serialized);\ndikha \"Powers count:\", parsed.powers.size();"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "11. file & fs (File System I/O)"
+                },
+                {
+                    "type": "code",
+                    "title": "file_demo.meme",
+                    "code": "// Check existence\ndekh file.hai_kya(\"data.txt\") {\n    dikha \"File content:\", file.padh(\"data.txt\");\n} warna {\n    file.likh(\"data.txt\", \"Initial entry\\n\");\n    file.jod(\"data.txt\", \"Appended log entry\\n\");\n    dikha \"Created and wrote to data.txt!\";\n}"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "12. systumm (OS & Process Control)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Member / Method",
+                        "English Alias",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "systumm.chala(cmd)",
+                            "sys.exec(cmd)",
+                            "Executes shell command and returns output",
+                            "systumm.chala(\"git status\")"
+                        ],
+                        [
+                            "systumm.env(key, def?)",
+                            "os.env(key, def)",
+                            "Reads environment variable",
+                            "systumm.env(\"HOME\")"
+                        ],
+                        [
+                            "systumm.set_env(k, v)",
+                            "os.set_env(k, v)",
+                            "Sets environment variable",
+                            "systumm.set_env(\"PORT\", \"8080\")"
+                        ],
+                        [
+                            "systumm.kahan()",
+                            "os.cwd()",
+                            "Returns current working directory",
+                            "systumm.kahan()"
+                        ],
+                        [
+                            "systumm.jao(path)",
+                            "os.chdir(path)",
+                            "Changes directory",
+                            "systumm.jao(\"../\")"
+                        ],
+                        [
+                            "systumm.kaun()",
+                            "os.platform()",
+                            "Returns \"mac\", \"linux\", \"windows\", \"wasm\"",
+                            "systumm.kaun()"
+                        ],
+                        [
+                            "systumm.copy(text)",
+                            "sys.copy(text)",
+                            "Copies string to OS clipboard",
+                            "systumm.copy(\"Secret\")"
+                        ],
+                        [
+                            "systumm.paste()",
+                            "sys.paste()",
+                            "Reads text from OS clipboard",
+                            "systumm.paste()"
+                        ],
+                        [
+                            "systumm.nikal(code?)",
+                            "sys.exit(code)",
+                            "Exits program with exit status code",
+                            "systumm.nikal(0)"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "6. cli (Interactive Terminal Apps)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Method",
+                        "English Alias",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "cli.args_samajh(args?)",
+                            "cli.parse_args(args?)",
+                            "Parses flags (--key=val, --flag, -f) into Map",
+                            "cli.args_samajh()"
+                        ],
+                        [
+                            "cli.chuno(prompt, opts)",
+                            "cli.select(prompt, opts)",
+                            "Displays numbered interactive choice selection",
+                            "cli.chuno(\"Branch?\", [\"main\", \"dev\"])"
+                        ],
+                        [
+                            "cli.puch_han_na(prompt)",
+                            "cli.confirm(prompt)",
+                            "Prompts user with yes/no [han/na] confirmation",
+                            "cli.puch_han_na(\"Deploy now?\")"
+                        ],
+                        [
+                            "cli.chhupa_puch(prompt)",
+                            "cli.password(prompt)",
+                            "Prompts password input without echo",
+                            "cli.chhupa_puch(\"Token: \")"
+                        ],
+                        [
+                            "cli.progress(cur, tot, msg?)",
+                            "cli.progress(...)",
+                            "Renders in-place terminal progress bar",
+                            "cli.progress(50, 100, \"Downloading\")"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "7. app (Native Desktop GUI & Notifications)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Method",
+                        "English Alias",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "app.alert(title, msg)",
+                            "app.dikha_box(title, msg)",
+                            "Native GUI popup alert dialog",
+                            "app.alert(\"Ready\", \"Server online\")"
+                        ],
+                        [
+                            "app.puch_box(title, q, def?)",
+                            "app.input_box(...)",
+                            "Native GUI text input dialog",
+                            "app.puch_box(\"Login\", \"Username: \")"
+                        ],
+                        [
+                            "app.han_na_box(title, q)",
+                            "app.confirm_box(...)",
+                            "Native GUI Yes/No confirmation dialog",
+                            "app.han_na_box(\"Exit\", \"Sure?\")"
+                        ],
+                        [
+                            "app.file_chuno(title?)",
+                            "app.pick_file(title?)",
+                            "Native system file picker dialog",
+                            "app.file_chuno(\"Select Image\")"
+                        ],
+                        [
+                            "app.notify(title, msg)",
+                            "app.notify(...)",
+                            "Native OS desktop notification banner",
+                            "app.notify(\"Done\", \"Build passed\")"
+                        ],
+                        [
+                            "app.khol(target)",
+                            "app.open(target)",
+                            "Opens URL or file with default system application",
+                            "app.khol(\"https://google.com\")"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "8. Rich Terminal Styling & Unicode UI Widgets"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Feature",
+                        "Syntax / Method",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "Inline Color Tags",
+                            "dikha \"[hara bold]OK:[/] Done\"",
+                            "Terminal styling tags: [laal], [hara], [peela], [neela], [gulabi], [asmani], [safed], [kala], [mota], [line], [tedha], [halka], and [/] reset"
+                        ],
+                        [
+                            "String Color Methods",
+                            "\"OK\".hara().mota()",
+                            "Chainable ANSI methods: .laal(), .hara(), .peela(), .neela(), .gulabi(), .asmani(), .mota(), .line(), .rang_hata()"
+                        ],
+                        [
+                            "Unicode Bordered Table",
+                            "dikha.mez(data) / table(data)",
+                            "Renders List of Maps or List of Lists as bordered Unicode table"
+                        ],
+                        [
+                            "Unicode Box Panel",
+                            "dikha.dabba(text, title?) / box(...)",
+                            "Wraps text in rounded Unicode box container with optional title"
+                        ],
+                        [
+                            "Screen Clear",
+                            "dikha.saaf() / clear()",
+                            "Clears terminal screen and resets cursor position"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "9. tijori (Local Persistent Document DB)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Method",
+                        "Aliases",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "tijori.rakh(key, val)",
+                            "tijori.set(...)",
+                            "Saves a key-value pair to persistent local storage",
+                            "tijori.rakh(\"user\", {\"name\": \"Raju\"})"
+                        ],
+                        [
+                            "tijori.nikal(key, default?)",
+                            "tijori.get(...)",
+                            "Retrieves value by key, or returns default if not found",
+                            "tijori.nikal(\"user\", khali)"
+                        ],
+                        [
+                            "tijori.hai_kya(key)",
+                            "tijori.has(...)",
+                            "Returns han if key exists in storage, else nhi",
+                            "tijori.hai_kya(\"user\")"
+                        ],
+                        [
+                            "tijori.hata(key)",
+                            "tijori.delete(...)",
+                            "Deletes a key from storage and syncs to disk",
+                            "tijori.hata(\"user\")"
+                        ],
+                        [
+                            "tijori.chaabi()",
+                            "tijori.keys()",
+                            "Returns a list of all saved keys",
+                            "tijori.chaabi()"
+                        ],
+                        [
+                            "tijori.maal()",
+                            "tijori.values()",
+                            "Returns a list of all saved values",
+                            "tijori.maal()"
+                        ],
+                        [
+                            "tijori.sab()",
+                            "tijori.all()",
+                            "Returns entire database as a map",
+                            "tijori.sab()"
+                        ],
+                        [
+                            "tijori.saaf()",
+                            "tijori.clear()",
+                            "Clears all stored entries",
+                            "tijori.saaf()"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "10. dhaba / express / elysia (Fast Multi-threaded HTTP Server & Type Safety)"
+                },
+                {
+                    "type": "text",
+                    "text": "MEMElang provides blazing fast native multi-threaded HTTP servers with full Express.js middleware parity and complete Elysia-style TypeBox schema validation:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Method / Property",
+                        "Framework Parity",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "express() / elysia()",
+                            "Express / Elysia Factory",
+                            "Creates a new isolated HTTP server application instance",
+                            "app = express()"
+                        ],
+                        [
+                            "app.get / post / put / delete",
+                            "Express Routing",
+                            "Registers HTTP route handlers with `:param` and wildcard matching",
+                            "app.get(\"/users/:id\", (req, res) => ...)"
+                        ],
+                        [
+                            "app.use(mwOrRouter)",
+                            "Express Middleware",
+                            "Registers global/prefix middlewares or sub-routers with `(req, res, next)`",
+                            "app.use(\"/api\", router)"
+                        ],
+                        [
+                            "express.Router()",
+                            "Express Sub-Router",
+                            "Creates an isolated modular sub-router",
+                            "api = express.Router()"
+                        ],
+                        [
+                            "express.json() / cors() / static()",
+                            "Built-in Middlewares",
+                            "Prebuilt middlewares for body parsing, CORS headers, and static files",
+                            "app.use(express.cors())"
+                        ],
+                        [
+                            "t.Object / String / Integer",
+                            "Elysia / TypeBox",
+                            "Complete request & response schema definitions with automatic type coercion",
+                            "t.Object({ age: t.Integer() })"
+                        ],
+                        [
+                            "app.state(key, value)",
+                            "Elysia State",
+                            "Sets global server state accessible via `ctx.store`",
+                            "app.state(\"visits\", 0)"
+                        ],
+                        [
+                            "app.derive(fn)",
+                            "Elysia Derivations",
+                            "Enriches request context before route handlers run",
+                            "app.derive(ctx => ({ role: \"admin\" }))"
+                        ],
+                        [
+                            "app.listen(port, cb?)",
+                            "Multi-Threaded Server",
+                            "Spawns high-throughput native TCP socket listener worker pool",
+                            "app.listen(3000)"
+                        ],
+                        [
+                            "app.request(method, path)",
+                            "In-Memory Dispatch",
+                            "Dispatches request in microseconds without opening ports (for tests/WASM)",
+                            "app.request(\"GET\", \"/ping\")"
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "express_elysia_demo.meme",
+                    "code": "pakad app = elysia();\n\napp.use(express.cors());\napp.state(\"counter\", 0);\n\n// Elysia Type-Safe Route with TypeBox Schema\napp.post(\"/users/:id\", {\n    params: t.Object({ \"id\": t.Integer() }),\n    query: t.Object({ \"tag\": t.Optional(t.String()) }),\n    body: t.Object({\n        \"username\": t.String({ \"minLength\": 3 }),\n        \"age\": t.Integer({ \"min\": 18 }),\n        \"email\": t.Optional(t.String({ \"format\": \"email\" }))\n    })\n}, (ctx) => {\n    ctx.store.counter = ctx.store.counter + 1;\n    // Guaranteed type-safe & coerced parameters\n    ye_le {\n        \"success\": han,\n        \"id\": ctx.params.id,              // Coerced integer\n        \"user\": ctx.body.username,\n        \"age\": ctx.body.age,              // Coerced integer\n        \"total_requests\": ctx.store.counter\n    };\n});\n\n// Express Sub-Router\npakad v1 = express.Router();\nv1.get(\"/health\", (req, res) => {\n    res.status(200).json({ \"status\": \"healthy\" });\n});\napp.use(\"/api/v1\", v1);\n\n// Start live server\napp.listen(3000, () => {\n    dikha \"[Fast] Server running on http://localhost:3000\";\n});"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "11. ui (Declarative Cross-Platform UI Framework)"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Component / Method",
+                        "Description",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "ui.khamba([children])",
+                            "Vertical column layout container (alias ui.column)",
+                            "ui.khamba([ui.likh(\"Header\"), ui.button(\"OK\")])"
+                        ],
+                        [
+                            "ui.katar([children])",
+                            "Horizontal row layout container (alias ui.row)",
+                            "ui.katar([card1, card2])"
+                        ],
+                        [
+                            "ui.likh(text, variant?)",
+                            "Typography text node (variant: \"heading\", \"subheading\", \"body\", \"caption\")",
+                            "ui.likh(\"Tapri POS\", \"heading\")"
+                        ],
+                        [
+                            "ui.dabba(children, title?)",
+                            "Bordered card / box container with optional title panel",
+                            "ui.dabba([item1, badge], \"Order #1\")"
+                        ],
+                        [
+                            "ui.badge(label, color?)",
+                            "Status badge pill (color: \"hara\", \"peela\", \"laal\", \"asmani\", \"gulabi\")",
+                            "ui.badge(\"Ready\", \"hara\")"
+                        ],
+                        [
+                            "ui.puch(placeholder)",
+                            "Interactive text input field component",
+                            "ui.puch(\"Enter customer name...\")"
+                        ],
+                        [
+                            "ui.button(label, onClick)",
+                            "Action button with lambda callback handler",
+                            "ui.button(\"Order Bhej\", () => dikha \"Bheja!\")"
+                        ],
+                        [
+                            "ui.faasla()",
+                            "Divider / spacing element (alias ui.divider)",
+                            "ui.faasla()"
+                        ],
+                        [
+                            "ui.dikha(screen, title?)",
+                            "Renders screen directly to the terminal with Unicode box alignment",
+                            "ui.dikha(screen, \"POS App\")"
+                        ],
+                        [
+                            "ui.html(screen, title?)",
+                            "Exports declarative UI tree into HTML5 + Tailwind CSS markup",
+                            "ui.html(screen, \"Web View\")"
+                        ],
+                        [
+                            "ui.click(screen, label?)",
+                            "Programmatically triggers a button click event handler (alias ui.dabao)",
+                            "ui.click(screen, \"Order Bhej\")"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "builtins",
+            "title": "Standard Built-in Functions",
+            "badge": "Standard Library",
+            "description": "Type inspection, length checking, numeric conversions, and console inputs.",
+            "content": [
+                {
+                    "type": "table",
+                    "headers": [
+                        "Function",
+                        "Aliases",
+                        "Parameters",
+                        "Return Type",
+                        "Description"
+                    ],
+                    "rows": [
+                        [
+                            "kya_hai(val)",
+                            "aukaat",
+                            "Any value",
+                            "string",
+                            "Returns the type name: \"int\", \"float\", \"string\", \"bool\", \"nalla\", \"function\", \"object\""
+                        ],
+                        [
+                            "size(str)",
+                            "kitna_lamba",
+                            "string",
+                            "int",
+                            "Returns the character length of a string."
+                        ],
+                        [
+                            "bina_point(val)",
+                            "pura_num",
+                            "string, float, bool",
+                            "int",
+                            "Converts value to a whole 64-bit integer (`long long`)."
+                        ],
+                        [
+                            "point_wala(val)",
+                            "float_bana",
+                            "string, int, bool",
+                            "float",
+                            "Converts value to a decimal floating point (`double`)."
+                        ],
+                        [
+                            "bata(prompt)",
+                            "pooch",
+                            "string (optional)",
+                            "string",
+                            "Reads a line of text from console input with prompt."
+                        ]
+                    ]
+                },
+                {
+                    "type": "code",
+                    "title": "builtins.meme",
+                    "code": "pakad s = \"Namaste Dosto\";\ndikha \"String size:\", size(s);\ndikha \"Type check:\", kya_hai(s);\n\npakad num_str = \"1234\";\npakad num = bina_point(num_str) + 66;\ndikha \"Converted jod:\", num;\n\npakad pi_str = \"3.14159\";\ndikha \"Decimal multiplied:\", point_wala(pi_str) * 2.0;"
+                }
+            ]
+        },
+        {
+            "id": "memory-safety",
+            "title": "Rust-Style Ownership & Borrow Checker",
+            "badge": "Memory Safety",
+            "description": "Single ownership, moves for heap types, borrowing with udhaar and udhaar_badal, explicit nakal, and RAII alvida destructors.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang brings Rust-level memory safety to Desi programming. Say goodbye to use-after-free, double drops, and data races! Values have single owners; assignments of heap types move ownership by default; references are checked at runtime with hilarious Bollywood errors."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "1. Single Ownership & Move Semantics"
+                },
+                {
+                    "type": "text",
+                    "text": "Primitive types (`int`, `float`, `bool`, `nalla`) have `Copy` semantics. Heap and compound resources (`string`, `biradari` object instances, and closures) have Move semantics. Assigning or passing them transfers ownership permanently:"
+                },
+                {
+                    "type": "code",
+                    "title": "move_semantics.meme",
+                    "code": "pakad a = \"Baburao ka khazana\";\npakad b = a; // Ownership transferred to b!\n\n// Reading 'a' now throws a borrow-checker error:\n// dikha a; // Error: Pehli fursat mein nikal! 'a' ki value move ho chuki hai!\n\ndikha \"Naya owner b:\", b;\n\n// Re-assigning re-initializes 'a':\na = \"Naye sapne\";\ndikha \"Reinitialized a:\", a;"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "2. Explicit Cloning with nakal()"
+                },
+                {
+                    "type": "text",
+                    "text": "To duplicate a heap value without giving up ownership of the original, use `nakal(val)` (or method `val.nakal()`, aliases: `clone`, `copy`):"
+                },
+                {
+                    "type": "code",
+                    "title": "explicit_clone.meme",
+                    "code": "pakad original = \"Diamond Kohinoor\";\npakad duplicate = nakal(original); // Cloned!\n\ndikha \"Original:\", original; // Still valid!\ndikha \"Duplicate:\", duplicate;\n\nbiradari Khazana {\n    jugaad shuru(coins) {\n        apun.coins = coins;\n    }\n}\n\npakad k1 = Khazana(100);\npakad k2 = k1.nakal(); // Deep clone of instance!\nk2.coins = 500;\n\ndikha \"k1 coins:\", k1.coins; // 100\ndikha \"k2 coins:\", k2.coins; // 500"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "3. Shared Borrowing (udhaar) vs Mutable Borrowing (udhaar_badal)"
+                },
+                {
+                    "type": "text",
+                    "text": "Instead of moving ownership, you can lend references using Aliasing XOR Mutability rules:\n- `udhaar x` (`&x`): Immutable shared borrow. Multiple shared borrows can coexist. `x` cannot be mutated or moved while borrowed!\n- `udhaar_badal x` (`&mut x`): Exclusive mutable borrow. Only one can exist at a time; direct access to `x` is suspended until the borrow ends!"
+                },
+                {
+                    "type": "code",
+                    "title": "borrowing.meme",
+                    "code": "pakad hero = \"Munna Don\";\n\n// 1. Shared Borrowing:\npakad r1 = udhaar hero;\npakad r2 = udhaar hero;\ndikha \"Read via ref1:\", r1;\ndikha \"Read via ref2:\", r2;\n\n// hero = \"Circuit\"; // Error: Doglapan! 'hero' abhi udhaar pe hai!\n\n// 2. Mutable Borrowing in Scopes:\npakad score = 100;\n{\n    pakad m = udhaar_badal score;\n    m = 250; // Mutate through reference!\n    dikha \"Inside scope modified score:\", m;\n}\n// Block exited, borrow released!\ndikha \"Outside scope score:\", score; // 250"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "4. RAII Scope Destructors (alvida)"
+                },
+                {
+                    "type": "text",
+                    "text": "Classes can define a destructor method `jugaad alvida() { ... }` (alias: `drop`). MEMElang automatically invokes this destructor when an instance's owner block scope ends!"
+                },
+                {
+                    "type": "code",
+                    "title": "raii_destructors.meme",
+                    "code": "biradari FileLocker {\n    jugaad shuru(filename) {\n        apun.filename = filename;\n        dikha \"[Open] File opened:\", apun.filename;\n    }\n    jugaad alvida() {\n        dikha \"[Lock] File closed cleanly (RAII):\", apun.filename;\n    }\n}\n\n{\n    pakad locker = FileLocker(\"confidential.docx\");\n    dikha \"Doing important file processing...\";\n}\n// When scope exits, alvida() is called automatically!\ndikha \"Scope ended cleanly!\";"
+                }
+            ]
+        },
+        {
+            "id": "meme-errors",
+            "title": "Iconic Meme Error Catalog",
+            "badge": "Diagnostics",
+            "description": "Complete guide to all iconic Bollywood, Shark Tank, and Desi internet error messages in MEMElang.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Say goodbye to boring stack traces. In MEMElang, compiler and runtime mistakes trigger legendary Indian internet quotes. Run any code below to trigger these errors live:"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Error Trigger",
+                        "Meme Quote Message",
+                        "Cultural Reference"
+                    ],
+                    "rows": [
+                        [
+                            "Unclosed string quote",
+                            "[!] String khol ke chhod diya... band tera baap karega?",
+                            "Classic Indian Parent Scolding"
+                        ],
+                        [
+                            "Illegal alien symbol (@, $)",
+                            "[ERR] Chi sasura! Ye kaisa alien symbol ghusa diye ho code mein: <symbol>",
+                            "Gangs of Wasseypur"
+                        ],
+                        [
+                            "Missing semicolon (;)",
+                            "Chhoti bachi ho kya?! Line ke end mein ';' lagana bhool gaye!",
+                            "Tiger Shroff / Heropanti"
+                        ],
+                        [
+                            "Invalid LHS assignment",
+                            "Ye sab doglapan hai! '=' ke left side mein sirf seedha variable ya property aata hai!",
+                            "Ashneer Grover / Shark Tank"
+                        ],
+                        [
+                            "Accidental '=' in condition",
+                            "Control Uday, control! '<context>' mein '=' nahi, '==' lagta hai!",
+                            "Welcome Movie"
+                        ],
+                        [
+                            "EOF mid-expression",
+                            "Moye Moye! Expression adhoori chhod ke code beech mein hi khatam kar diya.",
+                            "Viral Moye Moye Meme"
+                        ],
+                        [
+                            "Undeclared variable read",
+                            "Rasode mein kaun tha?! Ye '<name>' bina bataye kahan se aaya?",
+                            "Saath Nibhaana Saathiya"
+                        ],
+                        [
+                            "Undeclared variable assign",
+                            "Chuna laga diya! '<name>' naam ka koi variable hi nahi hai.",
+                            "Panchayat / Popular Meme"
+                        ],
+                        [
+                            "Use after move",
+                            "Pehli fursat mein nikal! '<name>' ki value move ho chuki hai! Ownership transfer ke baad use karna mana hai!",
+                            "Hindustani Bhau"
+                        ],
+                        [
+                            "Mutate while borrowed",
+                            "Doglapan! '<name>' abhi udhaar (borrowed) pe hai, isko modify nahi kar sakte!",
+                            "Ashneer Grover"
+                        ],
+                        [
+                            "Direct access while mutably borrowed",
+                            "Beech mein mat bolo! '<name>' abhi kisi aur ko udhaar diya hua hai!",
+                            "Arnab Goswami Debate"
+                        ],
+                        [
+                            "Borrow conflict / Aliasing",
+                            "Ek mawaali ek time pe ek hi jagah! '<name>' already borrowed hai!",
+                            "Welcome Movie"
+                        ],
+                        [
+                            "Dangling reference escape",
+                            "Baburao ka chashma! Local variable '<name>' ka udhaar wapas nahi bhej sakte!",
+                            "Hera Pheri (Baburao)"
+                        ],
+                        [
+                            "Integer overflow in +",
+                            "25 din mein paisa double karte-karte integer overflow ho gaya!",
+                            "Phir Hera Pheri"
+                        ],
+                        [
+                            "Negative string repeat",
+                            "Delulu is not the solulu! String ko negative baar kaise multiply karoge?",
+                            "Gen-Z Internet Slang"
+                        ],
+                        [
+                            "Divide by zero",
+                            "Kya coder banega re tu? 0 se divide karke brahmand khatam karega kya!",
+                            "Hera Pheri (Baburao)"
+                        ],
+                        [
+                            "Type mismatch in comparison",
+                            "Seb ko santre se mat tolo! '<t1>' aur '<t2>' ko compare nahi kar sakte!",
+                            "Desi Idiom"
+                        ],
+                        [
+                            "Calling non-callable",
+                            "Beta, tumse na ho payega! '<val>' koi jugaad (function) thodi hai!",
+                            "Gangs of Wasseypur (Ramadhir)"
+                        ],
+                        [
+                            "Calling nalla (null)",
+                            "Jugaad toh 'nalla' (null) nikla! Khali cheez ko call kaise karoge?",
+                            "Mumbai Slang"
+                        ],
+                        [
+                            "Arity mismatch",
+                            "Gaddari korbe! Jugaad ne <N> arguments maange the, aur tumne <M> chipka diye!",
+                            "Viral Bengali Meme"
+                        ],
+                        [
+                            "Missing object property",
+                            "Khopdi tod saale ka! '<class>' biradari ke paas '<prop>' naam ka kuch nahi hai!",
+                            "Hera Pheri (Baburao)"
+                        ],
+                        [
+                            "Non-class superclass",
+                            "Fake nepotism! '<parent>' koi biradari (class) nahi hai!",
+                            "Bollywood Nepotism Debate"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Try It Live: Intentional Error Demo"
+                },
+                {
+                    "type": "code",
+                    "title": "trigger_error.meme",
+                    "code": "// Try running this to see Baburao's zero division error!\npakad ans = 100 / 0;\ndikha ans;"
+                }
+            ]
+        },
+        {
+            "id": "gradual-typing",
+            "title": "Gradual Typing & Static Analysis",
+            "badge": "Type System",
+            "description": "Combine dynamic prototyping flexibility with compile-time type verification using the native TypeChecker.",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "MEMElang provides a gradual typing system. You can write code without type annotations for lightning-fast prototyping, or add static type annotations to variables, function parameters, and return types for compile-time safety and self-documenting code."
+                },
+                {
+                    "type": "callout",
+                    "variant": "info",
+                    "title": "Zero Runtime Performance Penalty",
+                    "text": "Static types are verified at compile-time by the C++ `TypeChecker`. In production, verified code executes with zero runtime type checking overhead while giving you bulletproof contract guarantees."
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Core Type Keywords & Annotations"
+                },
+                {
+                    "type": "table",
+                    "headers": [
+                        "Type Keyword",
+                        "Alternative Hindi/English",
+                        "Underlying C++ Type",
+                        "Example"
+                    ],
+                    "rows": [
+                        [
+                            "sankhya / ank",
+                            "int, number",
+                            "int64_t",
+                            "pakad age: sankhya = 25;"
+                        ],
+                        [
+                            "point / dashamlav",
+                            "float, double",
+                            "double (IEEE-754)",
+                            "pakad pi: point = 3.14159;"
+                        ],
+                        [
+                            "bol / shabd",
+                            "string, str",
+                            "std::string (interned)",
+                            "pakad name: bol = \"Chai\";"
+                        ],
+                        [
+                            "sach_jhooth / sach",
+                            "bool, boolean",
+                            "bool",
+                            "pakad isOnline: sach = han;"
+                        ],
+                        [
+                            "suchi",
+                            "list, array",
+                            "std::vector<Value>",
+                            "pakad items: suchi = [1, 2, 3];"
+                        ],
+                        [
+                            "nakshe",
+                            "map, dict",
+                            "std::unordered_map",
+                            "pakad user: nakshe = {\"id\": 1};"
+                        ],
+                        [
+                            "nalla",
+                            "null, void",
+                            "std::monostate",
+                            "pakad empty: nalla = nalla;"
+                        ],
+                        [
+                            "har_kism",
+                            "any, koi_bhi",
+                            "dynamic Value",
+                            "pakad flex: har_kism = 42;"
+                        ]
+                    ]
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Typed Functions & Signatures"
+                },
+                {
+                    "type": "text",
+                    "text": "Function signatures can specify parameter types and return type contracts using the `->` arrow syntax. If a function returns an incompatible type or receives illegal arguments, the compiler flags it before execution starts:"
+                },
+                {
+                    "type": "code",
+                    "title": "typed_functions.meme",
+                    "code": "// Function with explicit argument and return type contracts\nkaam calculate_tax(amount: point, rate: point) -> point {\n    de amount * rate;\n}\n\n// Typed collections and variables\npakad bill: point = 1250.50;\npakad gstRate: point = 0.18;\npakad totalTax: point = calculate_tax(bill, gstRate);\n\ndikha f\"Total Tax Due: Rs.{totalTax}\";"
+                },
+                {
+                    "type": "heading",
+                    "level": 2,
+                    "text": "Static Checking via CLI"
+                },
+                {
+                    "type": "text",
+                    "text": "You can run static analysis checks over your entire codebase using the compiler without executing the code:"
+                },
+                {
+                    "type": "terminal",
+                    "commands": [
+                        "meme check src/App.meme",
+                        "meme check tests/"
+                    ]
+                }
+            ]
+        }
+    ];
+}
