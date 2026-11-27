@@ -5705,6 +5705,271 @@ static Value deviceInfoToInterpValue(const MemeNative::DeviceInfo &d)
     return Value(m);
 }
 
+static Value permissionStatusToInterpValue(const MemePermissions::PermissionStatus &st)
+{
+    auto pm = std::make_shared<MemeMap>();
+    pm->set("permission", Value(st.permission));
+    pm->set("state", Value(st.state));
+    pm->set("granted", Value(st.granted));
+    pm->set("canAskAgain", Value(st.canAskAgain));
+    pm->set("restricted", Value(st.restricted));
+    pm->set("limited", Value(st.limited));
+    pm->set("platform", Value(st.platform));
+    pm->set("reason", Value(st.reason));
+    pm->set("error", Value(st.error));
+    return Value(pm);
+}
+
+struct InterpPendingPermState {
+    std::mutex mu;
+    bool done = false;
+    Value result;
+    std::vector<Value> waiters;
+};
+
+static void attachInterpPromiseMethods(const std::shared_ptr<MemeMap> &m, Interpreter &interp,
+                                       const std::shared_ptr<InterpPendingPermState> &pstate)
+{
+    m->set("__is_promise__", Value(true));
+    auto thenFn = [&interp, pstate](Interpreter &callInterp, const std::vector<Value> &a) -> Value {
+        if (a.empty() || !a[0].deref().isCallable()) return Value(std::monostate{});
+        Value cb = a[0].deref();
+        auto nextState = std::make_shared<InterpPendingPermState>();
+        bool immediate = false;
+        Value resolvedVal;
+        {
+            std::lock_guard<std::mutex> lock(pstate->mu);
+            if (pstate->done) {
+                immediate = true;
+                resolvedVal = pstate->result;
+            } else {
+                pstate->waiters.push_back(Value(std::make_shared<NativeMethodCallable>("__then_waiter", 1, [&interp, cb, nextState](Interpreter &, const std::vector<Value> &wa) -> Value {
+                    Value out = MemePrimitivesModule::invokeCallableSafe(interp, cb, wa);
+                    std::vector<Value> nextWaiters;
+                    {
+                        std::lock_guard<std::mutex> nlock(nextState->mu);
+                        nextState->done = true;
+                        nextState->result = out;
+                        nextWaiters = std::move(nextState->waiters);
+                        nextState->waiters.clear();
+                    }
+                    for (const auto &nw : nextWaiters) {
+                        MemePrimitivesModule::invokeCallableSafe(interp, nw, {out});
+                    }
+                    return out;
+                })));
+            }
+        }
+        if (immediate) {
+            Value out = MemePrimitivesModule::invokeCallableSafe(callInterp, cb, {resolvedVal}).deref();
+            nextState->done = true;
+            nextState->result = out;
+            auto resMap = out.isMap() ? out.getMap() : std::make_shared<MemeMap>();
+            if (!out.isMap()) resMap->set("value", out);
+            attachInterpPromiseMethods(resMap, interp, nextState);
+            return Value(resMap);
+        }
+        auto pending = std::make_shared<MemeMap>();
+        attachInterpPromiseMethods(pending, interp, nextState);
+        return Value(pending);
+    };
+    auto thenCallable = Value(std::make_shared<NativeMethodCallable>("then", 1, thenFn));
+    m->set("then", thenCallable);
+    m->set("phir", thenCallable);
+}
+
+static std::shared_ptr<MemeMap> createPlatformModule()
+{
+    auto pm = std::make_shared<MemeMap>();
+    pm->isModule = true;
+    auto parseSpecMatch = [](const Value &v) -> bool {
+        Value d = v.deref();
+        if (d.isList()) {
+            for (const auto &it : d.getList()->elements) {
+                if (MemePlatform::matchPlatformSpec(it.deref().toString())) return true;
+            }
+            return false;
+        }
+        return MemePlatform::matchPlatformSpec(d.toString());
+    };
+    pm->set("os", Value(std::make_shared<NativeMethodCallable>("os", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform());
+    })));
+    pm->set("arch", Value(std::make_shared<NativeMethodCallable>("arch", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentArch());
+    })));
+    pm->set("is", Value(std::make_shared<NativeMethodCallable>("is", 1, [parseSpecMatch](Interpreter &, const std::vector<Value> &a) -> Value {
+        return Value(parseSpecMatch(a[0]));
+    })));
+    pm->set("isIos", Value(std::make_shared<NativeMethodCallable>("isIos", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform() == "ios");
+    })));
+    pm->set("isAndroid", Value(std::make_shared<NativeMethodCallable>("isAndroid", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform() == "android");
+    })));
+    pm->set("isMac", Value(std::make_shared<NativeMethodCallable>("isMac", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform() == "mac");
+    })));
+    pm->set("isWindows", Value(std::make_shared<NativeMethodCallable>("isWindows", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform() == "windows");
+    })));
+    pm->set("isLinux", Value(std::make_shared<NativeMethodCallable>("isLinux", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::currentPlatform() == "linux");
+    })));
+    pm->set("isWeb", Value(std::make_shared<NativeMethodCallable>("isWeb", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isWeb());
+    })));
+    pm->set("isMobile", Value(std::make_shared<NativeMethodCallable>("isMobile", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isMobile());
+    })));
+    pm->set("isDesktop", Value(std::make_shared<NativeMethodCallable>("isDesktop", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isDesktop());
+    })));
+    pm->set("isNative", Value(std::make_shared<NativeMethodCallable>("isNative", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isNative());
+    })));
+    pm->set("isApple", Value(std::make_shared<NativeMethodCallable>("isApple", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isApple());
+    })));
+    pm->set("isPosix", Value(std::make_shared<NativeMethodCallable>("isPosix", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        return Value(MemePlatform::isPosix());
+    })));
+    pm->set("select", Value(std::make_shared<NativeMethodCallable>("select", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        Value m = a[0].deref();
+        if (!m.isMap()) return Value(std::monostate{});
+        auto mp = m.getMap();
+        for (const auto &k : MemePlatform::platformSelectPriority()) {
+            if (mp->has(k)) return mp->entries[k];
+        }
+        return Value(std::monostate{});
+    })));
+    pm->set("info", Value(std::make_shared<NativeMethodCallable>("info", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto m = std::make_shared<MemeMap>();
+        m->set("os", Value(MemePlatform::currentPlatform()));
+        m->set("arch", Value(MemePlatform::currentArch()));
+        m->set("isMobile", Value(MemePlatform::isMobile()));
+        m->set("isDesktop", Value(MemePlatform::isDesktop()));
+        m->set("isWeb", Value(MemePlatform::isWeb()));
+        m->set("isNative", Value(MemePlatform::isNative()));
+        m->set("isApple", Value(MemePlatform::isApple()));
+        return Value(m);
+    })));
+    pm->set("Platform", ShadcnComponents::createPlatformComponent());
+    return pm;
+}
+
+static std::shared_ptr<MemeMap> createPermissionsModule(Interpreter &interpreter)
+{
+    auto pm = std::make_shared<MemeMap>();
+    pm->isModule = true;
+    pm->set("check", Value(std::make_shared<NativeMethodCallable>("check", 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        return permissionStatusToInterpValue(MemeNative::checkPermission(a[0].deref().toString()));
+    })));
+    pm->set("status", pm->entries["check"]);
+    pm->set("isSupported", Value(std::make_shared<NativeMethodCallable>("isSupported", 1, 2, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string cap = a[0].deref().toString();
+        std::string plat = a.size() > 1 ? a[1].deref().toString() : "";
+        return Value(MemePermissions::isSupportedOnPlatform(cap, plat));
+    })));
+    pm->set("declared", Value(std::make_shared<NativeMethodCallable>("declared", 0, [](Interpreter &, const std::vector<Value> &) -> Value {
+        auto l = std::make_shared<MemeList>();
+        for (const auto &c : MemePermissions::getDeclaredPermissions()) l->elements.push_back(Value(c));
+        return Value(l);
+    })));
+    pm->set("openSettings", Value(std::make_shared<NativeMethodCallable>("openSettings", 0, 1, [](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string cap = a.empty() ? "" : a[0].deref().toString();
+        return Value(MemeNative::openAppSettings(cap));
+    })));
+    pm->set("request", Value(std::make_shared<NativeMethodCallable>("request", 1, 2, [&interpreter](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::string cap = a[0].deref().toString();
+        Value cb = (a.size() >= 2 && a.back().deref().isCallable()) ? a.back().deref() : Value(std::monostate{});
+        auto pstate = std::make_shared<InterpPendingPermState>();
+        Value initial = permissionStatusToInterpValue(MemeNative::checkPermission(cap));
+        MemeNative::requestPermissionAsync(cap, [&interpreter, pstate, cb](const MemePermissions::PermissionStatus &st) {
+            Value mv = permissionStatusToInterpValue(st);
+            std::vector<Value> waiters;
+            {
+                std::lock_guard<std::mutex> lock(pstate->mu);
+                pstate->done = true;
+                pstate->result = mv;
+                waiters = std::move(pstate->waiters);
+                pstate->waiters.clear();
+            }
+            if (cb.isCallable()) MemePrimitivesModule::invokeCallableSafe(interpreter, cb, {mv});
+            for (const auto &w : waiters) MemePrimitivesModule::invokeCallableSafe(interpreter, w, {mv});
+        });
+        Value ret = initial;
+        {
+            std::lock_guard<std::mutex> lock(pstate->mu);
+            if (pstate->done) ret = pstate->result;
+        }
+        attachInterpPromiseMethods(ret.getMap(), interpreter, pstate);
+        return ret;
+    })));
+    pm->set("requestMany", Value(std::make_shared<NativeMethodCallable>("requestMany", 1, 2, [&interpreter](Interpreter &, const std::vector<Value> &a) -> Value {
+        std::vector<std::string> caps;
+        Value first = a[0].deref();
+        if (first.isList()) {
+            for (const auto &e : first.getList()->elements) caps.push_back(e.deref().toString());
+        } else if (!first.isCallable()) {
+            caps.push_back(first.toString());
+        }
+        Value cb = (a.size() >= 2 && a.back().deref().isCallable()) ? a.back().deref() : Value(std::monostate{});
+        auto pstate = std::make_shared<InterpPendingPermState>();
+        if (caps.empty()) {
+            auto emptyMap = std::make_shared<MemeMap>();
+            pstate->done = true;
+            pstate->result = Value(emptyMap);
+            if (cb.isCallable()) MemePrimitivesModule::invokeCallableSafe(interpreter, cb, {Value(emptyMap)});
+            attachInterpPromiseMethods(emptyMap, interpreter, pstate);
+            return Value(emptyMap);
+        }
+        struct BatchState {
+            std::mutex mu;
+            size_t remaining = 0;
+            std::shared_ptr<MemeMap> results = std::make_shared<MemeMap>();
+        };
+        auto batch = std::make_shared<BatchState>();
+        batch->remaining = caps.size();
+        for (const auto &rawC : caps) {
+            std::string key = MemePermissions::normalizeCapability(rawC);
+            MemeNative::requestPermissionAsync(rawC, [&interpreter, batch, pstate, cb, key](const MemePermissions::PermissionStatus &st) {
+                bool allDone = false;
+                Value snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(batch->mu);
+                    batch->results->set(key, permissionStatusToInterpValue(st));
+                    if (batch->remaining > 0) batch->remaining--;
+                    if (batch->remaining == 0) {
+                        allDone = true;
+                        snapshot = Value(batch->results);
+                    }
+                }
+                if (allDone) {
+                    std::vector<Value> waiters;
+                    {
+                        std::lock_guard<std::mutex> lock(pstate->mu);
+                        pstate->done = true;
+                        pstate->result = snapshot;
+                        waiters = std::move(pstate->waiters);
+                        pstate->waiters.clear();
+                    }
+                    if (cb.isCallable()) MemePrimitivesModule::invokeCallableSafe(interpreter, cb, {snapshot});
+                    for (const auto &w : waiters) MemePrimitivesModule::invokeCallableSafe(interpreter, w, {snapshot});
+                }
+            });
+        }
+        auto retMap = std::make_shared<MemeMap>();
+        {
+            std::lock_guard<std::mutex> lock(pstate->mu);
+            if (pstate->done && pstate->result.isMap()) retMap = pstate->result.getMap();
+        }
+        attachInterpPromiseMethods(retMap, interpreter, pstate);
+        return Value(retMap);
+    })));
+    return pm;
+}
+
 static std::shared_ptr<MemeMap> createNativeModule(Interpreter &interpreter)
 {
     auto m = std::make_shared<MemeMap>();
@@ -6152,6 +6417,10 @@ static std::shared_ptr<MemeMap> createNativeModule(Interpreter &interpreter)
         return Value(MemeNative::hideKeyboard());
     })));
     m->set("window", Value(winMod));
+    m->set("platform", Value(createPlatformModule()));
+    auto permsMod = Value(createPermissionsModule(interpreter));
+    m->set("permissions", permsMod);
+    m->set("perms", permsMod);
 
     return m;
 }
@@ -6197,6 +6466,9 @@ static std::shared_ptr<MemeMap> createAppModule(Interpreter &interpreter)
     m->set("device_info", deviceMap->entries["info"]);
     m->set("battery", nativeMap->entries["battery"]);
     m->set("network", nativeMap->entries["network"]);
+    m->set("platform", nativeMap->entries["platform"]);
+    m->set("permissions", nativeMap->entries["permissions"]);
+    m->set("perms", nativeMap->entries["permissions"]);
 
     return m;
 }
@@ -11979,6 +12251,14 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
     globals->define("native", nativeMod);
     importedModules["native"] = nativeMod;
     importedModules["device"] = nativeMod.getMap()->entries["device"];
+    Value platMod = nativeMod.getMap()->entries["platform"];
+    Value permsMod = nativeMod.getMap()->entries["permissions"];
+    globals->define("platform", platMod);
+    importedModules["platform"] = platMod;
+    globals->define("permissions", permsMod);
+    globals->define("perms", permsMod);
+    importedModules["permissions"] = permsMod;
+    importedModules["perms"] = permsMod;
 
     auto appMod = Value(createAppModule(*this));
     globals->define("app", appMod);
@@ -12418,6 +12698,9 @@ Interpreter::Interpreter(std::ostream &out, std::istream &in)
         uim->set("Router", routerCompVal);
         uim->set("Route", routeCompVal);
         uim->set("Link", linkCompVal);
+        auto platformCompVal = ShadcnComponents::createPlatformComponent();
+        globals->define("Platform", platformCompVal);
+        uim->set("Platform", platformCompVal);
 
         auto eguiMod = std::make_shared<MemeMap>();
         eguiMod->isModule = true;
@@ -13031,20 +13314,18 @@ Value Interpreter::importModule(const std::string &path, int line)
             }
         }
         autoLoadEnvFile(root);
-        std::filesystem::path target = std::filesystem::absolute(root / rel);
-        if (!std::filesystem::exists(target) && !target.has_extension()) {
-            target += ".meme";
+        std::string activePlat = MemePlatform::currentPlatform();
+        std::filesystem::path resolved = MemePlatform::probeCandidateBase(std::filesystem::absolute(root / rel), activePlat);
+        if (resolved.empty()) {
+            resolved = MemePlatform::probeCandidateBase(std::filesystem::absolute(root / "src" / rel), activePlat);
         }
-        if (!std::filesystem::exists(target)) {
-            std::filesystem::path srcTarget = std::filesystem::absolute(root / "src" / rel);
-            if (!std::filesystem::exists(srcTarget) && !srcTarget.has_extension()) {
-                srcTarget += ".meme";
-            }
-            if (std::filesystem::exists(srcTarget)) {
-                target = srcTarget;
+        if (resolved.empty()) {
+            resolved = std::filesystem::absolute(root / rel);
+            if (!std::filesystem::exists(resolved) && !resolved.has_extension()) {
+                resolved += ".meme";
             }
         }
-        return importModule(target.string(), line);
+        return importModule(resolved.string(), line);
     }
 
     // Check built-in modules or exact-cached names first (e.g. "hisab", "json", "file", "waqt")
@@ -13103,7 +13384,8 @@ Value Interpreter::importModule(const std::string &path, int line)
         importedModules[path] = mod;
         return mod;
     }
-    if (path == "native" || path == "app" || path == "device")
+    if (path == "native" || path == "app" || path == "device" ||
+        path == "platform" || path == "permissions" || path == "perms")
     {
         return importedModules[path];
     }
@@ -13130,6 +13412,7 @@ Value Interpreter::importModule(const std::string &path, int line)
     auto resolvePackageFolder = [&](const std::filesystem::path &dir, const std::string &pkgName) -> std::filesystem::path {
         std::error_code ec;
         if (!std::filesystem::exists(dir, ec) || !std::filesystem::is_directory(dir, ec)) return "";
+        std::string activePlat = MemePlatform::currentPlatform();
         std::filesystem::path manifest = dir / "tapri.json";
         if (isRegularMemeFile(manifest)) {
             try {
@@ -13142,20 +13425,28 @@ Value Interpreter::importModule(const std::string &path, int line)
                         auto m = parsed.getMap();
                         if (m->has("main")) {
                             std::string mainFile = m->entries["main"].toString();
-                            if (isRegularMemeFile(dir / mainFile)) return dir / mainFile;
-                            if (isRegularMemeFile(dir / (mainFile + ".meme"))) return dir / (mainFile + ".meme");
+                            auto probed = MemePlatform::probeCandidateBase(dir / mainFile, activePlat);
+                            if (!probed.empty()) return probed;
                         }
                     }
                 }
             } catch (...) {}
         }
-        if (isRegularMemeFile(dir / (pkgName + ".meme"))) return dir / (pkgName + ".meme");
-        if (isRegularMemeFile(dir / "index.meme")) return dir / "index.meme";
+        auto probedPkg = MemePlatform::probeCandidateBase(dir / pkgName, activePlat);
+        if (!probedPkg.empty()) return probedPkg;
+        auto probedIdx = MemePlatform::probeCandidateBase(dir / "index", activePlat);
+        if (!probedIdx.empty()) return probedIdx;
         if (isRegularMemeFile(dir / "main.meme")) return dir / "main.meme";
         return "";
     };
 
-    if (!isRegularMemeFile(canonicalPath))
+    std::string activePlat = MemePlatform::currentPlatform();
+    std::filesystem::path probedDirect = MemePlatform::probeCandidateBase(canonicalPath, activePlat);
+    if (!probedDirect.empty())
+    {
+        canonicalPath = probedDirect;
+    }
+    else if (!isRegularMemeFile(canonicalPath))
     {
         if (!canonicalPath.has_extension() && isRegularMemeFile(canonicalPath.string() + ".meme"))
         {
@@ -13179,16 +13470,22 @@ Value Interpreter::importModule(const std::string &path, int line)
                     found = true;
                     break;
                 }
-                if (isRegularMemeFile(base / (path + ".meme")))
+                std::filesystem::path probedBase = MemePlatform::probeCandidateBase(base / path, activePlat);
+                if (!probedBase.empty())
                 {
-                    canonicalPath = base / (path + ".meme");
+                    canonicalPath = probedBase;
                     found = true;
                     break;
                 }
             }
             if (!found)
             {
-                if (isRegularMemeFile(std::filesystem::path(path)))
+                std::filesystem::path probedCwd = MemePlatform::probeCandidateBase(std::filesystem::path(path), activePlat);
+                if (!probedCwd.empty())
+                {
+                    canonicalPath = probedCwd;
+                }
+                else if (isRegularMemeFile(std::filesystem::path(path)))
                 {
                     canonicalPath = std::filesystem::path(path);
                 }

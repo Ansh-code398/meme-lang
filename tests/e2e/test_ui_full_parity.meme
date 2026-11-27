@@ -542,4 +542,71 @@ sahi_hai(sens.available || !sens.available, sach, "T5_native_sensors_poll");
 pakad appDev = app.device_info();
 sahi_hai(appDev.os, dinfo.os, "T5_app_device_info_parity");
 
+// ==============================================================================
+// TIER 6: Platform Separation & Cross-Platform Permissions Parity
+// ==============================================================================
+
+bula "platform";
+bula "permissions";
+bula "platform" jaise { os, select, is };
+bula "permissions" jaise { check, request, requestMany, isSupported };
+
+sahi_hai(os(), platform.os(), "T6_platform_os_named_import");
+sahi_hai(is(os()), sach, "T6_platform_is_self");
+pakad selVal = select({
+    "ios": "APPLE_MOBILE",
+    "android": "ANDROID_NATIVE",
+    "mac": "APPLE_DESKTOP",
+    "windows": "WIN_DESKTOP",
+    "linux": "LINUX_DESKTOP",
+    "web": "BROWSER_WASM",
+    "default": "FALLBACK"
+});
+assert_true(selVal != "FALLBACK" && selVal != "", "T6_platform_select_resolved_target");
+
+assert_true(isSupported("camera"), "T6_perm_camera_supported");
+assert_true(isSupported("notifications"), "T6_perm_notifications_supported");
+sahi_hai(isSupported("biometrics", "web"), jhooth, "T6_perm_biometrics_unsupported_on_web");
+
+pakad camChk = check("cam");
+sahi_hai(camChk.permission, "camera", "T6_perm_alias_normalized");
+assert_true(camChk.state != "", "T6_perm_check_has_state");
+
+pakad camCallbackState = "";
+request("camera", (res) => {
+    camCallbackState = res.state;
+});
+assert_true(camCallbackState == "granted" || camCallbackState == "prompt" || camCallbackState == "denied", "T6_perm_request_callback");
+
+pakad thenState = "";
+permissions.request("notifications").then((res) => {
+    thenState = res.state;
+});
+assert_true(thenState != "", "T6_perm_request_thenable");
+
+pakad batchDone = jhooth;
+requestMany(["notifications", "location"], (res) => {
+    batchDone = res.notifications.permission == "notifications" && res.location.permission == "location";
+});
+sahi_hai(batchDone, sach, "T6_perm_request_many_batch");
+
+kaam PlatformBranchApp() {
+    pakad curOs = platform.os();
+    de (
+        <div class="p-2 flex flex-col gap-1">
+            <Platform only={curOs}>
+                <span testId="plat_match_box">{"Active:" + curOs}</span>
+            </Platform>
+            <Platform exclude={curOs} fallback={<span testId="plat_fallback_box">FallbackActive</span>}>
+                <span testId="plat_skip_box">ShouldNotRender</span>
+            </Platform>
+        </div>
+    );
+}
+ui.mount(<PlatformBranchApp />);
+pakad platAg = createAgent();
+assert_true(platAg.getByTestId("plat_match_box") != khali, "T6_jsx_platform_only_renders");
+sahi_hai(platAg.getByTestId("plat_skip_box"), khali, "T6_jsx_platform_exclude_hides");
+assert_true(platAg.getByTestId("plat_fallback_box") != khali, "T6_jsx_platform_fallback_renders");
+
 dikha "ALL MEME-UI DUAL-ENGINE PARITY TESTS PASSED!";

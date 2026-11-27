@@ -10,6 +10,7 @@
 #include "../utils/StringInterner.h"
 #include "../interpreter/Interpreter.h"
 #include "../packager/IconAssets.h"
+#include "../packager/MemePackager.h"
 
 // Test helper: runs code in a fresh interpreter and captures stdout
 static std::string runAndCapture(const std::string &code)
@@ -3246,6 +3247,210 @@ static void testInnerContainerScrollAndNativeApisAndIcons()
     std::cout << "PASSED\n";
 }
 
+static void testPlatformAndPermissionsAndManifest()
+{
+    std::cout << "Running Platform Separation & Cross-Platform Permissions tests... ";
+
+    // 1. MemePlatform normalization, spec matching, select priority & candidate probing
+    {
+        assert(MemePlatform::normalizePlatformName("iPhoneOS") == "ios");
+        assert(MemePlatform::normalizePlatformName("ipa") == "ios");
+        assert(MemePlatform::normalizePlatformName("apk") == "android");
+        assert(MemePlatform::normalizePlatformName("win32") == "windows");
+        assert(MemePlatform::normalizePlatformName("darwin") == "mac");
+        assert(MemePlatform::normalizePlatformName("wasm") == "web");
+
+        assert(MemePlatform::matchPlatformSpec("ios,android", "ios"));
+        assert(MemePlatform::matchPlatformSpec("mobile", "android"));
+        assert(!MemePlatform::matchPlatformSpec("mobile", "mac"));
+        assert(MemePlatform::matchPlatformSpec("apple", "ios"));
+        assert(MemePlatform::matchPlatformSpec("apple", "mac"));
+        assert(MemePlatform::matchPlatformSpec("desktop", "linux"));
+        assert(MemePlatform::matchPlatformSpec("!web", "mac"));
+        assert(!MemePlatform::matchPlatformSpec("!web", "web"));
+
+        auto prio = MemePlatform::platformSelectPriority("ios");
+        assert(!prio.empty() && prio[0] == "ios");
+
+        namespace fs = std::filesystem;
+        fs::path tmp = fs::temp_directory_path() / "meme_plat_probe_suite";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp / "platforms" / "linux");
+        {
+            std::ofstream(tmp / "mod.meme") << "kaam v() { de \"default\"; }\n";
+            std::ofstream(tmp / "mod.ios.meme") << "kaam v() { de \"ios\"; }\n";
+            std::ofstream(tmp / "mod.mobile.meme") << "kaam v() { de \"mobile\"; }\n";
+            std::ofstream(tmp / "mod.web.meme") << "kaam v() { de \"web\"; }\n";
+            std::ofstream(tmp / "platforms" / "linux" / "mod.meme") << "kaam v() { de \"linux\"; }\n";
+        }
+        assert(MemePlatform::probeCandidateBase(tmp / "mod", "ios").filename() == "mod.ios.meme");
+        assert(MemePlatform::probeCandidateBase(tmp / "mod.meme", "android").filename() == "mod.mobile.meme");
+        assert(MemePlatform::probeCandidateBase(tmp / "mod", "web").filename() == "mod.web.meme");
+        assert(MemePlatform::probeCandidateBase(tmp / "mod", "linux").filename() == "mod.meme");
+        assert(MemePlatform::probeCandidateBase(tmp / "mod", "linux").parent_path().filename() == "linux");
+        assert(MemePlatform::probeCandidateBase(tmp / "mod", "windows").filename() == "mod.meme");
+        fs::remove_all(tmp);
+    }
+
+    // 2. MemePermissions normalization, OS permission maps, strict mode & headless overrides
+    {
+        assert(MemePermissions::normalizeCapability("CAM") == "camera");
+        assert(MemePermissions::normalizeCapability("PhotoLibrary") == "photos");
+        assert(MemePermissions::normalizeCapability("geolocation") == "location");
+        assert(MemePermissions::normalizeCapability("background_location") == "locationAlways");
+        assert(MemePermissions::normalizeCapability("FaceID") == "biometrics");
+        assert(MemePermissions::normalizeCapability("POST_NOTIFICATIONS") == "notifications");
+        assert(MemePermissions::normalizeStateString("authorized") == "granted");
+        assert(MemePermissions::normalizeStateString("notDetermined") == "prompt");
+        assert(MemePermissions::normalizeStateString("blocked") == "denied");
+
+        auto ph = MemePermissions::androidPermissionsFor("photos");
+        assert(ph.size() == 2 && ph[0].name == "android.permission.READ_MEDIA_IMAGES" && ph[1].maxSdkVersion == 32);
+        auto ble = MemePermissions::androidPermissionsFor("bluetooth");
+        assert(!ble.empty() && ble[0].flags == "neverForLocation");
+        auto locCoarse = MemePermissions::androidPermissionsFor("location", "coarse");
+        assert(locCoarse.size() == 1 && locCoarse[0].name == "android.permission.ACCESS_COARSE_LOCATION");
+
+        assert(MemePermissions::appleUsagePlistKeyFor("camera", "Demo").first == "NSCameraUsageDescription");
+        assert(MemePermissions::macEntitlementKeyFor("microphone") == "com.apple.security.device.audio-input");
+        auto webPol = MemePermissions::webPolicyDirectivesFor("location");
+        assert(webPol.size() == 1 && webPol[0] == "geolocation=(self)");
+
+        assert(MemePermissions::isSupportedOnPlatform("camera", "web"));
+        assert(!MemePermissions::isSupportedOnPlatform("biometrics", "web"));
+        assert(MemePermissions::isSupportedOnPlatform("biometrics", "ios"));
+
+#if defined(_WIN32)
+        _putenv_s("MEME_HEADLESS", "1");
+#else
+        setenv("MEME_HEADLESS", "1", 1);
+#endif
+        MemePermissions::setDeclaredPermissions({"notifications", "camera"}, true, {{"camera", "Scan QR"}});
+        auto d = MemePermissions::getDeclaredPermissions();
+        assert(d.size() == 2 && MemePermissions::isPermissionDeclared("camera") && !MemePermissions::isPermissionDeclared("location"));
+
+        auto sLoc = MemeNative::checkPermission("location");
+        assert(sLoc.state == "denied" && !sLoc.granted && !sLoc.canAskAgain);
+
+        MemePermissions::setHeadlessPermissionOverride("camera", "prompt-with-rationale");
+        auto sCam = MemeNative::checkPermission("camera");
+        assert(sCam.state == "prompt-with-rationale" && sCam.canAskAgain && sCam.reason == "Scan QR");
+
+        MemePermissions::setHeadlessPermissionOverride("photos", "limited");
+        MemePermissions::setDeclaredPermissions({"notifications", "camera", "photos"}, true, {});
+        auto sPh = MemeNative::checkPermission("photos");
+        assert(sPh.state == "limited" && sPh.granted && sPh.limited);
+
+        MemePermissions::clearHeadlessPermissionOverrides();
+        MemePermissions::setDeclaredPermissions({}, false, {});
+        MemePermissions::permStore().hasDeclaredCapabilities = false;
+    }
+
+    // 3. tapri.json per-platform permissions parser
+    {
+        namespace fs = std::filesystem;
+        fs::path tmp = fs::temp_directory_path() / "meme_tapri_perm_suite";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp / "src");
+        {
+            std::ofstream(tmp / "tapri.json") << R"({
+              "name": "sample-perm",
+              "displayName": "SamplePerm",
+              "strictPermissions": true,
+              "permissions": {
+                "common": ["notifications"],
+                "ios": { "camera": "iOS Custom Cam" },
+                "android": ["location"]
+              }
+            })";
+            std::ofstream(tmp / "src" / "App.meme") << "dikha \"hi\";\n";
+        }
+        auto cfg = MemePackager::detail::mergeTapriConfig(tmp / "src" / "App.meme", MemePackager::PackageConfig{});
+        assert(cfg.displayName == "SamplePerm");
+        assert(cfg.permissions.hasPermissionsBlock && cfg.permissions.strictMode);
+        auto iosCaps = cfg.permissions.resolvedForTarget("ios");
+        assert(std::find(iosCaps.begin(), iosCaps.end(), "notifications") != iosCaps.end());
+        assert(std::find(iosCaps.begin(), iosCaps.end(), "camera") != iosCaps.end());
+        assert(std::find(iosCaps.begin(), iosCaps.end(), "location") == iosCaps.end());
+        assert(cfg.permissions.reasonFor("ios", "camera", "SamplePerm") == "iOS Custom Cam");
+        auto andCaps = cfg.permissions.resolvedForTarget("apk");
+        assert(std::find(andCaps.begin(), andCaps.end(), "location") != andCaps.end());
+        assert(std::find(andCaps.begin(), andCaps.end(), "camera") == andCaps.end());
+        fs::remove_all(tmp);
+    }
+
+    // 4. Interpreter E2E: platform, permissions, .then(), <Platform>, and platform file imports
+    {
+#if defined(_WIN32)
+        _putenv_s("MEME_HEADLESS", "1");
+#else
+        setenv("MEME_HEADLESS", "1", 1);
+#endif
+        std::string out = runAndCapture(R"(
+bula "platform";
+bula "permissions";
+bula "ui:shadcn" jaise { Platform };
+pakad o = platform.os();
+pakad s = platform.select({ "ios": "I", "android": "A", "mac": "M", "windows": "W", "linux": "L", "web": "WB", "default": "D" });
+pakad c1 = permissions.check("cam");
+pakad cbSt = "";
+permissions.request("camera", (r) => { cbSt = r.state; });
+pakad thSt = "";
+permissions.request("microphone").then((r) => { thSt = r.state; });
+pakad manyOk = jhooth;
+permissions.requestMany(["notifications", "location"], (m) => {
+    manyOk = m.notifications.granted && m.location.permission == "location";
+});
+dikha o + "|" + s + "|" + c1.permission + "|" + cbSt + "|" + thSt + "|" + string(manyOk);
+)");
+        assert(out.find("|camera|") != std::string::npos);
+        assert(out.find("granted|granted|han") != std::string::npos);
+
+        namespace fs = std::filesystem;
+        fs::path tmp = fs::temp_directory_path() / "meme_interp_plat_import";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        {
+            std::ofstream(tmp / "drv.meme") << "kaam name() { de \"DRV_DEFAULT\"; }\n";
+            std::ofstream(tmp / "drv.ios.meme") << "kaam name() { de \"DRV_IOS\"; }\n";
+            std::ofstream(tmp / "drv.web.meme") << "kaam name() { de \"DRV_WEB\"; }\n";
+            std::ofstream(tmp / "main.meme") << "bula \"./drv\" jaise d;\nbula \"platform\";\ndikha platform.os() + \":\" + d.name();\n";
+        }
+        auto runFileWithPlat = [&](const std::string &plat) -> std::string {
+#if defined(_WIN32)
+            _putenv_s("MEME_PLATFORM", plat.c_str());
+#else
+            setenv("MEME_PLATFORM", plat.c_str(), 1);
+#endif
+            MemePermissions::clearHeadlessPermissionOverrides();
+            std::stringstream cap;
+            std::stringstream in;
+            Interpreter interp(cap, in);
+            interp.setHeadless(true);
+            interp.setCurrentFilePath((tmp / "main.meme").string());
+            std::ifstream mf(tmp / "main.meme");
+            std::stringstream src;
+            src << mf.rdbuf();
+            Lexer lx(src.str());
+            auto toks = lx.tokenize();
+            Parser ps(toks);
+            auto prog = ps.parseProgram();
+            interp.interpret(prog);
+            return cap.str();
+        };
+        assert(runFileWithPlat("ios").find("ios:DRV_IOS") != std::string::npos);
+        assert(runFileWithPlat("web").find("web:DRV_WEB") != std::string::npos);
+        assert(runFileWithPlat("windows").find("windows:DRV_DEFAULT") != std::string::npos);
+#if !defined(_WIN32)
+        unsetenv("MEME_PLATFORM");
+#endif
+        fs::remove_all(tmp);
+        MemePermissions::clearHeadlessPermissionOverrides();
+    }
+
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -3279,6 +3484,7 @@ int main()
     testFastHttpServersExpressAndElysiaTypeSafety();
     testNativeUiPrimitivesTextEngineAndTessellator();
     testInnerContainerScrollAndNativeApisAndIcons();
+    testPlatformAndPermissionsAndManifest();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

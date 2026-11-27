@@ -855,6 +855,57 @@ inline MemeValue Link(const MemeValue &props = MemeValue()) {
     return make_jsx_element("a", false, {{"class", MemeValue(cls)}, {"onClick", onClick}}, ch.type == MemeValue::TYPE_LIST && ch.list_data ? *ch.list_data : std::vector<MemeValue>{ch});
 }
 
+inline MemeValue Platform(const MemeValue &props = MemeValue()) {
+    auto matchesVal = [](const MemeValue &v) -> bool {
+        if (v.type == MemeValue::TYPE_LIST && v.list_data) {
+            for (const auto &it : *v.list_data) {
+                if (MemePlatform::matchPlatformSpec(it.to_string())) return true;
+            }
+            return false;
+        }
+        return MemePlatform::matchPlatformSpec(v.to_string());
+    };
+    bool matched = true;
+    if (props.type == MemeValue::TYPE_MAP) {
+        if (props.has("only")) matched = matched && matchesVal(props.get("only"));
+        if (props.has("os")) matched = matched && matchesVal(props.get("os"));
+        if (props.has("target")) matched = matched && matchesVal(props.get("target"));
+        if (props.has("is")) matched = matched && matchesVal(props.get("is"));
+
+        static const char *kFlags[] = {
+            "ios", "android", "mac", "macos", "windows", "win",
+            "linux", "web", "wasm", "mobile", "desktop", "apple", "native"
+        };
+        bool hasPosFlag = false;
+        bool posFlagHit = false;
+        for (const char *fk : kFlags) {
+            if (props.has(fk)) {
+                if (props.get(fk).is_truthy()) {
+                    hasPosFlag = true;
+                    if (MemePlatform::matchPlatformSpec(fk)) posFlagHit = true;
+                } else {
+                    if (MemePlatform::matchPlatformSpec(fk)) matched = false;
+                }
+            }
+        }
+        if (hasPosFlag) matched = matched && posFlagHit;
+
+        if (props.has("exclude") && matchesVal(props.get("exclude"))) matched = false;
+        if (props.has("not") && matchesVal(props.get("not"))) matched = false;
+    }
+
+    if (matched) {
+        MemeValue ch = props.get("children", MemeValue(std::vector<MemeValue>{}));
+        return make_jsx_element("fragment", true, {}, ch.type == MemeValue::TYPE_LIST && ch.list_data ? *ch.list_data : std::vector<MemeValue>{ch});
+    }
+    if (props.has("fallback")) {
+        MemeValue fb = props.get("fallback");
+        if (fb.is_callable()) return fb.call_args({});
+        return fb;
+    }
+    return MemeValue();
+}
+
 // ---------------------------------------------------------------------------
 // ui_shadcn & ui_primitives & egui Builders
 // ---------------------------------------------------------------------------
@@ -1072,6 +1123,7 @@ inline MemeValue build_shadcn_module() {
     m["Icon"] = comp("icon", "w-4 h-4 text-slate-200");
     m["Separator"] = comp("div", "h-[1px] w-full bg-slate-800 my-2");
     m["Alert"] = comp("div", "relative w-full rounded-xl border border-slate-800 p-4 bg-slate-950");
+    m["Platform"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Platform(a.empty() ? MemeValue() : a[0]); });
     return m;
 }
 
@@ -2152,6 +2204,7 @@ inline MemeValue build_ui_module() {
     m["Router"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Router(a.empty() ? MemeValue() : a[0]); });
     m["Route"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Route(a.empty() ? MemeValue() : a[0]); });
     m["Link"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Link(a.empty() ? MemeValue() : a[0]); });
+    m["Platform"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Platform(a.empty() ? MemeValue() : a[0]); });
 
     return m;
 }
@@ -2264,6 +2317,7 @@ inline MemeValue ui_primitives = MemeAotUI::build_primitives_module();
 inline MemeValue Router_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Router(a.empty() ? MemeValue() : a[0]); });
 inline MemeValue Route_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Route(a.empty() ? MemeValue() : a[0]); });
 inline MemeValue Link_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Link(a.empty() ? MemeValue() : a[0]); });
+inline MemeValue Platform_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return MemeAotUI::Platform(a.empty() ? MemeValue() : a[0]); });
 
 extern "C" {
 #ifdef MEME_HOST_PROVIDES_MAIN

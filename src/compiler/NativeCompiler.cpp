@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include "../lexer/Lexer.h"
 #include "../types/TypeChecker.h"
+#include "../platform/MemePlatform.h"
 
 namespace {
 
@@ -93,6 +94,8 @@ private:
     std::ostringstream globalDecls;
     std::ostringstream mainBody;
     std::string currentSourceFile;
+    std::string targetPlatform;
+    bool explicitTargetPlatform = false;
     int indentLevel = 1;
     std::unordered_set<std::string> knownClasses;
     std::unordered_set<std::string> knownFunctions;
@@ -100,6 +103,8 @@ private:
     std::unordered_set<std::string> knownClassMethods;
     std::unordered_set<std::string> topLevelVars;
     std::vector<std::unordered_set<std::string>> scopeDeclaredVars;
+    std::unordered_map<std::string, std::string> renamedImports;
+    std::unordered_set<std::string> emittedPass0NamedImports;
     bool programUsesUi = false;
     bool inMainPass = false;
     int tempCounter = 0;
@@ -114,6 +119,22 @@ private:
             if (it->count(n)) return true;
         }
         return false;
+    }
+    static bool isCollidingGlobalSymbol(const std::string &n) {
+        static const std::unordered_set<std::string> kColl = {
+            "os", "select", "sys", "systumm", "env", "file", "json", "csv",
+            "net", "socket", "math", "samay", "itertools", "app", "native",
+            "platform", "permissions", "perms", "ui", "view", "gui", "egui",
+            "bind", "connect", "accept", "close", "read", "write", "time"
+        };
+        return kColl.count(n) > 0;
+    }
+    std::string resolveVarOrImportName(const std::string &n) {
+        if (!isVarDeclaredInScope(n) && !topLevelVars.count(n)) {
+            auto it = renamedImports.find(n);
+            if (it != renamedImports.end()) return it->second;
+        }
+        return sanitizeIdentifier(n);
     }
     std::unordered_set<std::string> knownModuleAliases = {
         "samay", "itertools", "math", "sys", "systumm", "os", "file", "fs",
@@ -327,8 +348,10 @@ private:
     }
 
 public:
-    explicit CodeGenerator(const std::string &sourceFile = "")
-        : currentSourceFile(sourceFile) {}
+    explicit CodeGenerator(const std::string &sourceFile = "", const std::string &targetPlat = "")
+        : currentSourceFile(sourceFile),
+          targetPlatform(targetPlat.empty() ? MemePlatform::currentPlatform() : MemePlatform::normalizePlatformName(targetPlat)),
+          explicitTargetPlatform(!targetPlat.empty() && MemePlatform::isKnownConcretePlatform(MemePlatform::normalizePlatformName(targetPlat))) {}
 
     bool detectUiInExpr(const Expr *expr) const {
         if (!expr) return false;
@@ -424,7 +447,8 @@ public:
             } else if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
                 if (imp->path != "ui" && imp->path != "egui" && imp->path != "view" && imp->path != "gui" &&
                     imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui" &&
-                    imp->path != "native" && imp->path != "app" && imp->path != "device") {
+                    imp->path != "native" && imp->path != "app" && imp->path != "device" &&
+                    imp->path != "platform" && imp->path != "permissions" && imp->path != "perms") {
                     std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
                     if (!alias.empty() && imp->namedImports.empty()) {
                         knownModuleAliases.insert(sanitizeIdentifier(alias));
@@ -565,7 +589,7 @@ public:
             if (knownFunctions.count(e->name) && !isVarDeclaredInScope(e->name) && !topLevelVars.count(e->name)) {
                 return sanitizeIdentifier(e->name) + "_fn";
             }
-            return sanitizeIdentifier(e->name);
+            return resolveVarOrImportName(e->name);
         }
         if (auto *e = dynamic_cast<const AssignExpr *>(expr)) {
             return "meme_assign(" + sanitizeIdentifier(e->name) + ", " + generateExpr(e->value.get()) + ")";
@@ -840,7 +864,7 @@ public:
                     calleeStr = sanitizeIdentifier(id->name);
                     spreadCalleeStr = sanitizeIdentifier(id->name) + "_fn";
                 } else {
-                    calleeStr = spreadCalleeStr = sanitizeIdentifier(id->name);
+                    calleeStr = spreadCalleeStr = resolveVarOrImportName(id->name);
                 }
             } else {
                 calleeStr = spreadCalleeStr = generateExpr(e->callee.get());
@@ -1127,7 +1151,7 @@ public:
                 } else {
                     if (knownFunctions.count(jsx->tag) && !isVarDeclaredInScope(jsx->tag) && !topLevelVars.count(jsx->tag)) {
                         compExprStr = sanitizeIdentifier(jsx->tag) + "_fn";
-                    } else if (jsx->tag == "Router" || jsx->tag == "Route" || jsx->tag == "Link") {
+                    } else if (jsx->tag == "Router" || jsx->tag == "Route" || jsx->tag == "Link" || jsx->tag == "Platform") {
                         compExprStr = jsx->tag + "_fn";
                     } else {
                         compExprStr = sanitizeIdentifier(jsx->tag);
@@ -1839,10 +1863,24 @@ public:
                 for (const auto &ni : imp->namedImports) {
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << (imp->path == "egui" ? "egui" : "ui") << ", \"" << escapeString(ni) << "\");\n";
                 }
-            } else if (imp->path == "native" || imp->path == "app" || imp->path == "device") {
-                std::string srcMod = (imp->path == "app") ? "app" : (imp->path == "device" ? "meme_index(native, \"device\")" : "native");
-                for (const auto &ni : imp->namedImports) {
-                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+            } else if (imp->path == "native" || imp->path == "app" || imp->path == "device" ||
+                       imp->path == "platform" || imp->path == "permissions" || imp->path == "perms") {
+                std::string srcMod = (imp->path == "app") ? "app"
+                    : (imp->path == "device" ? "meme_index(native, \"device\")"
+                    : ((imp->path == "permissions" || imp->path == "perms") ? "permissions"
+                    : (imp->path == "platform" ? "platform" : "native")));
+                if (!imp->namedImports.empty()) {
+                    for (const auto &ni : imp->namedImports) {
+                        std::string targetSym = isCollidingGlobalSymbol(ni) ? ("_imp_" + sanitizeIdentifier(ni)) : sanitizeIdentifier(ni);
+                        if (isCollidingGlobalSymbol(ni)) renamedImports[ni] = targetSym;
+                        if (imp->path == "platform" && ni == "Platform" && programUsesUi) {
+                            out << indent() << "MemeValue " << targetSym << " = Platform_fn;\n";
+                        } else {
+                            out << indent() << "MemeValue " << targetSym << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                        }
+                    }
+                } else if (!alias.empty() && alias != "native" && alias != "app" && alias != "platform" && alias != "permissions" && alias != "perms") {
+                    out << indent() << "MemeValue " << alias << " = " << srcMod << ";\n";
                 }
             }
             return;
@@ -2448,6 +2486,9 @@ public:
         out << "    for (int _i = 0; _i < argc; ++_i) {\n";
         out << "        sys.args.push_back(std::string(argv[_i]));\n";
         out << "    }\n";
+        if (explicitTargetPlatform) {
+            out << "    MemePlatform::setRuntimePlatformOverride(\"" << escapeString(targetPlatform) << "\");\n";
+        }
         out << "    env.auto_load();\n\n";
         out << "    try {\n";
         out << mainBody.str();
@@ -2470,25 +2511,38 @@ public:
 
     std::filesystem::path resolveModuleFile(const std::string &modPath) {
         std::vector<std::filesystem::path> candidates;
+        if (modPath.rfind("@/", 0) == 0) {
+            std::string rel = modPath.substr(2);
+            std::filesystem::path root = std::filesystem::current_path();
+            if (!currentSourceFile.empty()) {
+                std::filesystem::path check = std::filesystem::path(currentSourceFile).parent_path();
+                while (!check.empty()) {
+                    if (std::filesystem::exists(check / "tapri.json") || std::filesystem::exists(check / ".meme_env")) {
+                        root = check;
+                        break;
+                    }
+                    if (!check.has_relative_path() || check == check.parent_path()) break;
+                    check = check.parent_path();
+                }
+            }
+            candidates.push_back(root / rel);
+            candidates.push_back(root / "src" / rel);
+        }
         if (!currentSourceFile.empty()) {
             std::filesystem::path baseDir = std::filesystem::path(currentSourceFile).parent_path();
             if (!baseDir.empty()) {
-                candidates.push_back(baseDir / (modPath + ".meme"));
                 candidates.push_back(baseDir / modPath);
             }
         }
-        candidates.push_back(std::filesystem::path(".tapri_modules") / (modPath + ".meme"));
-        candidates.push_back(std::filesystem::path(".tapri_modules") / modPath / "index.meme");
-        candidates.push_back(std::filesystem::path(".tapri_modules") / modPath / (modPath + ".meme"));
         candidates.push_back(std::filesystem::path(".tapri_modules") / modPath);
-        candidates.push_back(std::filesystem::path(".meme_env") / "pkgs" / (modPath + ".meme"));
-        candidates.push_back(std::filesystem::path(".meme_env") / "pkgs" / modPath / "index.meme");
-        candidates.push_back(std::filesystem::path(modPath + ".meme"));
+        candidates.push_back(std::filesystem::path(".meme_env") / "pkgs" / modPath);
         candidates.push_back(std::filesystem::path(modPath));
-        for (const auto &c : candidates) {
-            std::error_code ec;
-            if (std::filesystem::exists(c, ec) && std::filesystem::is_regular_file(c, ec)) {
-                return std::filesystem::canonical(c, ec);
+        for (const auto &cand : candidates) {
+            std::filesystem::path hit = MemePlatform::probeCandidateBase(cand, targetPlatform);
+            if (!hit.empty()) {
+                std::error_code ec;
+                std::filesystem::path canon = std::filesystem::canonical(hit, ec);
+                return ec ? hit : canon;
             }
         }
         return "";
@@ -2505,6 +2559,8 @@ public:
         if (!file.is_open()) return;
         std::stringstream ss;
         ss << file.rdbuf();
+        std::string prevSourceFile = currentSourceFile;
+        currentSourceFile = resolved.string();
         try {
             Lexer modLexer(ss.str());
             auto modTokens = modLexer.tokenize();
@@ -2512,6 +2568,25 @@ public:
             auto modStmts = modParser.parseProgram();
 
             scanDeclarations(modStmts);
+
+            // Process nested imports first
+            for (const auto &stmt : modStmts) {
+                if (auto *nestedImp = dynamic_cast<const ImportStmt *>(stmt.get())) {
+                    if (nestedImp->path != "samay" && nestedImp->path != "itertools" && nestedImp->path != "math" &&
+                        nestedImp->path != "sys" && nestedImp->path != "systumm" && nestedImp->path != "os" &&
+                        nestedImp->path != "env" && nestedImp->path != "paryavaran" && nestedImp->path != "dotenv" &&
+                        nestedImp->path != "file" && nestedImp->path != "fs" && nestedImp->path != "dastavez" &&
+                        nestedImp->path != "json" && nestedImp->path != "csv" && nestedImp->path != "net" &&
+                        nestedImp->path != "socket" && nestedImp->path != "ui" && nestedImp->path != "egui" &&
+                        nestedImp->path != "view" && nestedImp->path != "gui" && nestedImp->path != "ui:shadcn" &&
+                        nestedImp->path != "ui:primitives" && nestedImp->path != "primitives" && nestedImp->path != "vercel:ui" &&
+                        nestedImp->path != "native" && nestedImp->path != "app" && nestedImp->path != "device" &&
+                        nestedImp->path != "platform" && nestedImp->path != "permissions" && nestedImp->path != "perms") {
+                        std::string nAlias = nestedImp->alias.empty() ? std::filesystem::path(nestedImp->path).stem().string() : nestedImp->alias;
+                        processModuleImport(nestedImp->path, sanitizeIdentifier(nAlias));
+                    }
+                }
+            }
 
             // Forward declare classes from module
             for (const auto &stmt : modStmts) {
@@ -2579,6 +2654,7 @@ public:
                 }
             }
         } catch (...) {}
+        currentSourceFile = prevSourceFile;
     }
 
     void generateProgram(const std::vector<std::unique_ptr<Stmt>> &program) {
@@ -2652,13 +2728,24 @@ public:
                     } else if (!alias.empty() && alias != "ui" && alias != "egui" && alias != "view" && alias != "gui") {
                         globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
                     }
-                } else if (imp->path == "native" || imp->path == "app" || imp->path == "device") {
-                    std::string srcMod = (imp->path == "app") ? "app" : (imp->path == "device" ? "meme_index(native, \"device\")" : "native");
+                } else if (imp->path == "native" || imp->path == "app" || imp->path == "device" ||
+                           imp->path == "platform" || imp->path == "permissions" || imp->path == "perms") {
+                    std::string srcMod = (imp->path == "app") ? "app"
+                        : (imp->path == "device" ? "meme_index(native, \"device\")"
+                        : ((imp->path == "permissions" || imp->path == "perms") ? "permissions"
+                        : (imp->path == "platform" ? "platform" : "native")));
                     if (!imp->namedImports.empty()) {
                         for (const auto &ni : imp->namedImports) {
-                            globalDecls << "inline MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                            std::string targetSym = isCollidingGlobalSymbol(ni) ? ("_imp_" + sanitizeIdentifier(ni)) : sanitizeIdentifier(ni);
+                            if (isCollidingGlobalSymbol(ni)) renamedImports[ni] = targetSym;
+                            if (!emittedPass0NamedImports.insert(targetSym).second) continue;
+                            if (imp->path == "platform" && ni == "Platform" && programUsesUi) {
+                                globalDecls << "inline MemeValue " << targetSym << " = Platform_fn;\n";
+                            } else {
+                                globalDecls << "inline MemeValue " << targetSym << " = meme_index(" << srcMod << ", \"" << escapeString(ni) << "\");\n";
+                            }
                         }
-                    } else if (!alias.empty() && alias != "native" && alias != "app") {
+                    } else if (!alias.empty() && alias != "native" && alias != "app" && alias != "platform" && alias != "permissions" && alias != "perms") {
                         globalDecls << "inline MemeValue " << alias << " = " << srcMod << ";\n";
                     }
                 } else {
@@ -2767,8 +2854,9 @@ public:
 } // namespace
 
 std::string NativeCompiler::generateCpp(const std::vector<std::unique_ptr<Stmt>> &program,
-                                       const std::string &sourceName) {
-    CodeGenerator generator(sourceName);
+                                       const std::string &sourceName,
+                                       const std::string &targetPlatform) {
+    CodeGenerator generator(sourceName, targetPlatform);
     generator.generateProgram(program);
     return generator.buildSource();
 }
@@ -2781,7 +2869,11 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
 
     try {
         std::string srcFile = !options.sourcePath.empty() ? options.sourcePath : (sourceName.find('.') != std::string::npos ? sourceName : sourceName + ".meme");
-        std::string cppCode = generateCpp(program, srcFile);
+        std::string effTarget;
+        if (!options.target.empty() && options.target != "host" && options.target != "native") {
+            effTarget = MemePlatform::normalizePlatformName(options.target);
+        }
+        std::string cppCode = generateCpp(program, srcFile, effTarget);
         result.generatedCppCode = cppCode;
 
         std::filesystem::path cppPath;

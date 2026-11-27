@@ -3,6 +3,7 @@
 
 #include "../interpreter/Value.h"
 #include "../interpreter/Callable.h"
+#include "../platform/MemePlatform.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -42,6 +43,63 @@ inline Value createJsxElement(
     node->set("class", Value(merged));
     node->set("children", children);
     return Value(node);
+}
+
+inline Value createPlatformComponent()
+{
+    auto platformFn = [](Interpreter &interp, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        auto matchesVal = [](const Value &v) -> bool {
+            Value d = v.deref();
+            if (d.isList()) {
+                for (const auto &it : d.getList()->elements) {
+                    if (MemePlatform::matchPlatformSpec(it.deref().toString())) return true;
+                }
+                return false;
+            }
+            return MemePlatform::matchPlatformSpec(d.toString());
+        };
+        bool matched = true;
+        if (props->has("only")) matched = matched && matchesVal(props->entries["only"]);
+        if (props->has("os")) matched = matched && matchesVal(props->entries["os"]);
+        if (props->has("target")) matched = matched && matchesVal(props->entries["target"]);
+        if (props->has("is")) matched = matched && matchesVal(props->entries["is"]);
+
+        static const char *kFlags[] = {
+            "ios", "android", "mac", "macos", "windows", "win",
+            "linux", "web", "wasm", "mobile", "desktop", "apple", "native"
+        };
+        bool hasPosFlag = false;
+        bool posFlagHit = false;
+        for (const char *fk : kFlags) {
+            if (props->has(fk)) {
+                if (props->entries[fk].deref().isTruthy()) {
+                    hasPosFlag = true;
+                    if (MemePlatform::matchPlatformSpec(fk)) posFlagHit = true;
+                } else {
+                    if (MemePlatform::matchPlatformSpec(fk)) matched = false;
+                }
+            }
+        }
+        if (hasPosFlag) matched = matched && posFlagHit;
+
+        if (props->has("exclude") && matchesVal(props->entries["exclude"])) matched = false;
+        if (props->has("not") && matchesVal(props->entries["not"])) matched = false;
+
+        if (matched) {
+            Value children = props->has("children") ? props->entries["children"] : Value(std::make_shared<MemeList>());
+            return createJsxElement("fragment", "", std::make_shared<MemeMap>(), children);
+        }
+        if (props->has("fallback")) {
+            Value fb = props->entries["fallback"].deref();
+            if (std::holds_alternative<std::shared_ptr<Callable>>(fb.data)) {
+                return std::get<std::shared_ptr<Callable>>(fb.data)->call(interp, {});
+            }
+            return fb;
+        }
+        return Value(std::monostate{});
+    };
+    return Value(std::make_shared<NativeMethodCallable>("Platform", 0, 1, platformFn));
 }
 
 inline std::shared_ptr<MemeMap> createShadcnModule()
@@ -434,6 +492,7 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
         return createJsxElement("icon", "w-4 h-4 text-slate-200", props, Value(std::make_shared<MemeList>()));
     };
     m->set("Icon", Value(std::make_shared<NativeMethodCallable>("Icon", 0, 1, iconFn)));
+    m->set("Platform", createPlatformComponent());
 
     return m;
 }

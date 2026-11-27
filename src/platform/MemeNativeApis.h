@@ -59,6 +59,9 @@
 #include <emscripten.h>
 #endif
 
+#include "MemePlatform.h"
+#include "MemePermissions.h"
+
 namespace MemeNative {
 
 struct DeviceInfo {
@@ -124,6 +127,10 @@ struct AsyncResponse {
     double lat = 0.0;
     double lon = 0.0;
     double accuracy = 0.0;
+    std::string permissionState = "";
+    bool canAskAgain = true;
+    bool limited = false;
+    bool restricted = false;
     std::string error = "";
 };
 
@@ -146,6 +153,10 @@ struct HostHooks {
     std::function<void(AsyncCallback cb)> notifyRequestPermissionAsync;
     std::function<bool(const std::string &title, const std::string &body)> notifySend;
     std::function<bool(int count)> setBadgeCount;
+
+    std::function<MemePermissions::PermissionStatus(const std::string &cap)> checkPermission;
+    std::function<void(const std::string &cap, AsyncCallback cb)> requestPermissionAsync;
+    std::function<bool(const std::string &cap)> openAppSettings;
 
     std::function<bool(const std::string &url)> canOpenUrl;
     std::function<bool(const std::string &url)> openUrl;
@@ -941,6 +952,139 @@ inline void js_geo_async(int reqId) {
         })($0);
     }, reqId);
 }
+inline char *js_perm_sync_status(const char *capPtr) {
+    return reinterpret_cast<char *>(EM_ASM_PTR({
+        return (function(cp) {
+            var cap = UTF8ToString(cp);
+            var st = "prompt";
+            try {
+                var w = (typeof window !== "undefined") ? window : globalThis;
+                if (!w.__memePermCache) w.__memePermCache = {};
+                if (cap === "notifications") {
+                    if (typeof Notification !== "undefined") {
+                        st = (Notification.permission === "granted") ? "granted" : ((Notification.permission === "denied") ? "denied" : "prompt");
+                    } else if (typeof window === "undefined") {
+                        st = "prompt";
+                    } else {
+                        st = "unavailable";
+                    }
+                } else if (cap === "photos" || cap === "storage") {
+                    st = "granted";
+                } else if (cap === "biometrics" || cap === "contacts" || cap === "calendar" || cap === "bluetooth" || cap === "locationAlways") {
+                    st = w.__memePermCache[cap] || "unavailable";
+                } else if (w.__memePermCache[cap]) {
+                    st = w.__memePermCache[cap];
+                } else if (typeof navigator !== "undefined" && navigator.permissions && navigator.permissions.query) {
+                    var qName = (cap === "location") ? "geolocation" : ((cap === "clipboard") ? "clipboard-read" : cap);
+                    if (qName === "geolocation" || qName === "camera" || qName === "microphone" || qName === "clipboard-read" || qName === "notifications") {
+                        navigator.permissions.query({ name: qName }).then(function(ps) {
+                            w.__memePermCache[cap] = ps.state;
+                        }).catch(function() {});
+                    }
+                }
+            } catch (e) {}
+            var len = lengthBytesUTF8(st) + 1;
+            var p = _malloc(len);
+            stringToUTF8(st, p, len);
+            return p;
+        })($0);
+    }, capPtr ? capPtr : ""));
+}
+inline void js_perm_request_async(int reqId, const char *capPtr) {
+    EM_ASM({
+        (function(rid, cp) {
+            var cap = UTF8ToString(cp);
+            var completeFn = (typeof _meme_native_complete_perm_async === "function")
+                ? _meme_native_complete_perm_async
+                : ((typeof Module !== "undefined" && typeof Module._meme_native_complete_perm_async === "function")
+                    ? Module._meme_native_complete_perm_async : null);
+            var finish = function(stateStr, errMsg) {
+                try {
+                    var w = (typeof window !== "undefined") ? window : globalThis;
+                    if (!w.__memePermCache) w.__memePermCache = {};
+                    w.__memePermCache[cap] = stateStr;
+                    if (completeFn) {
+                        var sl = lengthBytesUTF8(stateStr) + 1;
+                        var sp = _malloc(sl);
+                        stringToUTF8(stateStr, sp, sl);
+                        var ep = 0;
+                        if (errMsg) { var el = lengthBytesUTF8(errMsg) + 1; ep = _malloc(el); stringToUTF8(errMsg, ep, el); }
+                        completeFn(rid, sp, ep);
+                        _free(sp);
+                        if (ep) _free(ep);
+                    }
+                } catch (e) {}
+            };
+            try {
+                if (typeof window === "undefined" || typeof navigator === "undefined") {
+                    finish("unavailable", "Browser APIs unavailable in headless Node runtime");
+                    return;
+                }
+                if (cap === "notifications") {
+                    if (typeof Notification === "undefined" || !Notification.requestPermission) {
+                        finish("unavailable", "Notifications API unavailable");
+                        return;
+                    }
+                    Notification.requestPermission().then(function(p) {
+                        finish(p === "granted" ? "granted" : (p === "denied" ? "denied" : "prompt"), "");
+                    }).catch(function(e) { finish("denied", String(e || "")); });
+                    return;
+                }
+                if (cap === "camera" || cap === "microphone") {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        finish("unavailable", "MediaDevices unavailable");
+                        return;
+                    }
+                    var constraints = (cap === "camera") ? { video: true } : { audio: true };
+                    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+                        try { stream.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {}
+                        finish("granted", "");
+                    }).catch(function(e) {
+                        var nm = e && e.name ? e.name : "";
+                        finish(nm === "NotFoundError" ? "unavailable" : "denied", e && e.message ? e.message : "Permission denied");
+                    });
+                    return;
+                }
+                if (cap === "location") {
+                    if (!navigator.geolocation) {
+                        finish("unavailable", "Geolocation unsupported");
+                        return;
+                    }
+                    navigator.geolocation.getCurrentPosition(
+                        function() { finish("granted", ""); },
+                        function(err) { finish("denied", err && err.message ? err.message : "Denied"); },
+                        { timeout: 8000 }
+                    );
+                    return;
+                }
+                if (cap === "sensors") {
+                    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+                        DeviceMotionEvent.requestPermission().then(function(p) {
+                            finish(p === "granted" ? "granted" : "denied", "");
+                        }).catch(function() { finish("denied", "Sensor permission denied"); });
+                    } else {
+                        finish("granted", "");
+                    }
+                    return;
+                }
+                if (cap === "clipboard") {
+                    if (navigator.clipboard && navigator.clipboard.readText) {
+                        navigator.clipboard.readText().then(function() { finish("granted", ""); })
+                            .catch(function() { finish("denied", "Clipboard read denied"); });
+                    } else {
+                        finish("granted", "");
+                    }
+                    return;
+                }
+                if (cap === "photos" || cap === "storage") {
+                    finish("granted", "");
+                    return;
+                }
+                finish("unavailable", "Capability unsupported on web platform");
+            } catch (e) { finish("denied", String(e || "")); }
+        })($0, $1);
+    }, reqId, capPtr ? capPtr : "");
+}
 #endif
 
 } // namespace detail
@@ -960,6 +1104,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE inline void meme_native_complete_async(
     r.lat = lat;
     r.lon = lon;
     r.accuracy = acc;
+    resolveAsyncCallback(reqId, r);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE inline void meme_native_complete_perm_async(
+    int reqId, const char *stateStr, const char *errStr)
+{
+    std::string st = MemePermissions::normalizeStateString(stateStr ? stateStr : "denied");
+    AsyncResponse r;
+    r.permissionState = st;
+    r.ok = (st == "granted" || st == "limited");
+    r.accepted = r.ok;
+    r.cancelled = (st == "denied" || st == "prompt");
+    r.limited = (st == "limited");
+    r.restricted = (st == "restricted");
+    r.canAskAgain = (st == "prompt" || st == "prompt-with-rationale");
+    r.value = st;
+    r.error = errStr ? errStr : "";
     resolveAsyncCallback(reqId, r);
 }
 #endif
@@ -1401,10 +1562,239 @@ inline bool notifySend(const std::string &title, const std::string &body) {
 #if defined(__EMSCRIPTEN__)
     detail::js_notify(title.c_str(), body.c_str());
     return true;
+#elif defined(__APPLE__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    auto escApple = [](const std::string &s) {
+        std::string out;
+        for (char c : s) {
+            if (c == '\\' || c == '"') out.push_back('\\');
+            out.push_back(c);
+        }
+        return out;
+    };
+    std::string script = "display notification \"" + escApple(body) + "\" with title \"" + escApple(title) + "\"";
+    return detail::execArgv({"/usr/bin/osascript", "-e", script}, nullptr, nullptr, nullptr, true);
 #elif defined(__linux__) && !defined(__ANDROID__)
     return detail::execArgv({"notify-send", title, body}, nullptr, nullptr, nullptr, true);
 #else
     return true;
+#endif
+}
+
+inline void setBuildTarget(const std::string &target) {
+    MemePlatform::setRuntimePlatformOverride(target);
+}
+
+inline std::string getBuildTarget() {
+    return MemePlatform::currentPlatform();
+}
+
+inline MemePermissions::PermissionStatus checkPermission(const std::string &rawCap) {
+    std::string cap = MemePermissions::normalizeCapability(rawCap);
+    std::string plat = MemePlatform::currentPlatform();
+    MemePermissions::PermissionStatus st;
+    st.permission = cap;
+    st.platform = plat;
+    st.reason = MemePermissions::getPermissionDescription(cap, state().appName);
+
+    // Check explicit headless/test overrides first
+    {
+        auto &pst = MemePermissions::permStore();
+        std::lock_guard<std::mutex> lock(pst.mu);
+        auto ov = pst.overrides.find(cap);
+        if (ov != pst.overrides.end()) {
+            st.state = ov->second;
+            st.finalizeFlags();
+            return st;
+        }
+    }
+
+    if (!MemePermissions::isKnownCapability(cap) || !MemePermissions::isSupportedOnPlatform(cap, plat)) {
+        st.state = "unavailable";
+        st.error = "Capability '" + rawCap + "' is not available on platform '" + plat + "'";
+        st.finalizeFlags();
+        return st;
+    }
+
+    if (!MemePermissions::isPermissionDeclared(cap)) {
+        st.state = "denied";
+        st.canAskAgain = false;
+        st.error = "Capability '" + cap + "' is not declared in tapri.json permissions for '" + plat + "'";
+        st.finalizeFlags();
+        return st;
+    }
+
+    if (std::getenv("MEME_HEADLESS") != nullptr) {
+        if (cap == "clipboard" || cap == "storage" || cap == "sensors") {
+            st.state = "granted";
+        } else {
+            st.state = "prompt";
+        }
+        st.finalizeFlags();
+        return st;
+    }
+
+    if (hooks().checkPermission) {
+        st = hooks().checkPermission(cap);
+        if (st.permission.empty()) st.permission = cap;
+        if (st.platform.empty()) st.platform = plat;
+        if (st.reason.empty()) st.reason = MemePermissions::getPermissionDescription(cap, state().appName);
+        st.finalizeFlags();
+        return st;
+    }
+
+#if defined(__EMSCRIPTEN__)
+    char *rawSt = detail::js_perm_sync_status(cap.c_str());
+    st.state = rawSt ? std::string(rawSt) : "prompt";
+    if (rawSt) std::free(rawSt);
+#elif defined(__APPLE__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    if (cap == "clipboard" || cap == "storage" || cap == "sensors") {
+        st.state = "granted";
+    } else if (cap == "notifications" || cap == "camera" || cap == "microphone" || cap == "photos" ||
+               cap == "location" || cap == "locationAlways" || cap == "contacts" || cap == "calendar" || cap == "biometrics") {
+        st.state = "prompt";
+    } else {
+        st.state = "unavailable";
+    }
+#elif defined(__linux__) && !defined(__ANDROID__)
+    if (cap == "clipboard" || cap == "storage" || cap == "notifications" || cap == "sensors") st.state = "granted";
+    else st.state = MemePermissions::isSupportedOnPlatform(cap, plat) ? "prompt" : "unavailable";
+#elif defined(_WIN32)
+    if (cap == "clipboard" || cap == "storage" || cap == "notifications" || cap == "sensors") st.state = "granted";
+    else st.state = MemePermissions::isSupportedOnPlatform(cap, plat) ? "prompt" : "unavailable";
+#else
+    st.state = "prompt";
+#endif
+    st.finalizeFlags();
+    return st;
+}
+
+using PermissionCallback = std::function<void(const MemePermissions::PermissionStatus &)>;
+
+inline void requestPermissionAsync(const std::string &rawCap, PermissionCallback cb) {
+    std::string cap = MemePermissions::normalizeCapability(rawCap);
+    std::string plat = MemePlatform::currentPlatform();
+    std::string desc = MemePermissions::getPermissionDescription(cap, state().appName);
+
+    auto invokeWith = [cb](MemePermissions::PermissionStatus st) {
+        st.finalizeFlags();
+        if (cb) cb(st);
+        if (hooks().requestRerender) hooks().requestRerender();
+    };
+
+    // Check headless override first
+    {
+        auto &pst = MemePermissions::permStore();
+        std::lock_guard<std::mutex> lock(pst.mu);
+        auto ov = pst.overrides.find(cap);
+        if (ov != pst.overrides.end()) {
+            MemePermissions::PermissionStatus st;
+            st.permission = cap;
+            st.platform = plat;
+            st.reason = desc;
+            st.state = ov->second;
+            invokeWith(st);
+            return;
+        }
+    }
+
+    if (!MemePermissions::isKnownCapability(cap) || !MemePermissions::isSupportedOnPlatform(cap, plat)) {
+        MemePermissions::PermissionStatus st;
+        st.permission = cap;
+        st.platform = plat;
+        st.reason = desc;
+        st.state = "unavailable";
+        st.error = "Capability '" + cap + "' unsupported on platform '" + plat + "'";
+        invokeWith(st);
+        return;
+    }
+
+    if (!MemePermissions::isPermissionDeclared(cap)) {
+        MemePermissions::PermissionStatus st;
+        st.permission = cap;
+        st.platform = plat;
+        st.reason = desc;
+        st.state = "denied";
+        st.canAskAgain = false;
+        st.error = "Capability '" + cap + "' not declared in tapri.json permissions for '" + plat + "'";
+        invokeWith(st);
+        return;
+    }
+
+    if (std::getenv("MEME_HEADLESS") != nullptr) {
+        MemePermissions::PermissionStatus st;
+        st.permission = cap;
+        st.platform = plat;
+        st.reason = desc;
+        st.state = state().notifyGranted ? "granted" : "denied";
+        {
+            auto &pst = MemePermissions::permStore();
+            std::lock_guard<std::mutex> lock(pst.mu);
+            pst.overrides[cap] = st.state;
+        }
+        invokeWith(st);
+        return;
+    }
+
+    auto wrapAsyncToPerm = [cap, plat, desc, invokeWith](const AsyncResponse &ar) {
+        MemePermissions::PermissionStatus st;
+        st.permission = cap;
+        st.platform = plat;
+        st.reason = desc;
+        if (!ar.permissionState.empty()) st.state = ar.permissionState;
+        else st.state = ar.accepted ? "granted" : "denied";
+        st.limited = ar.limited;
+        st.restricted = ar.restricted;
+        st.canAskAgain = ar.canAskAgain;
+        st.error = ar.error;
+        if (cap == "notifications" && (st.state == "granted" || st.state == "limited")) {
+            std::lock_guard<std::mutex> lock(state().mu);
+            state().notifyGranted = true;
+        }
+        invokeWith(st);
+    };
+
+    if (hooks().requestPermissionAsync) {
+        hooks().requestPermissionAsync(cap, wrapAsyncToPerm);
+        return;
+    }
+
+#if defined(__EMSCRIPTEN__)
+    int rid = registerAsyncCallback(wrapAsyncToPerm);
+    detail::js_perm_request_async(rid, cap.c_str());
+    return;
+#elif defined(__APPLE__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    if (cap == "notifications" || cap == "camera" || cap == "microphone" || cap == "location" || cap == "clipboard" || cap == "storage") {
+        MemePermissions::PermissionStatus st = checkPermission(cap);
+        if (st.state == "prompt" && (cap == "clipboard" || cap == "storage" || cap == "notifications")) {
+            st.state = "granted";
+        }
+        invokeWith(st);
+        return;
+    }
+    MemePermissions::PermissionStatus st = checkPermission(cap);
+    invokeWith(st);
+#else
+    MemePermissions::PermissionStatus st = checkPermission(cap);
+    if (cap == "clipboard" || cap == "storage" || cap == "notifications") st.state = "granted";
+    invokeWith(st);
+#endif
+}
+
+inline bool openAppSettings(const std::string &rawCap = "") {
+    std::string cap = rawCap.empty() ? "" : MemePermissions::normalizeCapability(rawCap);
+    if (std::getenv("MEME_HEADLESS") != nullptr) return true;
+    if (hooks().openAppSettings) return hooks().openAppSettings(cap);
+#if defined(__EMSCRIPTEN__)
+    return false;
+#elif defined(__APPLE__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    return detail::execArgv({"/usr/bin/open", MemePermissions::macSettingsUriFor(cap)}, nullptr, nullptr, nullptr, true);
+#elif defined(_WIN32)
+    return openUrl(MemePermissions::windowsSettingsUriFor(cap));
+#elif defined(__linux__) && !defined(__ANDROID__)
+    return detail::execArgv({"gnome-control-center", "privacy"}, nullptr, nullptr, nullptr, true) ||
+           detail::execArgv({"xdg-open", "settings://privacy"}, nullptr, nullptr, nullptr, true);
+#else
+    return false;
 #endif
 }
 

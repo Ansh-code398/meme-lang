@@ -117,13 +117,51 @@ static id g_iosSpeechSynth = nil;
 @interface MemeIosLocHelper : NSObject
 @property (nonatomic, strong) id manager;
 @property (nonatomic, assign) int reqId;
+@property (nonatomic, assign) int permReqId;
 - (void)locationManager:(id)manager didUpdateLocations:(NSArray *)locations;
 - (void)locationManager:(id)manager didFailWithError:(NSError *)error;
+- (void)locationManagerDidChangeAuthorization:(id)manager;
+- (void)locationManager:(id)manager didChangeAuthorizationStatus:(int)status;
 @end
 
 static MemeIosLocHelper *g_iosLocHelper = nil;
 
+namespace {
+inline std::string iosMapCLStatus(int clStatus) {
+    if (clStatus == 3 || clStatus == 4) return "granted";
+    if (clStatus == 1) return "restricted";
+    if (clStatus == 2) return "denied";
+    return "prompt";
+}
+}
+
 @implementation MemeIosLocHelper
+- (void)handleAuthChange:(id)mgr status:(int)stVal {
+    (void)mgr;
+    int prid = self.permReqId;
+    if (prid <= 0) return;
+    if (stVal == 0) return; // NotDetermined yet
+    self.permReqId = 0;
+    std::string stateStr = iosMapCLStatus(stVal);
+    MemeNative::AsyncResponse res;
+    res.permissionState = stateStr;
+    res.ok = (stateStr == "granted");
+    res.accepted = res.ok;
+    res.restricted = (stateStr == "restricted");
+    res.canAskAgain = (stateStr == "prompt");
+    res.value = stateStr;
+    MemeNative::resolveAsyncCallback(prid, res);
+}
+- (void)locationManagerDidChangeAuthorization:(id)mgr {
+    int stVal = 0;
+    if ([mgr respondsToSelector:NSSelectorFromString(@"authorizationStatus")]) {
+        stVal = ((int (*)(id, SEL))objc_msgSend)(mgr, NSSelectorFromString(@"authorizationStatus"));
+    }
+    [self handleAuthChange:mgr status:stVal];
+}
+- (void)locationManager:(id)mgr didChangeAuthorizationStatus:(int)status {
+    [self handleAuthChange:mgr status:status];
+}
 - (void)locationManager:(id)mgr didUpdateLocations:(NSArray *)locations {
     (void)mgr;
     int rid = self.reqId;
@@ -773,6 +811,249 @@ void bindIosNativeHooks() {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (g_iosRenderView) [g_iosRenderView resignFirstResponder];
                 [[UIApplication sharedApplication] sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
+            });
+            return true;
+        };
+        static std::atomic<int> s_iosNotifAuthCache{-1};
+        [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+            s_iosNotifAuthCache.store(static_cast<int>(settings.authorizationStatus));
+        }];
+        auto refreshNotifCache = []() {
+            [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+                s_iosNotifAuthCache.store(static_cast<int>(settings.authorizationStatus));
+            }];
+        };
+        auto mapAppleAuth = [](NSInteger st) -> std::string {
+            if (st == 3) return "granted";
+            if (st == 1) return "restricted";
+            if (st == 2) return "denied";
+            return "prompt";
+        };
+        h.checkPermission = [mapAppleAuth, refreshNotifCache](const std::string &rawCap) -> MemePermissions::PermissionStatus {
+            std::string cap = MemePermissions::normalizeCapability(rawCap);
+            MemePermissions::PermissionStatus out;
+            out.permission = cap;
+            out.platform = "ios";
+            if (cap == "notifications") {
+                int cached = s_iosNotifAuthCache.load();
+                refreshNotifCache();
+                if (cached == static_cast<int>(UNAuthorizationStatusAuthorized) ||
+                    cached == static_cast<int>(UNAuthorizationStatusEphemeral)) out.state = "granted";
+                else if (cached == static_cast<int>(UNAuthorizationStatusProvisional)) out.state = "limited";
+                else if (cached == static_cast<int>(UNAuthorizationStatusDenied)) out.state = "denied";
+                else out.state = "prompt";
+            } else if (cap == "camera" || cap == "microphone") {
+                void *av = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
+                Class cls = av ? NSClassFromString(@"AVCaptureDevice") : nil;
+                if (cls) {
+                    NSString *mt = (cap == "camera") ? @"vide" : @"soun";
+                    NSInteger st = ((NSInteger (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForMediaType:"), mt);
+                    out.state = mapAppleAuth(st);
+                } else {
+                    out.state = "unavailable";
+                }
+            } else if (cap == "photos") {
+                void *ph = dlopen("/System/Library/Frameworks/Photos.framework/Photos", RTLD_LAZY);
+                Class cls = ph ? NSClassFromString(@"PHPhotoLibrary") : nil;
+                if (cls) {
+                    SEL sel2 = NSSelectorFromString(@"authorizationStatusForAccessLevel:");
+                    NSInteger st = [cls respondsToSelector:sel2]
+                        ? ((NSInteger (*)(Class, SEL, NSInteger))objc_msgSend)(cls, sel2, 1 /*readWrite*/)
+                        : ((NSInteger (*)(Class, SEL))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatus"));
+                    if (st == 4) out.state = "limited";
+                    else out.state = mapAppleAuth(st);
+                } else {
+                    out.state = "unavailable";
+                }
+            } else if (cap == "location" || cap == "locationAlways") {
+                void *cl = dlopen("/System/Library/Frameworks/CoreLocation.framework/CoreLocation", RTLD_LAZY);
+                Class cls = cl ? NSClassFromString(@"CLLocationManager") : nil;
+                if (cls) {
+                    int st = 0;
+                    if (!g_iosLocHelper) {
+                        g_iosLocHelper = [[MemeIosLocHelper alloc] init];
+                        g_iosLocHelper.manager = [[cls alloc] init];
+                        [g_iosLocHelper.manager setValue:g_iosLocHelper forKey:@"delegate"];
+                    }
+                    if ([g_iosLocHelper.manager respondsToSelector:NSSelectorFromString(@"authorizationStatus")]) {
+                        st = ((int (*)(id, SEL))objc_msgSend)(g_iosLocHelper.manager, NSSelectorFromString(@"authorizationStatus"));
+                    } else if ([cls respondsToSelector:NSSelectorFromString(@"authorizationStatus")]) {
+                        st = ((int (*)(Class, SEL))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatus"));
+                    }
+                    if (cap == "locationAlways") {
+                        out.state = (st == 3) ? "granted" : (st == 4 ? "limited" : (st == 1 ? "restricted" : (st == 2 ? "denied" : "prompt")));
+                    } else {
+                        out.state = iosMapCLStatus(st);
+                    }
+                } else {
+                    out.state = "unavailable";
+                }
+            } else if (cap == "contacts") {
+                void *cn = dlopen("/System/Library/Frameworks/Contacts.framework/Contacts", RTLD_LAZY);
+                Class cls = cn ? NSClassFromString(@"CNContactStore") : nil;
+                if (cls) {
+                    NSInteger st = ((NSInteger (*)(Class, SEL, NSInteger))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForEntityType:"), 0);
+                    out.state = mapAppleAuth(st);
+                } else out.state = "unavailable";
+            } else if (cap == "calendar") {
+                void *ek = dlopen("/System/Library/Frameworks/EventKit.framework/EventKit", RTLD_LAZY);
+                Class cls = ek ? NSClassFromString(@"EKEventStore") : nil;
+                if (cls) {
+                    NSInteger st = ((NSInteger (*)(Class, SEL, NSInteger))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForEntityType:"), 0);
+                    out.state = (st == 3 || st == 4) ? "granted" : (st == 1 ? "restricted" : (st == 2 ? "denied" : "prompt"));
+                } else out.state = "unavailable";
+            } else if (cap == "sensors") {
+                void *cm = dlopen("/System/Library/Frameworks/CoreMotion.framework/CoreMotion", RTLD_LAZY);
+                Class cls = cm ? NSClassFromString(@"CMMotionActivityManager") : nil;
+                if (cls && [cls respondsToSelector:NSSelectorFromString(@"authorizationStatus")]) {
+                    NSInteger st = ((NSInteger (*)(Class, SEL))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatus"));
+                    out.state = mapAppleAuth(st);
+                } else {
+                    out.state = "granted";
+                }
+            } else if (cap == "bluetooth") {
+                void *cb = dlopen("/System/Library/Frameworks/CoreBluetooth.framework/CoreBluetooth", RTLD_LAZY);
+                Class cls = cb ? NSClassFromString(@"CBManager") : nil;
+                if (cls && [cls respondsToSelector:NSSelectorFromString(@"authorization")]) {
+                    NSInteger st = ((NSInteger (*)(Class, SEL))objc_msgSend)(cls, NSSelectorFromString(@"authorization"));
+                    out.state = mapAppleAuth(st);
+                } else out.state = "unavailable";
+            } else if (cap == "biometrics") {
+                void *la = dlopen("/System/Library/Frameworks/LocalAuthentication.framework/LocalAuthentication", RTLD_LAZY);
+                Class laCls = la ? NSClassFromString(@"LAContext") : nil;
+                if (!laCls) out.state = "unavailable";
+                else {
+                    id ctx = [[laCls alloc] init];
+                    NSError *err = nil;
+                    BOOL ok = ((BOOL (*)(id, SEL, NSInteger, NSError **))objc_msgSend)(ctx, NSSelectorFromString(@"canEvaluatePolicy:error:"), 2, &err);
+                    MEME_IOS_RELEASE(ctx);
+                    out.state = ok ? "granted" : "unavailable";
+                }
+            } else if (cap == "clipboard" || cap == "storage") {
+                out.state = "granted";
+            } else {
+                out.state = "unavailable";
+            }
+            out.finalizeFlags();
+            return out;
+        };
+        h.requestPermissionAsync = [mapAppleAuth](const std::string &rawCap, MemeNative::AsyncCallback cb) {
+            std::string cap = MemePermissions::normalizeCapability(rawCap);
+            int rid = MemeNative::registerAsyncCallback(std::move(cb));
+            auto finishState = [rid](const std::string &stStr, const std::string &err = "") {
+                MemeNative::AsyncResponse r;
+                r.permissionState = stStr;
+                r.ok = (stStr == "granted" || stStr == "limited");
+                r.accepted = r.ok;
+                r.limited = (stStr == "limited");
+                r.restricted = (stStr == "restricted");
+                r.canAskAgain = (stStr == "prompt" || stStr == "prompt-with-rationale");
+                r.value = stStr;
+                r.error = err;
+                MemeNative::resolveAsyncCallback(rid, r);
+            };
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (cap == "notifications") {
+                    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+                    if (!g_iosNotifDelegate) g_iosNotifDelegate = [[MemeIosNotifDelegate alloc] init];
+                    center.delegate = g_iosNotifDelegate;
+                    [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+                                          completionHandler:^(BOOL granted, NSError *err) {
+                        s_iosNotifAuthCache.store(granted ? static_cast<int>(UNAuthorizationStatusAuthorized) : static_cast<int>(UNAuthorizationStatusDenied));
+                        finishState(granted ? "granted" : "denied", err && err.localizedDescription ? [err.localizedDescription UTF8String] : "");
+                    }];
+                    return;
+                }
+                if (cap == "camera" || cap == "microphone") {
+                    void *av = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
+                    Class cls = av ? NSClassFromString(@"AVCaptureDevice") : nil;
+                    if (!cls) { finishState("unavailable", "AVFoundation unavailable"); return; }
+                    NSString *mt = (cap == "camera") ? @"vide" : @"soun";
+                    NSInteger cur = ((NSInteger (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForMediaType:"), mt);
+                    if (cur != 0) { finishState(mapAppleAuth(cur)); return; }
+                    void (^handler)(BOOL) = ^(BOOL granted) { finishState(granted ? "granted" : "denied"); };
+                    ((void (*)(Class, SEL, id, id))objc_msgSend)(cls, NSSelectorFromString(@"requestAccessForMediaType:completionHandler:"), mt, handler);
+                    return;
+                }
+                if (cap == "photos") {
+                    void *ph = dlopen("/System/Library/Frameworks/Photos.framework/Photos", RTLD_LAZY);
+                    Class cls = ph ? NSClassFromString(@"PHPhotoLibrary") : nil;
+                    if (!cls) { finishState("unavailable", "Photos framework unavailable"); return; }
+                    SEL req2 = NSSelectorFromString(@"requestAuthorizationForAccessLevel:handler:");
+                    void (^handler)(NSInteger) = ^(NSInteger st) {
+                        finishState(st == 4 ? "limited" : mapAppleAuth(st));
+                    };
+                    if ([cls respondsToSelector:req2]) {
+                        ((void (*)(Class, SEL, NSInteger, id))objc_msgSend)(cls, req2, 1, handler);
+                    } else {
+                        ((void (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"requestAuthorization:"), handler);
+                    }
+                    return;
+                }
+                if (cap == "location" || cap == "locationAlways") {
+                    void *cl = dlopen("/System/Library/Frameworks/CoreLocation.framework/CoreLocation", RTLD_LAZY);
+                    Class cls = cl ? NSClassFromString(@"CLLocationManager") : nil;
+                    if (!cls) { finishState("unavailable", "CoreLocation unavailable"); return; }
+                    if (!g_iosLocHelper) {
+                        g_iosLocHelper = [[MemeIosLocHelper alloc] init];
+                        g_iosLocHelper.manager = [[cls alloc] init];
+                        [g_iosLocHelper.manager setValue:g_iosLocHelper forKey:@"delegate"];
+                    }
+                    int cur = 0;
+                    if ([g_iosLocHelper.manager respondsToSelector:NSSelectorFromString(@"authorizationStatus")]) {
+                        cur = ((int (*)(id, SEL))objc_msgSend)(g_iosLocHelper.manager, NSSelectorFromString(@"authorizationStatus"));
+                    }
+                    if ((cap == "location" && cur != 0) || (cap == "locationAlways" && cur != 0 && cur != 4)) {
+                        finishState(iosMapCLStatus(cur));
+                        return;
+                    }
+                    g_iosLocHelper.permReqId = rid;
+                    SEL askSel = NSSelectorFromString(cap == "locationAlways" ? @"requestAlwaysAuthorization" : @"requestWhenInUseAuthorization");
+                    if ([g_iosLocHelper.manager respondsToSelector:askSel]) {
+                        ((void (*)(id, SEL))objc_msgSend)(g_iosLocHelper.manager, askSel);
+                    } else {
+                        g_iosLocHelper.permReqId = 0;
+                        finishState("unavailable", "Location authorization selector missing");
+                    }
+                    return;
+                }
+                if (cap == "contacts") {
+                    void *cn = dlopen("/System/Library/Frameworks/Contacts.framework/Contacts", RTLD_LAZY);
+                    Class cls = cn ? NSClassFromString(@"CNContactStore") : nil;
+                    if (!cls) { finishState("unavailable"); return; }
+                    id store = [[cls alloc] init];
+                    void (^handler)(BOOL, NSError *) = ^(BOOL granted, NSError *err) {
+                        finishState(granted ? "granted" : "denied", err && err.localizedDescription ? [err.localizedDescription UTF8String] : "");
+                    };
+                    ((void (*)(id, SEL, NSInteger, id))objc_msgSend)(store, NSSelectorFromString(@"requestAccessForEntityType:completionHandler:"), 0, handler);
+                    MEME_IOS_RELEASE(store);
+                    return;
+                }
+                if (cap == "calendar") {
+                    void *ek = dlopen("/System/Library/Frameworks/EventKit.framework/EventKit", RTLD_LAZY);
+                    Class cls = ek ? NSClassFromString(@"EKEventStore") : nil;
+                    if (!cls) { finishState("unavailable"); return; }
+                    id store = [[cls alloc] init];
+                    void (^handler)(BOOL, NSError *) = ^(BOOL granted, NSError *err) {
+                        finishState(granted ? "granted" : "denied", err && err.localizedDescription ? [err.localizedDescription UTF8String] : "");
+                    };
+                    SEL fullSel = NSSelectorFromString(@"requestFullAccessToEventsWithCompletion:");
+                    if ([store respondsToSelector:fullSel]) {
+                        ((void (*)(id, SEL, id))objc_msgSend)(store, fullSel, handler);
+                    } else {
+                        ((void (*)(id, SEL, NSInteger, id))objc_msgSend)(store, NSSelectorFromString(@"requestAccessToEntityType:completion:"), 0, handler);
+                    }
+                    MEME_IOS_RELEASE(store);
+                    return;
+                }
+                if (cap == "clipboard" || cap == "storage" || cap == "sensors") { finishState("granted"); return; }
+                finishState("unavailable");
+            });
+        };
+        h.openAppSettings = [](const std::string &) -> bool {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSURL *u = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+                if (u) [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
             });
             return true;
         };

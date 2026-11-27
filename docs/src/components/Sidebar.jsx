@@ -27,6 +27,10 @@ const CATEGORIES = [
     sectionIds: ['react-jsx-ui', 'native-desktop']
   },
   {
+    name: 'Platform, Permissions & Packaging',
+    sectionIds: ['native-permissions', 'platform-separation', 'native-os-apis', 'multiplatform-packaging']
+  },
+  {
     name: 'Universal Interop',
     sectionIds: ['chameleon-bridge']
   },

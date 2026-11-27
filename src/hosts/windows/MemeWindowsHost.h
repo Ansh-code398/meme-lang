@@ -534,6 +534,69 @@ inline int runWindowsNativeApp(const std::string &title, UiSession &session, int
     };
     nh.minimizeWindow = [hwnd]() -> bool { return ShowWindow(hwnd, SW_MINIMIZE) != 0; };
     nh.focusWindow = [hwnd]() -> bool { return SetForegroundWindow(hwnd) != 0; };
+    nh.checkPermission = [](const std::string &rawCap) -> MemePermissions::PermissionStatus {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        MemePermissions::PermissionStatus out;
+        out.permission = cap;
+        out.platform = "windows";
+        std::string subKey = MemePermissions::windowsConsentStoreKeyFor(cap);
+        if (!subKey.empty()) {
+            if (HMODULE adv = LoadLibraryW(L"advapi32.dll")) {
+                typedef LONG(WINAPI *RegOpenKeyExWFn)(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY);
+                typedef LONG(WINAPI *RegQueryValueExWFn)(HKEY, LPCWSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD);
+                typedef LONG(WINAPI *RegCloseKeyFn)(HKEY);
+                auto pOpen = reinterpret_cast<RegOpenKeyExWFn>(GetProcAddress(adv, "RegOpenKeyExW"));
+                auto pQuery = reinterpret_cast<RegQueryValueExWFn>(GetProcAddress(adv, "RegQueryValueExW"));
+                auto pClose = reinterpret_cast<RegCloseKeyFn>(GetProcAddress(adv, "RegCloseKey"));
+                if (pOpen && pQuery && pClose) {
+                    std::wstring regPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\" + WinHostDetail::utf8ToWide(subKey);
+                    HKEY hk = nullptr;
+                    if (pOpen(HKEY_CURRENT_USER, regPath.c_str(), 0, KEY_READ, &hk) == 0 && hk) {
+                        wchar_t valBuf[128] = {0};
+                        DWORD sz = sizeof(valBuf), tp = 0;
+                        if (pQuery(hk, L"Value", nullptr, &tp, reinterpret_cast<LPBYTE>(valBuf), &sz) == 0) {
+                            std::string val = MemePlatform::toLowerTrimmed(WinHostDetail::wideToUtf8(valBuf));
+                            if (val == "allow") out.state = "granted";
+                            else if (val == "deny") out.state = "denied";
+                            else out.state = "prompt";
+                        }
+                        pClose(hk);
+                    }
+                }
+            }
+        } else {
+            out.state = MemePermissions::isSupportedOnPlatform(cap, "windows") ? "granted" : "unavailable";
+        }
+        out.finalizeFlags();
+        return out;
+    };
+    nh.requestPermissionAsync = [hwnd, &nh](const std::string &rawCap, MemeNative::AsyncCallback cb) {
+        MemePermissions::PermissionStatus cur = nh.checkPermission(rawCap);
+        MemeNative::AsyncResponse r;
+        if (cur.state == "granted" || cur.state == "denied") {
+            r.permissionState = cur.state; r.ok = (cur.state == "granted"); r.accepted = r.ok;
+            r.canAskAgain = false; r.value = cur.state;
+            MemeNative::dispatchCallbackOnUiThread(cb, r);
+            return;
+        }
+        std::string msg = MemePermissions::getPermissionDescription(cur.permission, "MEME App") +
+                          "\n\nAllow access to '" + cur.permission + "'?";
+        int ans = MessageBoxW(hwnd, WinHostDetail::utf8ToWide(msg).c_str(), L"Permission Request", MB_YESNO | MB_ICONQUESTION);
+        bool yes = (ans == IDYES);
+        r.permissionState = yes ? "granted" : "denied";
+        r.ok = yes; r.accepted = yes; r.canAskAgain = !yes; r.value = r.permissionState;
+        MemeNative::dispatchCallbackOnUiThread(cb, r);
+    };
+    nh.openAppSettings = [](const std::string &cap) -> bool {
+        if (HMODULE s32 = LoadLibraryW(L"shell32.dll")) {
+            typedef HINSTANCE(WINAPI *ShellExecWFn)(HWND, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR, INT);
+            if (auto fn = reinterpret_cast<ShellExecWFn>(GetProcAddress(s32, "ShellExecuteW"))) {
+                std::wstring uri = WinHostDetail::utf8ToWide(MemePermissions::windowsSettingsUriFor(cap));
+                return reinterpret_cast<INT_PTR>(fn(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+            }
+        }
+        return false;
+    };
 
     session.input.viewportW = static_cast<float>(width);
     session.input.viewportH = static_cast<float>(height);

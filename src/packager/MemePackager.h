@@ -4,6 +4,8 @@
 #include "IconAssets.h"
 #include "../compiler/NativeCompiler.h"
 #include "../hosts/web/MemeWebCanvasHost.h"
+#include "../platform/MemePlatform.h"
+#include "../platform/MemePermissions.h"
 #include "../lexer/Lexer.h"
 #include "../parser/Parser.h"
 
@@ -13,8 +15,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace MemePackager {
@@ -30,6 +34,7 @@ struct PackageConfig {
     std::string themeColor = "#020617";
     std::string bgColor = "#020617";
     std::string categories = "Utility;";
+    MemePermissions::PlatformPermissionsConfig permissions;
 };
 
 struct PackageResult {
@@ -235,13 +240,152 @@ inline std::string extractJsonStrField(const std::string &content, const std::st
     return "";
 }
 
+struct TinyJsonVal {
+    enum Kind { J_NULL, J_BOOL, J_STR, J_NUM, J_ARR, J_OBJ };
+    Kind kind = J_NULL;
+    bool bval = false;
+    std::string sval;
+    std::vector<TinyJsonVal> arr;
+    std::map<std::string, TinyJsonVal> obj;
+};
+
+struct TinyJsonParser {
+    const std::string &s;
+    size_t i = 0;
+
+    void skipWs() {
+        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
+    }
+    std::string parseStr() {
+        if (i >= s.size() || s[i] != '"') return "";
+        i++;
+        std::string out;
+        while (i < s.size()) {
+            char c = s[i++];
+            if (c == '"') break;
+            if (c == '\\' && i < s.size()) {
+                char e = s[i++];
+                if (e == 'n') out.push_back('\n');
+                else if (e == 'r') out.push_back('\r');
+                else if (e == 't') out.push_back('\t');
+                else out.push_back(e);
+            } else {
+                out.push_back(c);
+            }
+        }
+        return out;
+    }
+    TinyJsonVal parseVal(int depth = 0) {
+        TinyJsonVal v;
+        if (depth > 32) return v;
+        skipWs();
+        if (i >= s.size()) return v;
+        char c = s[i];
+        if (c == '"') {
+            v.kind = TinyJsonVal::J_STR;
+            v.sval = parseStr();
+            return v;
+        }
+        if (c == '{') {
+            v.kind = TinyJsonVal::J_OBJ;
+            i++;
+            skipWs();
+            while (i < s.size() && s[i] != '}') {
+                skipWs();
+                std::string k = parseStr();
+                skipWs();
+                if (i < s.size() && s[i] == ':') i++;
+                TinyJsonVal val = parseVal(depth + 1);
+                if (!k.empty()) v.obj[k] = std::move(val);
+                skipWs();
+                if (i < s.size() && s[i] == ',') i++;
+                else break;
+            }
+            if (i < s.size() && s[i] == '}') i++;
+            return v;
+        }
+        if (c == '[') {
+            v.kind = TinyJsonVal::J_ARR;
+            i++;
+            skipWs();
+            while (i < s.size() && s[i] != ']') {
+                v.arr.push_back(parseVal(depth + 1));
+                skipWs();
+                if (i < s.size() && s[i] == ',') i++;
+                else break;
+            }
+            if (i < s.size() && s[i] == ']') i++;
+            return v;
+        }
+        if (s.compare(i, 4, "true") == 0) {
+            i += 4;
+            v.kind = TinyJsonVal::J_BOOL;
+            v.bval = true;
+            return v;
+        }
+        if (s.compare(i, 5, "false") == 0) {
+            i += 5;
+            v.kind = TinyJsonVal::J_BOOL;
+            v.bval = false;
+            return v;
+        }
+        if (s.compare(i, 4, "null") == 0) {
+            i += 4;
+            v.kind = TinyJsonVal::J_NULL;
+            return v;
+        }
+        size_t start = i;
+        while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.' || s[i] == 'e' || s[i] == 'E')) i++;
+        if (i == start) i++;
+        v.kind = TinyJsonVal::J_NUM;
+        v.sval = s.substr(start, i - start);
+        return v;
+    }
+};
+
+inline void parseCapListOrObj(const TinyJsonVal &node, const std::string &scopeKey,
+                              std::vector<std::string> &outCaps,
+                              MemePermissions::PlatformPermissionsConfig &permCfg) {
+    if (node.kind == TinyJsonVal::J_ARR) {
+        for (const auto &el : node.arr) {
+            if (el.kind == TinyJsonVal::J_STR && !el.sval.empty()) {
+                outCaps.push_back(MemePermissions::normalizeCapability(el.sval));
+            }
+        }
+    } else if (node.kind == TinyJsonVal::J_OBJ) {
+        for (const auto &[k, v] : node.obj) {
+            std::string cap = MemePermissions::normalizeCapability(k);
+            if (v.kind == TinyJsonVal::J_BOOL) {
+                if (v.bval) outCaps.push_back(cap);
+            } else if (v.kind == TinyJsonVal::J_STR) {
+                outCaps.push_back(cap);
+                if (!v.sval.empty()) permCfg.descriptions[scopeKey][cap] = v.sval;
+            } else if (v.kind == TinyJsonVal::J_OBJ) {
+                outCaps.push_back(cap);
+                auto rit = v.obj.find("reason");
+                if (rit == v.obj.end()) rit = v.obj.find("description");
+                if (rit == v.obj.end()) rit = v.obj.find("rationale");
+                if (rit != v.obj.end() && rit->second.kind == TinyJsonVal::J_STR && !rit->second.sval.empty()) {
+                    permCfg.descriptions[scopeKey][cap] = rit->second.sval;
+                }
+                auto mit = v.obj.find("mode");
+                if (mit != v.obj.end() && mit->second.kind == TinyJsonVal::J_STR && !mit->second.sval.empty()) {
+                    permCfg.modes[cap] = mit->second.sval;
+                }
+            }
+        }
+    }
+}
+
 inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, const PackageConfig &overrides) {
     PackageConfig cfg;
+    std::filesystem::path absSrc = std::filesystem::absolute(srcPath);
     std::vector<std::filesystem::path> cands;
-    if (srcPath.has_parent_path()) {
-        cands.push_back(srcPath.parent_path() / "tapri.json");
-        if (srcPath.parent_path().filename() == "src" && srcPath.parent_path().has_parent_path()) {
-            cands.push_back(srcPath.parent_path().parent_path() / "tapri.json");
+    if (absSrc.has_parent_path()) {
+        std::filesystem::path pdir = absSrc.parent_path();
+        cands.push_back(pdir / "tapri.json");
+        if (pdir.filename() == "src" && pdir.has_parent_path()) {
+            cands.push_back(pdir.parent_path() / "tapri.json");
         }
     }
     std::filesystem::path tapriDir;
@@ -253,7 +397,16 @@ inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, cons
         std::ostringstream ss;
         ss << tf.rdbuf();
         std::string txt = ss.str();
-        auto pick = [&](const char *k) { return extractJsonStrField(txt, k); };
+
+        TinyJsonParser jp{txt, 0};
+        TinyJsonVal root = jp.parseVal();
+        auto pick = [&](const char *k) -> std::string {
+            if (root.kind == TinyJsonVal::J_OBJ) {
+                auto it = root.obj.find(k);
+                if (it != root.obj.end() && it->second.kind == TinyJsonVal::J_STR) return it->second.sval;
+            }
+            return extractJsonStrField(txt, k);
+        };
         if (auto v = pick("displayName"); !v.empty()) cfg.displayName = v;
         else if (auto v2 = pick("name"); !v2.empty()) cfg.displayName = v2;
         if (auto v = pick("bundleId"); !v.empty()) cfg.bundleId = v;
@@ -266,6 +419,61 @@ inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, cons
         if (auto v = pick("themeColor"); !v.empty()) cfg.themeColor = v;
         if (auto v = pick("bgColor"); !v.empty()) cfg.bgColor = v;
         if (auto v = pick("categories"); !v.empty()) cfg.categories = v;
+
+        if (root.kind == TinyJsonVal::J_OBJ) {
+            auto sit = root.obj.find("strictPermissions");
+            if (sit != root.obj.end() && sit->second.kind == TinyJsonVal::J_BOOL) {
+                cfg.permissions.strictMode = sit->second.bval;
+            }
+            auto pit = root.obj.find("permissions");
+            if (pit != root.obj.end()) {
+                cfg.permissions.hasPermissionsBlock = true;
+                const TinyJsonVal &pnode = pit->second;
+                if (pnode.kind == TinyJsonVal::J_ARR) {
+                    parseCapListOrObj(pnode, "common", cfg.permissions.common, cfg.permissions);
+                } else if (pnode.kind == TinyJsonVal::J_OBJ) {
+                    for (const auto &[pk, pv] : pnode.obj) {
+                        std::string low = MemePlatform::toLowerTrimmed(pk);
+                        if (low == "strict" || low == "strictmode") {
+                            if (pv.kind == TinyJsonVal::J_BOOL) cfg.permissions.strictMode = pv.bval;
+                        } else if (low == "common" || low == "all" || low == "shared") {
+                            parseCapListOrObj(pv, "common", cfg.permissions.common, cfg.permissions);
+                        } else if (low == "descriptions" || low == "reasons" || low == "rationale") {
+                            if (pv.kind == TinyJsonVal::J_OBJ) {
+                                for (const auto &[dk, dv] : pv.obj) {
+                                    std::string dplat = MemePlatform::normalizePlatformName(dk);
+                                    if (dv.kind == TinyJsonVal::J_STR && !dv.sval.empty()) {
+                                        cfg.permissions.descriptions["common"][MemePermissions::normalizeCapability(dk)] = dv.sval;
+                                    } else if (dv.kind == TinyJsonVal::J_OBJ && MemePlatform::isKnownConcretePlatform(dplat)) {
+                                        for (const auto &[ck, cv] : dv.obj) {
+                                            if (cv.kind == TinyJsonVal::J_STR && !cv.sval.empty()) {
+                                                cfg.permissions.descriptions[dplat][MemePermissions::normalizeCapability(ck)] = cv.sval;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            std::string normPlat = MemePlatform::normalizePlatformName(pk);
+                            if (MemePlatform::isKnownConcretePlatform(normPlat)) {
+                                parseCapListOrObj(pv, normPlat, cfg.permissions.perPlatform[normPlat], cfg.permissions);
+                            } else {
+                                // Direct capability key inside permissions object
+                                std::string cap = MemePermissions::normalizeCapability(pk);
+                                if (pv.kind == TinyJsonVal::J_BOOL && pv.bval) {
+                                    cfg.permissions.common.push_back(cap);
+                                } else if (pv.kind == TinyJsonVal::J_STR) {
+                                    cfg.permissions.common.push_back(cap);
+                                    if (!pv.sval.empty()) cfg.permissions.descriptions["common"][cap] = pv.sval;
+                                } else if (pv.kind == TinyJsonVal::J_OBJ) {
+                                    cfg.permissions.common.push_back(cap);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         break;
     }
     if (!overrides.displayName.empty()) cfg.displayName = overrides.displayName;
@@ -282,6 +490,7 @@ inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, cons
     if (!overrides.themeColor.empty() && overrides.themeColor != "#020617") cfg.themeColor = overrides.themeColor;
     if (!overrides.bgColor.empty() && overrides.bgColor != "#020617") cfg.bgColor = overrides.bgColor;
     if (!overrides.categories.empty() && overrides.categories != "Utility;") cfg.categories = overrides.categories;
+    if (overrides.permissions.hasPermissionsBlock) cfg.permissions = overrides.permissions;
     return cfg;
 }
 
@@ -307,13 +516,14 @@ inline PackageResult packageForTarget(
         return res;
     }
 
-    std::string stem = srcPath.stem().string();
+    std::filesystem::path absSrc = std::filesystem::absolute(srcPath);
+    std::string stem = absSrc.stem().string();
     std::string pkgName = detail::sanitizePkgName(stem);
     std::string appName = detail::toAppName(stem);
-    if (stem == "App" && srcPath.has_parent_path()) {
-        auto parentName = srcPath.parent_path().filename().string();
-        if (parentName == "src" && srcPath.parent_path().has_parent_path()) {
-            parentName = srcPath.parent_path().parent_path().filename().string();
+    if (stem == "App" && absSrc.has_parent_path()) {
+        auto parentName = absSrc.parent_path().filename().string();
+        if (parentName == "src" && absSrc.parent_path().has_parent_path()) {
+            parentName = absSrc.parent_path().parent_path().filename().string();
         }
         if (!parentName.empty() && parentName != "." && parentName != "desktop") {
             pkgName = detail::sanitizePkgName(parentName);
@@ -332,6 +542,16 @@ inline PackageResult packageForTarget(
     if (cfg.description.empty()) cfg.description = displayTitle + " built natively with MEME-UI";
     std::string schemeClean = detail::sanitizePkgName(cfg.urlScheme);
 
+    std::string normTargetPlat = MemePlatform::normalizePlatformName(target);
+    std::vector<std::string> declaredCaps = cfg.permissions.resolvedForTarget(target);
+    auto hasDeclaredCap = [&](const std::string &rawCap) {
+        std::string nc = MemePermissions::normalizeCapability(rawCap);
+        for (const auto &c : declaredCaps) {
+            if (c == nc) return true;
+        }
+        return false;
+    };
+
     IconImage baseIcon = loadOrDefaultIcon(cfg.iconPath, 512);
     IconImage smallIcon64 = resizeBilinearRgba(baseIcon, 64, 64);
 
@@ -339,7 +559,7 @@ inline PackageResult packageForTarget(
     std::filesystem::path outBase = outDirOrPath.empty() ? std::filesystem::path("dist") : std::filesystem::path(outDirOrPath);
     std::filesystem::create_directories(outBase);
 
-    // Parse & generate C++ source once
+    // Parse & generate C++ source once for the target platform
     std::ifstream ifs(srcPath);
     std::stringstream ss;
     ss << ifs.rdbuf();
@@ -349,19 +569,41 @@ inline PackageResult packageForTarget(
         auto tokens = lexer.tokenize();
         Parser parser(tokens);
         auto program = parser.parseProgram();
-        cppCode = NativeCompiler::generateCpp(program, sourceFile);
+        std::string targetArg = MemePlatform::isKnownConcretePlatform(normTargetPlat) ? normTargetPlat : "";
+        cppCode = NativeCompiler::generateCpp(program, sourceFile, targetArg);
     } catch (const std::exception &e) {
         res.error = std::string("Failed to compile MEMElang AST: ") + e.what();
         return res;
     }
 
-    // Inject runtime app identity + embedded icon RGBA cleanly into generated C++
+    // Inject runtime app identity + target + declared permissions + embedded icon RGBA cleanly into generated C++
     {
         std::ostringstream bootInject;
         bootInject << "\nnamespace {\n";
         bootInject << "struct MemePkgBootInit {\n    MemePkgBootInit() {\n";
         bootInject << "        MemeNative::setAppIdentity(\"" << MemeNative::detail::jsonEscape(cfg.bundleId) << "\", \""
                    << MemeNative::detail::jsonEscape(displayTitle) << "\");\n";
+        if (MemePlatform::isKnownConcretePlatform(normTargetPlat)) {
+            bootInject << "        MemeNative::setBuildTarget(\"" << MemeNative::detail::jsonEscape(normTargetPlat) << "\");\n";
+        }
+        if (cfg.permissions.hasPermissionsBlock || !declaredCaps.empty()) {
+            bootInject << "        std::vector<std::string> _declCaps = {";
+            for (size_t i = 0; i < declaredCaps.size(); ++i) {
+                if (i > 0) bootInject << ",";
+                bootInject << "\"" << MemeNative::detail::jsonEscape(declaredCaps[i]) << "\"";
+            }
+            bootInject << "};\n";
+            bootInject << "        std::unordered_map<std::string, std::string> _declDescs;\n";
+            for (const auto &dc : declaredCaps) {
+                std::string rs = cfg.permissions.reasonFor(target, dc, displayTitle);
+                if (!rs.empty()) {
+                    bootInject << "        _declDescs[\"" << MemeNative::detail::jsonEscape(dc) << "\"] = \""
+                               << MemeNative::detail::jsonEscape(rs) << "\";\n";
+                }
+            }
+            bootInject << "        MemePermissions::setDeclaredPermissions(_declCaps, "
+                       << (cfg.permissions.strictMode ? "true" : "false") << ", _declDescs);\n";
+        }
         if (!smallIcon64.rgba.empty()) {
             bootInject << "        static const uint8_t kIconRgba[" << smallIcon64.rgba.size() << "] = {";
             for (size_t i = 0; i < smallIcon64.rgba.size(); ++i) {
@@ -404,7 +646,10 @@ inline PackageResult packageForTarget(
         std::string cmd = "clang++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD -I\"" + repoRoot.string() + "\" ";
         if (usesUi) cmd += "-x objective-c++ ";
         cmd += "\"" + cppPath.string() + "\" ";
-        if (usesUi) cmd += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
+        if (usesUi) {
+            cmd += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
+            if (hasDeclaredCap("notifications")) cmd += "-framework UserNotifications ";
+        }
         cmd += "-o \"" + binPath.string() + "\"";
         if (verbose) std::cout << "[package:mac] " << cmd << "\n";
         std::string out;
@@ -425,6 +670,16 @@ inline PackageResult packageForTarget(
                 "    <key>CFBundleURLSchemes</key><array><string>" + detail::xmlEscape(schemeClean) + "</string></array>\n"
                 "  </dict></array>\n";
         }
+        std::string macUsageXml;
+        std::unordered_set<std::string> seenUsageKeys;
+        for (const auto &cap : declaredCaps) {
+            auto kv = MemePermissions::appleUsagePlistKeyFor(cap, displayTitle);
+            if (!kv.first.empty() && seenUsageKeys.insert(kv.first).second) {
+                std::string reason = cfg.permissions.reasonFor("mac", cap, displayTitle);
+                if (reason.empty()) reason = kv.second;
+                macUsageXml += "  <key>" + kv.first + "</key><string>" + detail::xmlEscape(reason) + "</string>\n";
+            }
+        }
         std::string plist = R"(<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -441,12 +696,30 @@ inline PackageResult packageForTarget(
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
-)" + urlTypesXml + R"(</dict></plist>)";
+)" + macUsageXml + urlTypesXml + R"(</dict></plist>)";
         detail::writeFileText(appBundle / "Contents" / "Info.plist", plist);
         detail::writeFileText(appBundle / "Contents" / "PkgInfo", "APPL????");
 
+        std::filesystem::path entitlementsPath = workDir / (pkgName + "_entitlements.plist");
+        std::ostringstream entXml;
+        entXml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+               << "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+               << "<plist version=\"1.0\"><dict>\n"
+               << "  <key>com.apple.security.network.client</key><true/>\n";
+        std::unordered_set<std::string> seenEnt;
+        for (const auto &cap : declaredCaps) {
+            std::string ek = MemePermissions::macEntitlementKeyFor(cap);
+            if (!ek.empty() && ek != "com.apple.security.network.client" && seenEnt.insert(ek).second) {
+                entXml << "  <key>" << ek << "</key><true/>\n";
+            }
+        }
+        entXml << "</dict></plist>\n";
+        detail::writeFileText(entitlementsPath, entXml.str());
+
         std::string signOut;
-        detail::execCmd("codesign --force --sign - \"" + appBundle.string() + "\"", signOut);
+        if (detail::execCmd("codesign --force --sign - --entitlements \"" + entitlementsPath.string() + "\" \"" + appBundle.string() + "\"", signOut) != 0) {
+            detail::execCmd("codesign --force --sign - \"" + appBundle.string() + "\"", signOut);
+        }
         return finishOk(appBundle.string(), {appBundle.string(), binPath.string(), icnsPath.string()});
     }
 
@@ -466,7 +739,23 @@ inline PackageResult packageForTarget(
         if (!rcTool.empty()) {
             std::filesystem::path rcFile = workDir / (pkgName + ".rc");
             std::filesystem::path resFile = workDir / (pkgName + ".res");
-            detail::writeFileText(rcFile, "1 ICON \"" + icoPath.string() + "\"\n");
+            std::filesystem::path winManifestPath = workDir / (pkgName + ".manifest");
+            std::string capListComment;
+            for (size_t i = 0; i < declaredCaps.size(); ++i) {
+                if (i > 0) capListComment += ",";
+                capListComment += declaredCaps[i];
+            }
+            std::string winManifest =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" manifestVersion=\"1.0\">\n"
+                "  <assemblyIdentity version=\"" + detail::xmlEscape(cfg.version) + ".0\" processorArchitecture=\"amd64\" name=\"" + detail::xmlEscape(cfg.bundleId) + "\" type=\"win32\"/>\n"
+                "  <description>" + detail::xmlEscape(cfg.description) + " (capabilities: " + detail::xmlEscape(capListComment) + ")</description>\n"
+                "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
+                "    <security><requestedPrivileges><requestedExecutionLevel level=\"asInvoker\" uiAccess=\"false\"/></requestedPrivileges></security>\n"
+                "  </trustInfo>\n"
+                "</assembly>\n";
+            detail::writeFileText(winManifestPath, winManifest);
+            detail::writeFileText(rcFile, "1 ICON \"" + icoPath.string() + "\"\n1 24 \"" + winManifestPath.string() + "\"\n");
             std::string rcOut;
             std::string rcCmd = (rcTool.find("windres") != std::string::npos)
                 ? ("\"" + rcTool + "\" \"" + rcFile.string() + "\" -O coff -o \"" + resFile.string() + "\"")
@@ -500,6 +789,20 @@ inline PackageResult packageForTarget(
         return d;
     };
 
+    auto makeLinuxCapJson = [&]() {
+        std::ostringstream js;
+        js << "{\n  \"package\": \"" << MemeNative::detail::jsonEscape(pkgName) << "\",\n"
+           << "  \"platform\": \"linux\",\n"
+           << "  \"strict\": " << (cfg.permissions.strictMode ? "true" : "false") << ",\n"
+           << "  \"permissions\": [";
+        for (size_t i = 0; i < declaredCaps.size(); ++i) {
+            if (i > 0) js << ", ";
+            js << "\"" << MemeNative::detail::jsonEscape(declaredCaps[i]) << "\"";
+        }
+        js << "]\n}\n";
+        return js.str();
+    };
+
     if (target == "deb") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
@@ -510,6 +813,7 @@ inline PackageResult packageForTarget(
         auto elfBytes = detail::readFileBytes(elfPath);
         auto icon256 = encodePngRgba(resizeBilinearRgba(baseIcon, 256, 256));
         std::string desktop = makeLinuxDesktop();
+        std::string capJson = makeLinuxCapJson();
         std::vector<ArchiveFileEntry> dataEntries = {
             {"./usr/", {}, 0755, true},
             {"./usr/local/", {}, 0755, true},
@@ -518,6 +822,8 @@ inline PackageResult packageForTarget(
             {"./usr/share/", {}, 0755, true},
             {"./usr/share/applications/", {}, 0755, true},
             {"./usr/share/applications/" + pkgName + ".desktop", detail::strToBytes(desktop), 0644, false},
+            {"./usr/share/" + pkgName + "/", {}, 0755, true},
+            {"./usr/share/" + pkgName + "/capabilities.json", detail::strToBytes(capJson), 0644, false},
             {"./usr/share/icons/", {}, 0755, true},
             {"./usr/share/icons/hicolor/", {}, 0755, true},
             {"./usr/share/icons/hicolor/256x256/", {}, 0755, true},
@@ -553,9 +859,11 @@ inline PackageResult packageForTarget(
         auto elfBytes = detail::readFileBytes(elfPath);
         auto icon256 = encodePngRgba(resizeBilinearRgba(baseIcon, 256, 256));
         std::string desktop = makeLinuxDesktop();
+        std::string capJson = makeLinuxCapJson();
         std::vector<ArchiveFileEntry> files = {
             {"/usr/local/bin/" + pkgName, elfBytes, 0755, false},
             {"/usr/share/applications/" + pkgName + ".desktop", detail::strToBytes(desktop), 0644, false},
+            {"/usr/share/" + pkgName + "/capabilities.json", detail::strToBytes(capJson), 0644, false},
             {"/usr/share/icons/hicolor/256x256/apps/" + pkgName + ".png", icon256, 0644, false},
             {"/usr/share/pixmaps/" + pkgName + ".png", icon256, 0644, false},
         };
@@ -575,6 +883,7 @@ inline PackageResult packageForTarget(
         auto elfBytes = detail::readFileBytes(elfPath);
         auto icon128 = encodePngRgba(resizeBilinearRgba(baseIcon, 128, 128));
         std::string desktop = makeLinuxDesktop();
+        std::string capJson = makeLinuxCapJson();
         std::vector<ArchiveFileEntry> dataEntries = {
             {"./usr/", {}, 0755, true},
             {"./usr/bin/", {}, 0755, true},
@@ -582,6 +891,8 @@ inline PackageResult packageForTarget(
             {"./usr/share/", {}, 0755, true},
             {"./usr/share/applications/", {}, 0755, true},
             {"./usr/share/applications/" + pkgName + ".desktop", detail::strToBytes(desktop), 0644, false},
+            {"./usr/share/" + pkgName + "/", {}, 0755, true},
+            {"./usr/share/" + pkgName + "/capabilities.json", detail::strToBytes(capJson), 0644, false},
             {"./usr/share/pixmaps/", {}, 0755, true},
             {"./usr/share/pixmaps/" + pkgName + ".png", icon128, 0644, false},
         };
@@ -659,6 +970,93 @@ inline PackageResult packageForTarget(
             detail::writeFileBytes(resStageDir / m.dir / "ic_launcher_round.png", png);
         }
 
+        // Build Java NativeActivity shim (classes.dex) for runtime permission callbacks when javac + d8 exist
+        bool hasDex = false;
+        std::filesystem::path d8Tool = bt / "d8";
+        std::string javacTool = detail::findInPathOrPaths("javac", {"/usr/bin/javac"});
+        if (!javacTool.empty() && std::filesystem::exists(d8Tool)) {
+            std::filesystem::path javaSrcDir = stage / "java_src" / "dev" / "memelang" / "host";
+            std::filesystem::path javaClsDir = stage / "java_classes";
+            std::filesystem::create_directories(javaSrcDir);
+            std::filesystem::create_directories(javaClsDir);
+            std::filesystem::path javaFile = javaSrcDir / "MemeNativeActivity.java";
+            const char *kMemeNativeActivityJava = R"JAVA(package dev.memelang.host;
+
+import android.app.NativeActivity;
+import android.content.pm.PackageManager;
+import android.os.Build;
+
+public class MemeNativeActivity extends NativeActivity {
+    static {
+        try {
+            System.loadLibrary("memeapp");
+        } catch (Throwable ignored) {}
+    }
+
+    public static native void nativeOnPermissionResult(int requestCode, boolean granted, boolean canAskAgain);
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        boolean granted = grantResults != null && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        boolean canAskAgain = false;
+        if (!granted && permissions != null && permissions.length > 0 && Build.VERSION.SDK_INT >= 23) {
+            canAskAgain = shouldShowRequestPermissionRationale(permissions[0]);
+        }
+        try {
+            nativeOnPermissionResult(requestCode, granted, canAskAgain);
+        } catch (Throwable ignored) {}
+    }
+}
+)JAVA";
+            detail::writeFileText(javaFile, kMemeNativeActivityJava);
+            std::string jOut;
+            std::string jcCmd = "\"" + javacTool + "\" -source 11 -target 11 -cp \"" + androidJar.string() + "\" -d \"" +
+                                javaClsDir.string() + "\" \"" + javaFile.string() + "\"";
+            if (detail::execCmd(jcCmd, jOut) == 0) {
+                std::filesystem::path classFile = javaClsDir / "dev" / "memelang" / "host" / "MemeNativeActivity.class";
+                std::string d8Cmd = "\"" + d8Tool.string() + "\" --min-api 24 --lib \"" + androidJar.string() +
+                                    "\" --output \"" + stage.string() + "\" \"" + classFile.string() + "\"";
+                if (detail::execCmd(d8Cmd, jOut) == 0 && std::filesystem::exists(stage / "classes.dex")) {
+                    hasDex = true;
+                }
+            }
+        }
+
+        // Build selective Android <uses-permission> XML tags
+        std::vector<MemePermissions::AndroidPermissionEntry> androidPerms = {
+            {"android.permission.INTERNET", 0, ""},
+            {"android.permission.ACCESS_NETWORK_STATE", 0, ""},
+            {"android.permission.VIBRATE", 0, ""}
+        };
+        std::unordered_set<std::string> seenAndPerms = {
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_NETWORK_STATE",
+            "android.permission.VIBRATE"
+        };
+        for (const auto &cap : declaredCaps) {
+            std::string mode;
+            auto mit = cfg.permissions.modes.find(cap);
+            if (mit != cfg.permissions.modes.end()) mode = mit->second;
+            for (const auto &entry : MemePermissions::androidPermissionsFor(cap, mode)) {
+                if (seenAndPerms.insert(entry.name).second) {
+                    androidPerms.push_back(entry);
+                }
+            }
+        }
+        std::string androidPermsXml;
+        for (const auto &ap : androidPerms) {
+            androidPermsXml += "    <uses-permission android:name=\"" + detail::xmlEscape(ap.name) + "\"";
+            if (ap.maxSdkVersion > 0) {
+                androidPermsXml += " android:maxSdkVersion=\"" + std::to_string(ap.maxSdkVersion) + "\"";
+            }
+            if (!ap.flags.empty()) {
+                androidPermsXml += " android:usesPermissionFlags=\"" + detail::xmlEscape(ap.flags) + "\"";
+            }
+            androidPermsXml += " />\n";
+        }
+
         std::string schemeFilter;
         if (!schemeClean.empty()) {
             schemeFilter =
@@ -669,20 +1067,15 @@ inline PackageResult packageForTarget(
                 "                <data android:scheme=\"" + detail::xmlEscape(schemeClean) + "\" />\n"
                 "            </intent-filter>";
         }
+        std::string activityCls = hasDex ? "dev.memelang.host.MemeNativeActivity" : "android.app.NativeActivity";
         std::string manifest = R"(<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package=")" + detail::xmlEscape(javaPkg) + R"("
     android:versionCode="1"
     android:versionName=")" + detail::xmlEscape(cfg.version) + R"(">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:label=")" + detail::xmlEscape(displayTitle) + R"(" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:hasCode="false" android:extractNativeLibs="false">
-        <activity android:name="android.app.NativeActivity"
+)" + androidPermsXml + R"(    <application android:label=")" + detail::xmlEscape(displayTitle) + R"(" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:hasCode=")" + (hasDex ? "true" : "false") + R"(" android:extractNativeLibs="false">
+        <activity android:name=")" + activityCls + R"("
             android:label=")" + detail::xmlEscape(displayTitle) + R"("
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize"
             android:exported="true">
@@ -712,8 +1105,9 @@ inline PackageResult packageForTarget(
             res.error = "aapt2 link failed:\n" + out;
             return res;
         }
-        if (detail::execCmd("cd \"" + stage.string() + "\" && zip -0 -r \"" + resApk.string() + "\" lib", out) != 0) {
-            res.error = "zip .so injection failed:\n" + out;
+        std::string zipItems = hasDex ? "lib classes.dex" : "lib";
+        if (detail::execCmd("cd \"" + stage.string() + "\" && zip -0 -r \"" + resApk.string() + "\" " + zipItems, out) != 0) {
+            res.error = "zip .so/.dex injection failed:\n" + out;
             return res;
         }
         if (detail::execCmd("\"" + zipalign.string() + "\" -f -p 4 \"" + resApk.string() + "\" \"" + alignedApk.string() + "\"", out) != 0) {
@@ -766,6 +1160,19 @@ inline PackageResult packageForTarget(
                     "    <key>CFBundleURLSchemes</key><array><string>" + detail::xmlEscape(schemeClean) + "</string></array>\n"
                     "  </dict></array>\n";
             }
+            std::string iosUsageXml;
+            std::unordered_set<std::string> seenIosKeys;
+            for (const auto &cap : declaredCaps) {
+                auto kv = MemePermissions::appleUsagePlistKeyFor(cap, displayTitle);
+                if (!kv.first.empty() && seenIosKeys.insert(kv.first).second) {
+                    std::string reason = cfg.permissions.reasonFor("ios", cap, displayTitle);
+                    if (reason.empty()) reason = kv.second;
+                    iosUsageXml += "  <key>" + kv.first + "</key><string>" + detail::xmlEscape(reason) + "</string>\n";
+                }
+            }
+            if (hasDeclaredCap("locationAlways")) {
+                iosUsageXml += "  <key>UIBackgroundModes</key><array><string>location</string></array>\n";
+            }
             std::string pl = R"(<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -794,12 +1201,7 @@ inline PackageResult packageForTarget(
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
   <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
   <key>UILaunchScreen</key><dict/>
-  <key>NSLocationWhenInUseUsageDescription</key><string>)" + detail::xmlEscape(displayTitle) + R"( requests location access when invoked by your app.</string>
-  <key>NSFaceIDUsageDescription</key><string>)" + detail::xmlEscape(displayTitle) + R"( uses Face ID / biometrics for secure authentication.</string>
-  <key>NSCameraUsageDescription</key><string>)" + detail::xmlEscape(displayTitle) + R"( captures photos when requested.</string>
-  <key>NSPhotoLibraryUsageDescription</key><string>)" + detail::xmlEscape(displayTitle) + R"( selects photos when requested.</string>
-  <key>NSMicrophoneUsageDescription</key><string>)" + detail::xmlEscape(displayTitle) + R"( records audio when requested.</string>
-  <key>UIApplicationSceneManifest</key>
+)" + iosUsageXml + R"(  <key>UIApplicationSceneManifest</key>
   <dict>
     <key>UIApplicationSupportsMultipleScenes</key><false/>
     <key>UISceneConfigurations</key>
@@ -898,7 +1300,7 @@ inline PackageResult packageForTarget(
                                   "\"_meme_web_pointer_move\",\"_meme_web_pointer_down\",\"_meme_web_pointer_up\","
                                   "\"_meme_web_scroll\",\"_meme_web_key_event\",\"_meme_web_tick\","
                                   "\"_meme_web_set_clipboard\",\"_meme_web_get_clipboard\",\"_meme_web_agent_act\","
-                                  "\"_meme_native_complete_async\",\"_malloc\",\"_free\"]'";
+                                  "\"_meme_native_complete_async\",\"_meme_native_complete_perm_async\",\"_malloc\",\"_free\"]'";
         std::string cmd = envPrefix + "\"" + empp + "\" -std=c++20 -O3 -fexceptions -DMEME_HOST_PROVIDES_MAIN "
                           "-I\"" + repoRoot.string() + "\" -s WASM=1 -s EXPORTED_FUNCTIONS=" + exportedFns + " "
                           "-s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\",\"HEAPU8\",\"HEAPU32\"]' "
@@ -929,7 +1331,17 @@ inline PackageResult packageForTarget(
                                   "  ]\n"
                                   "}\n";
         detail::writeFileText(manifestWebPath, webManifest);
-        detail::writeFileText(htmlPath, MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true));
+        std::string permissionsPolicy;
+        std::unordered_set<std::string> seenWebDirectives;
+        for (const auto &cap : declaredCaps) {
+            for (const auto &dir : MemePermissions::webPolicyDirectivesFor(cap)) {
+                if (seenWebDirectives.insert(dir).second) {
+                    if (!permissionsPolicy.empty()) permissionsPolicy += ", ";
+                    permissionsPolicy += dir;
+                }
+            }
+        }
+        detail::writeFileText(htmlPath, MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true, permissionsPolicy));
         std::filesystem::path wasmPath = webDir / (pkgName + ".wasm");
         return finishOk(htmlPath.string(), {htmlPath.string(), jsPath.string(), wasmPath.string(), favPath.string(), icon192Path.string(), icon512Path.string(), manifestWebPath.string()});
     }

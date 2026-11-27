@@ -575,7 +575,161 @@ void bindAndroidNativeHooks(AndroidAppState *st) {
         });
         return ok;
     };
+    auto androidPermName = [](const std::string &rawCap, int sdkInt) -> std::string {
+        std::string c = MemePermissions::normalizeCapability(rawCap);
+        if (c == "notifications") return (sdkInt >= 33) ? "android.permission.POST_NOTIFICATIONS" : "";
+        if (c == "camera") return "android.permission.CAMERA";
+        if (c == "microphone") return "android.permission.RECORD_AUDIO";
+        if (c == "photos" || c == "storage") return (sdkInt >= 33) ? "android.permission.READ_MEDIA_IMAGES" : "android.permission.READ_EXTERNAL_STORAGE";
+        if (c == "location") return "android.permission.ACCESS_FINE_LOCATION";
+        if (c == "locationAlways") return (sdkInt >= 29) ? "android.permission.ACCESS_BACKGROUND_LOCATION" : "android.permission.ACCESS_FINE_LOCATION";
+        if (c == "contacts") return "android.permission.READ_CONTACTS";
+        if (c == "calendar") return "android.permission.READ_CALENDAR";
+        if (c == "bluetooth") return (sdkInt >= 31) ? "android.permission.BLUETOOTH_SCAN" : "android.permission.BLUETOOTH";
+        if (c == "sensors") return (sdkInt >= 29) ? "android.permission.ACTIVITY_RECOGNITION" : "";
+        if (c == "biometrics") return (sdkInt >= 28) ? "android.permission.USE_BIOMETRIC" : "";
+        return "";
+    };
+    auto getSdkInt = [withJni]() -> int {
+        int sdk = 30;
+        withJni([&sdk](JNIEnv *env, jobject) {
+            jclass vCls = env->FindClass("android/os/Build$VERSION");
+            if (vCls) {
+                jfieldID sf = env->GetStaticFieldID(vCls, "SDK_INT", "I");
+                if (sf) sdk = static_cast<int>(env->GetStaticIntField(vCls, sf));
+                env->DeleteLocalRef(vCls);
+            }
+        });
+        return sdk;
+    };
+    h.checkPermission = [withJni, androidPermName, getSdkInt](const std::string &rawCap) -> MemePermissions::PermissionStatus {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        MemePermissions::PermissionStatus out;
+        out.permission = cap;
+        out.platform = "android";
+        int sdk = getSdkInt();
+        std::string perm = androidPermName(cap, sdk);
+        if (perm.empty()) {
+            out.state = MemePermissions::isSupportedOnPlatform(cap, "android") ? "granted" : "unavailable";
+            out.finalizeFlags();
+            return out;
+        }
+        withJni([&](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID csp = env->GetMethodID(actCls, "checkSelfPermission", "(Ljava/lang/String;)I");
+            jmethodID rationale = env->GetMethodID(actCls, "shouldShowRequestPermissionRationale", "(Ljava/lang/String;)Z");
+            jstring jp = env->NewStringUTF(perm.c_str());
+            jint gr = csp ? env->CallIntMethod(act, csp, jp) : 0;
+            if (gr == 0 /*PERMISSION_GRANTED*/) {
+                out.state = "granted";
+            } else {
+                bool showRat = rationale ? (env->CallBooleanMethod(act, rationale, jp) != JNI_FALSE) : false;
+                out.state = showRat ? "prompt-with-rationale" : "prompt";
+            }
+            env->DeleteLocalRef(jp);
+            env->DeleteLocalRef(actCls);
+        });
+        out.finalizeFlags();
+        return out;
+    };
+    h.requestPermissionAsync = [withJni, androidPermName, getSdkInt](const std::string &rawCap, MemeNative::AsyncCallback cb) {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        int sdk = getSdkInt();
+        std::string perm = androidPermName(cap, sdk);
+        if (perm.empty() || sdk < 23) {
+            MemeNative::AsyncResponse r;
+            r.permissionState = "granted";
+            r.ok = true; r.accepted = true; r.value = "granted";
+            MemeNative::resolveAsyncCallback(rid, r);
+            return;
+        }
+        bool requested = false;
+        bool alreadyGranted = false;
+        withJni([&](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID csp = env->GetMethodID(actCls, "checkSelfPermission", "(Ljava/lang/String;)I");
+            jstring jp = env->NewStringUTF(perm.c_str());
+            if (csp && env->CallIntMethod(act, csp, jp) == 0) {
+                alreadyGranted = true;
+            } else {
+                jmethodID rp = env->GetMethodID(actCls, "requestPermissions", "([Ljava/lang/String;I)V");
+                jclass strCls = env->FindClass("java/lang/String");
+                if (rp && strCls) {
+                    jobjectArray arr = env->NewObjectArray(1, strCls, jp);
+                    env->CallVoidMethod(act, rp, arr, static_cast<jint>(rid));
+                    requested = !env->ExceptionCheck();
+                    env->DeleteLocalRef(arr);
+                }
+                if (strCls) env->DeleteLocalRef(strCls);
+            }
+            env->DeleteLocalRef(jp);
+            env->DeleteLocalRef(actCls);
+        });
+        if (alreadyGranted) {
+            MemeNative::AsyncResponse r;
+            r.permissionState = "granted";
+            r.ok = true; r.accepted = true; r.canAskAgain = false; r.value = "granted";
+            MemeNative::resolveAsyncCallback(rid, r);
+            return;
+        }
+        if (!requested) {
+            MemeNative::AsyncResponse r;
+            r.permissionState = "prompt";
+            r.ok = false; r.accepted = false; r.error = "Unable to invoke Activity.requestPermissions";
+            MemeNative::resolveAsyncCallback(rid, r);
+        }
+    };
+    h.openAppSettings = [withJni](const std::string &) -> bool {
+        bool ok = false;
+        withJni([&ok](JNIEnv *env, jobject act) {
+            jclass actCls = env->GetObjectClass(act);
+            jmethodID gpn = env->GetMethodID(actCls, "getPackageName", "()Ljava/lang/String;");
+            jstring pkg = gpn ? static_cast<jstring>(env->CallObjectMethod(act, gpn)) : nullptr;
+            jclass uriCls = env->FindClass("android/net/Uri");
+            jclass intCls = env->FindClass("android/content/Intent");
+            if (pkg && uriCls && intCls) {
+                jmethodID fp = env->GetStaticMethodID(uriCls, "fromParts", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Landroid/net/Uri;");
+                jstring jsScheme = env->NewStringUTF("package");
+                jobject uri = fp ? env->CallStaticObjectMethod(uriCls, fp, jsScheme, pkg, nullptr) : nullptr;
+                jstring jsAct = env->NewStringUTF("android.settings.APPLICATION_DETAILS_SETTINGS");
+                jmethodID ctor = env->GetMethodID(intCls, "<init>", "(Ljava/lang/String;Landroid/net/Uri;)V");
+                jobject intent = (uri && ctor) ? env->NewObject(intCls, ctor, jsAct, uri) : nullptr;
+                jmethodID sa = env->GetMethodID(actCls, "startActivity", "(Landroid/content/Intent;)V");
+                if (sa && intent) {
+                    env->CallVoidMethod(act, sa, intent);
+                    ok = !env->ExceptionCheck();
+                }
+                env->DeleteLocalRef(jsScheme);
+                env->DeleteLocalRef(jsAct);
+                if (uri) env->DeleteLocalRef(uri);
+                if (intent) env->DeleteLocalRef(intent);
+            }
+            if (pkg) env->DeleteLocalRef(pkg);
+            if (uriCls) env->DeleteLocalRef(uriCls);
+            if (intCls) env->DeleteLocalRef(intCls);
+            env->DeleteLocalRef(actCls);
+        });
+        return ok;
+    };
 }
+
+} // namespace
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_memelang_host_MemeNativeActivity_nativeOnPermissionResult(
+    JNIEnv *, jclass, jint reqId, jboolean granted, jboolean canAskAgain)
+{
+    MemeNative::AsyncResponse r;
+    r.ok = (granted != JNI_FALSE);
+    r.accepted = r.ok;
+    r.canAskAgain = r.ok ? false : (canAskAgain != JNI_FALSE);
+    r.permissionState = r.ok ? "granted" : (r.canAskAgain ? "prompt-with-rationale" : "denied");
+    r.value = r.permissionState;
+    MemeNative::resolveAsyncCallback(static_cast<int>(reqId), r);
+}
+
+namespace {
 
 void *androidMainLoop(void *arg) {
     auto *st = static_cast<AndroidAppState *>(arg);

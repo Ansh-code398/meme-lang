@@ -834,6 +834,153 @@ inline void bindMacNativeHooks(UiSession &session, NSWindow *win, NSView *view) 
         });
         return true;
     };
+    auto mapMacAuth = [](NSInteger st) -> std::string {
+        if (st == 3) return "granted";
+        if (st == 1) return "restricted";
+        if (st == 2) return "denied";
+        return "prompt";
+    };
+    static std::atomic<int> s_macNotifCache{-1};
+    auto checkMacBundled = []() -> bool {
+        return ([NSBundle mainBundle] != nil && [[NSBundle mainBundle] bundleIdentifier] != nil);
+    };
+    if (checkMacBundled()) {
+        void *un = dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", RTLD_LAZY);
+        Class unCls = un ? NSClassFromString(@"UNUserNotificationCenter") : nil;
+        if (unCls) {
+            id center = ((id (*)(Class, SEL))objc_msgSend)(unCls, NSSelectorFromString(@"currentNotificationCenter"));
+            void (^got)(id) = ^(id settings) {
+                if (settings) s_macNotifCache.store(static_cast<int>([[settings valueForKey:@"authorizationStatus"] integerValue]));
+            };
+            ((void (*)(id, SEL, id))objc_msgSend)(center, NSSelectorFromString(@"getNotificationSettingsWithCompletionHandler:"), got);
+        }
+    }
+    h.checkPermission = [mapMacAuth, checkMacBundled](const std::string &rawCap) -> MemePermissions::PermissionStatus {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        MemePermissions::PermissionStatus out;
+        out.permission = cap;
+        out.platform = "mac";
+        if (cap == "notifications") {
+            if (!checkMacBundled()) { out.state = "granted"; out.finalizeFlags(); return out; }
+            int cached = s_macNotifCache.load();
+            out.state = (cached == 2) ? "granted" : (cached == 1 ? "denied" : "prompt");
+        } else if (cap == "camera" || cap == "microphone") {
+            void *av = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
+            Class cls = av ? NSClassFromString(@"AVCaptureDevice") : nil;
+            if (cls) {
+                NSString *mt = (cap == "camera") ? @"vide" : @"soun";
+                NSInteger st = ((NSInteger (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForMediaType:"), mt);
+                out.state = mapMacAuth(st);
+            } else out.state = "unavailable";
+        } else if (cap == "photos") {
+            void *ph = dlopen("/System/Library/Frameworks/Photos.framework/Photos", RTLD_LAZY);
+            Class cls = ph ? NSClassFromString(@"PHPhotoLibrary") : nil;
+            if (cls) {
+                NSInteger st = ((NSInteger (*)(Class, SEL))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatus"));
+                out.state = (st == 4) ? "limited" : mapMacAuth(st);
+            } else out.state = "unavailable";
+        } else if (cap == "contacts") {
+            void *cn = dlopen("/System/Library/Frameworks/Contacts.framework/Contacts", RTLD_LAZY);
+            Class cls = cn ? NSClassFromString(@"CNContactStore") : nil;
+            if (cls) {
+                NSInteger st = ((NSInteger (*)(Class, SEL, NSInteger))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForEntityType:"), 0);
+                out.state = mapMacAuth(st);
+            } else out.state = "unavailable";
+        } else if (cap == "calendar") {
+            void *ek = dlopen("/System/Library/Frameworks/EventKit.framework/EventKit", RTLD_LAZY);
+            Class cls = ek ? NSClassFromString(@"EKEventStore") : nil;
+            if (cls) {
+                NSInteger st = ((NSInteger (*)(Class, SEL, NSInteger))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForEntityType:"), 0);
+                out.state = (st == 3 || st == 4) ? "granted" : (st == 1 ? "restricted" : (st == 2 ? "denied" : "prompt"));
+            } else out.state = "unavailable";
+        } else if (cap == "biometrics") {
+            out.state = MemeNative::biometricsAvailable() ? "granted" : "unavailable";
+        } else if (cap == "clipboard" || cap == "storage" || cap == "sensors") {
+            out.state = "granted";
+        } else {
+            out.state = MemePermissions::isSupportedOnPlatform(cap, "mac") ? "prompt" : "unavailable";
+        }
+        out.finalizeFlags();
+        return out;
+    };
+    h.requestPermissionAsync = [mapMacAuth, checkMacBundled](const std::string &rawCap, MemeNative::AsyncCallback cb) {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        int rid = MemeNative::registerAsyncCallback(std::move(cb));
+        auto finish = [rid](const std::string &stStr, const std::string &err = "") {
+            MemeNative::AsyncResponse r;
+            r.permissionState = stStr;
+            r.ok = (stStr == "granted" || stStr == "limited");
+            r.accepted = r.ok;
+            r.limited = (stStr == "limited");
+            r.restricted = (stStr == "restricted");
+            r.canAskAgain = (stStr == "prompt");
+            r.value = stStr; r.error = err;
+            MemeNative::resolveAsyncCallback(rid, r);
+        };
+        if (cap == "notifications") {
+            if (!checkMacBundled()) { finish("granted"); return; }
+            void *un = dlopen("/System/Library/Frameworks/UserNotifications.framework/UserNotifications", RTLD_LAZY);
+            Class unCls = un ? NSClassFromString(@"UNUserNotificationCenter") : nil;
+            if (!unCls) { finish("granted"); return; }
+            id center = ((id (*)(Class, SEL))objc_msgSend)(unCls, NSSelectorFromString(@"currentNotificationCenter"));
+            void (^done)(BOOL, NSError *) = ^(BOOL granted, NSError *err) {
+                s_macNotifCache.store(granted ? 2 : 1);
+                finish(granted ? "granted" : "denied", err && err.localizedDescription ? [err.localizedDescription UTF8String] : "");
+            };
+            ((void (*)(id, SEL, NSUInteger, id))objc_msgSend)(center, NSSelectorFromString(@"requestAuthorizationWithOptions:completionHandler:"), 7, done);
+            return;
+        }
+        if (cap == "camera" || cap == "microphone") {
+            void *av = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
+            Class cls = av ? NSClassFromString(@"AVCaptureDevice") : nil;
+            if (!cls) { finish("unavailable"); return; }
+            NSString *mt = (cap == "camera") ? @"vide" : @"soun";
+            NSInteger cur = ((NSInteger (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"authorizationStatusForMediaType:"), mt);
+            if (cur != 0) { finish(mapMacAuth(cur)); return; }
+            void (^handler)(BOOL) = ^(BOOL granted) { finish(granted ? "granted" : "denied"); };
+            ((void (*)(Class, SEL, id, id))objc_msgSend)(cls, NSSelectorFromString(@"requestAccessForMediaType:completionHandler:"), mt, handler);
+            return;
+        }
+        if (cap == "photos") {
+            void *ph = dlopen("/System/Library/Frameworks/Photos.framework/Photos", RTLD_LAZY);
+            Class cls = ph ? NSClassFromString(@"PHPhotoLibrary") : nil;
+            if (!cls) { finish("unavailable"); return; }
+            void (^handler)(NSInteger) = ^(NSInteger st) { finish(st == 4 ? "limited" : mapMacAuth(st)); };
+            ((void (*)(Class, SEL, id))objc_msgSend)(cls, NSSelectorFromString(@"requestAuthorization:"), handler);
+            return;
+        }
+        if (cap == "contacts") {
+            void *cn = dlopen("/System/Library/Frameworks/Contacts.framework/Contacts", RTLD_LAZY);
+            Class cls = cn ? NSClassFromString(@"CNContactStore") : nil;
+            if (!cls) { finish("unavailable"); return; }
+            id store = [[cls alloc] init];
+            void (^handler)(BOOL, NSError *) = ^(BOOL granted, NSError *) { finish(granted ? "granted" : "denied"); };
+            ((void (*)(id, SEL, NSInteger, id))objc_msgSend)(store, NSSelectorFromString(@"requestAccessForEntityType:completionHandler:"), 0, handler);
+            MEME_OBJC_RELEASE(store);
+            return;
+        }
+        if (cap == "calendar") {
+            void *ek = dlopen("/System/Library/Frameworks/EventKit.framework/EventKit", RTLD_LAZY);
+            Class cls = ek ? NSClassFromString(@"EKEventStore") : nil;
+            if (!cls) { finish("unavailable"); return; }
+            id store = [[cls alloc] init];
+            void (^handler)(BOOL, NSError *) = ^(BOOL granted, NSError *) { finish(granted ? "granted" : "denied"); };
+            ((void (*)(id, SEL, NSInteger, id))objc_msgSend)(store, NSSelectorFromString(@"requestAccessToEntityType:completion:"), 0, handler);
+            MEME_OBJC_RELEASE(store);
+            return;
+        }
+        if (cap == "biometrics") {
+            finish(MemeNative::biometricsAvailable() ? "granted" : "unavailable");
+            return;
+        }
+        finish("granted");
+    };
+    h.openAppSettings = [](const std::string &cap) -> bool {
+        std::string uri = MemePermissions::macSettingsUriFor(cap);
+        NSString *ns = [NSString stringWithUTF8String:uri.c_str()];
+        NSURL *u = ns ? [NSURL URLWithString:ns] : nil;
+        return u && ([[NSWorkspace sharedWorkspace] openURL:u] != NO);
+    };
 }
 
 inline void applyMacAppIcon() {

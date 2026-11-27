@@ -5525,10 +5525,15 @@ inline auto meme_khol_or_call(T &&obj, Args &&...args) {
 inline MemeValue meme_async_res_to_value(const MemeNative::AsyncResponse &r) {
     auto plist = std::make_shared<std::vector<MemeValue>>();
     for (const auto &p : r.paths) plist->push_back(MemeValue(p));
+    std::string st = !r.permissionState.empty() ? r.permissionState : (r.accepted ? "granted" : (r.cancelled ? "denied" : ""));
     return make_map({
         {"ok", MemeValue(r.ok)},
         {"accepted", MemeValue(r.accepted)},
         {"cancelled", MemeValue(r.cancelled)},
+        {"state", MemeValue(st)},
+        {"canAskAgain", MemeValue(r.canAskAgain)},
+        {"limited", MemeValue(r.limited)},
+        {"restricted", MemeValue(r.restricted)},
         {"value", MemeValue(r.value)},
         {"path", MemeValue(r.path)},
         {"paths", MemeValue(plist)},
@@ -5536,6 +5541,237 @@ inline MemeValue meme_async_res_to_value(const MemeNative::AsyncResponse &r) {
         {"lon", MemeValue(r.lon)},
         {"accuracy", MemeValue(r.accuracy)},
         {"error", MemeValue(r.error)}
+    });
+}
+
+inline MemeValue meme_permission_status_to_value(const MemePermissions::PermissionStatus &st) {
+    return make_map({
+        {"permission", MemeValue(st.permission)},
+        {"state", MemeValue(st.state)},
+        {"granted", MemeValue(st.granted)},
+        {"canAskAgain", MemeValue(st.canAskAgain)},
+        {"restricted", MemeValue(st.restricted)},
+        {"limited", MemeValue(st.limited)},
+        {"platform", MemeValue(st.platform)},
+        {"reason", MemeValue(st.reason)},
+        {"error", MemeValue(st.error)}
+    });
+}
+
+struct MemePendingPromiseState {
+    std::mutex mu;
+    bool done = false;
+    MemeValue result;
+    std::vector<MemeValue> waiters;
+};
+
+inline void meme_attach_promise_methods(MemeValue &target, const std::shared_ptr<MemePendingPromiseState> &state) {
+    target["__is_promise__"] = MemeValue(true);
+    auto attachThen = meme_fn([state](const std::vector<MemeValue> &a) -> MemeValue {
+        if (a.empty() || !a[0].is_callable()) return MemeValue();
+        MemeValue fn = a[0];
+        auto nextState = std::make_shared<MemePendingPromiseState>();
+        bool immediate = false;
+        MemeValue resolvedVal;
+        {
+            std::lock_guard<std::mutex> lock(state->mu);
+            if (state->done) {
+                immediate = true;
+                resolvedVal = state->result;
+            } else {
+                state->waiters.push_back(meme_fn([fn, nextState](const std::vector<MemeValue> &wa) -> MemeValue {
+                    MemeValue out = fn.call_args(wa);
+                    std::vector<MemeValue> nextWaiters;
+                    {
+                        std::lock_guard<std::mutex> nlock(nextState->mu);
+                        nextState->done = true;
+                        nextState->result = out;
+                        nextWaiters = std::move(nextState->waiters);
+                        nextState->waiters.clear();
+                    }
+                    for (const auto &nw : nextWaiters) nw.call_args({out});
+                    return out;
+                }));
+            }
+        }
+        if (immediate) {
+            MemeValue out = fn.call_args({resolvedVal});
+            nextState->done = true;
+            nextState->result = out;
+            MemeValue resMap = (out.type == MemeValue::TYPE_MAP) ? out : make_map({{"value", out}});
+            meme_attach_promise_methods(resMap, nextState);
+            return resMap;
+        }
+        MemeValue pending = make_map({});
+        meme_attach_promise_methods(pending, nextState);
+        return pending;
+    });
+    target["then"] = attachThen;
+    target["phir"] = attachThen;
+}
+
+inline MemeValue build_platform_module() {
+    auto parseSpecMatch = [](const MemeValue &v) -> bool {
+        if (v.type == MemeValue::TYPE_LIST && v.list_data) {
+            for (const auto &it : *v.list_data) {
+                if (MemePlatform::matchPlatformSpec(it.to_string())) return true;
+            }
+            return false;
+        }
+        return MemePlatform::matchPlatformSpec(v.to_string());
+    };
+    return make_map({
+        {"os", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform()); })},
+        {"arch", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentArch()); })},
+        {"is", meme_fn([parseSpecMatch](const std::vector<MemeValue> &a) {
+            return MemeValue(a.empty() ? false : parseSpecMatch(a[0]));
+        })},
+        {"isIos", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform() == "ios"); })},
+        {"isAndroid", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform() == "android"); })},
+        {"isMac", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform() == "mac"); })},
+        {"isWindows", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform() == "windows"); })},
+        {"isLinux", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::currentPlatform() == "linux"); })},
+        {"isWeb", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isWeb()); })},
+        {"isMobile", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isMobile()); })},
+        {"isDesktop", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isDesktop()); })},
+        {"isNative", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isNative()); })},
+        {"isApple", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isApple()); })},
+        {"isPosix", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemePlatform::isPosix()); })},
+        {"select", meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
+            if (a.empty() || a[0].type != MemeValue::TYPE_MAP) return MemeValue();
+            for (const auto &k : MemePlatform::platformSelectPriority()) {
+                if (a[0].has(k)) return a[0].get(k);
+            }
+            return MemeValue();
+        })},
+        {"info", meme_fn([](const std::vector<MemeValue> &) {
+            return make_map({
+                {"os", MemeValue(MemePlatform::currentPlatform())},
+                {"arch", MemeValue(MemePlatform::currentArch())},
+                {"isMobile", MemeValue(MemePlatform::isMobile())},
+                {"isDesktop", MemeValue(MemePlatform::isDesktop())},
+                {"isWeb", MemeValue(MemePlatform::isWeb())},
+                {"isNative", MemeValue(MemePlatform::isNative())},
+                {"isApple", MemeValue(MemePlatform::isApple())}
+            });
+        })}
+    });
+}
+
+inline MemeValue build_permissions_module() {
+    auto extractCb = [](const std::vector<MemeValue> &a) -> MemeValue {
+        if (a.size() >= 2 && a.back().is_callable()) return a.back();
+        return MemeValue();
+    };
+    return make_map({
+        {"check", meme_fn([](const std::vector<MemeValue> &a) {
+            std::string cap = a.empty() ? "" : a[0].to_string();
+            return meme_permission_status_to_value(MemeNative::checkPermission(cap));
+        })},
+        {"status", meme_fn([](const std::vector<MemeValue> &a) {
+            std::string cap = a.empty() ? "" : a[0].to_string();
+            return meme_permission_status_to_value(MemeNative::checkPermission(cap));
+        })},
+        {"isSupported", meme_fn([](const std::vector<MemeValue> &a) {
+            std::string cap = a.empty() ? "" : a[0].to_string();
+            std::string plat = a.size() > 1 ? a[1].to_string() : "";
+            return MemeValue(MemePermissions::isSupportedOnPlatform(cap, plat));
+        })},
+        {"declared", meme_fn([](const std::vector<MemeValue> &) {
+            auto caps = MemePermissions::getDeclaredPermissions();
+            auto list = std::make_shared<std::vector<MemeValue>>();
+            for (const auto &c : caps) list->push_back(MemeValue(c));
+            return MemeValue(list);
+        })},
+        {"openSettings", meme_fn([](const std::vector<MemeValue> &a) {
+            std::string cap = a.empty() ? "" : a[0].to_string();
+            return MemeValue(MemeNative::openAppSettings(cap));
+        })},
+        {"request", meme_fn([extractCb](const std::vector<MemeValue> &a) {
+            std::string cap = a.empty() ? "" : a[0].to_string();
+            MemeValue cb = extractCb(a);
+            auto pstate = std::make_shared<MemePendingPromiseState>();
+            MemeValue ret = meme_permission_status_to_value(MemeNative::checkPermission(cap));
+            MemeNative::requestPermissionAsync(cap, [pstate, cb](const MemePermissions::PermissionStatus &st) {
+                MemeValue mv = meme_permission_status_to_value(st);
+                std::vector<MemeValue> waiters;
+                {
+                    std::lock_guard<std::mutex> lock(pstate->mu);
+                    pstate->done = true;
+                    pstate->result = mv;
+                    waiters = std::move(pstate->waiters);
+                    pstate->waiters.clear();
+                }
+                if (cb.is_callable()) cb.call_args({mv});
+                for (const auto &w : waiters) w.call_args({mv});
+            });
+            {
+                std::lock_guard<std::mutex> lock(pstate->mu);
+                if (pstate->done) ret = pstate->result;
+            }
+            meme_attach_promise_methods(ret, pstate);
+            return ret;
+        })},
+        {"requestMany", meme_fn([extractCb](const std::vector<MemeValue> &a) {
+            std::vector<std::string> caps;
+            if (!a.empty() && a[0].type == MemeValue::TYPE_LIST && a[0].list_data) {
+                for (const auto &e : *a[0].list_data) caps.push_back(e.to_string());
+            } else if (!a.empty() && !a[0].is_callable()) {
+                caps.push_back(a[0].to_string());
+            }
+            MemeValue cb = extractCb(a);
+            auto pstate = std::make_shared<MemePendingPromiseState>();
+            if (caps.empty()) {
+                MemeValue emptyRes = make_map({});
+                pstate->done = true;
+                pstate->result = emptyRes;
+                if (cb.is_callable()) cb.call_args({emptyRes});
+                meme_attach_promise_methods(emptyRes, pstate);
+                return emptyRes;
+            }
+            struct BatchState {
+                std::mutex mu;
+                size_t remaining = 0;
+                MemeValue results = make_map({});
+            };
+            auto batch = std::make_shared<BatchState>();
+            batch->remaining = caps.size();
+            for (const auto &rawC : caps) {
+                std::string key = MemePermissions::normalizeCapability(rawC);
+                MemeNative::requestPermissionAsync(rawC, [batch, pstate, cb, key](const MemePermissions::PermissionStatus &st) {
+                    bool allDone = false;
+                    MemeValue snapshot;
+                    {
+                        std::lock_guard<std::mutex> lock(batch->mu);
+                        batch->results[key] = meme_permission_status_to_value(st);
+                        if (batch->remaining > 0) batch->remaining--;
+                        if (batch->remaining == 0) {
+                            allDone = true;
+                            snapshot = batch->results;
+                        }
+                    }
+                    if (allDone) {
+                        std::vector<MemeValue> waiters;
+                        {
+                            std::lock_guard<std::mutex> lock(pstate->mu);
+                            pstate->done = true;
+                            pstate->result = snapshot;
+                            waiters = std::move(pstate->waiters);
+                            pstate->waiters.clear();
+                        }
+                        if (cb.is_callable()) cb.call_args({snapshot});
+                        for (const auto &w : waiters) w.call_args({snapshot});
+                    }
+                });
+            }
+            MemeValue ret = make_map({});
+            {
+                std::lock_guard<std::mutex> lock(pstate->mu);
+                if (pstate->done) ret = pstate->result;
+            }
+            meme_attach_promise_methods(ret, pstate);
+            return ret;
+        })}
     });
 }
 
@@ -5875,11 +6111,17 @@ inline MemeValue build_native_module() {
         {"camera", cameraMod},
         {"location", locationMod},
         {"sensors", sensorsMod},
-        {"window", windowMod}
+        {"window", windowMod},
+        {"platform", build_platform_module()},
+        {"permissions", build_permissions_module()},
+        {"perms", build_permissions_module()}
     });
 }
 
 inline MemeValue native = build_native_module();
+inline MemeValue platform = meme_index(native, "platform");
+inline MemeValue permissions = meme_index(native, "permissions");
+inline MemeValue perms = permissions;
 
 inline MemeValue build_app_module() {
     MemeValue alertFn = meme_index(meme_index(native, "dialog"), "alert");
@@ -5911,7 +6153,10 @@ inline MemeValue build_app_module() {
         {"haptic", meme_index(meme_index(native, "haptics"), "impact")},
         {"device_info", meme_index(meme_index(native, "device"), "info")},
         {"battery", meme_index(native, "battery")},
-        {"network", meme_index(native, "network")}
+        {"network", meme_index(native, "network")},
+        {"platform", platform},
+        {"permissions", permissions},
+        {"perms", permissions}
     });
 }
 

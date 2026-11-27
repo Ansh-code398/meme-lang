@@ -66,7 +66,7 @@ inline std::string buildBatchesJson(const MemeUI::UiMesh &mesh) {
     return out;
 }
 
-inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const std::string &title = "MEME-UI Web Native", const std::string &themeColor = "#020617", bool includePwaMeta = false) {
+inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const std::string &title = "MEME-UI Web Native", const std::string &themeColor = "#020617", bool includePwaMeta = false, const std::string &permissionsPolicy = "") {
     std::string pwaHead;
     if (includePwaMeta) {
         pwaHead =
@@ -76,6 +76,9 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
             "<meta name=\"theme-color\" content=\"" + themeColor + "\" />\n"
             "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\" />\n"
             "<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\" />\n";
+    }
+    if (!permissionsPolicy.empty()) {
+        pwaHead += "<meta http-equiv=\"Permissions-Policy\" content=\"" + permissionsPolicy + "\" />\n";
     }
     return std::string(R"HTML(<!doctype html>
 <html lang="en">

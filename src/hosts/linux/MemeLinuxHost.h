@@ -392,6 +392,39 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
         if (pXFlush) pXFlush(dpy);
         return true;
     };
+    nh.checkPermission = [](const std::string &rawCap) -> MemePermissions::PermissionStatus {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        MemePermissions::PermissionStatus out;
+        out.permission = cap;
+        out.platform = "linux";
+        if (cap == "clipboard" || cap == "storage" || cap == "notifications" || cap == "sensors") {
+            out.state = "granted";
+        } else {
+            out.state = MemePermissions::isSupportedOnPlatform(cap, "linux") ? "prompt" : "unavailable";
+        }
+        out.finalizeFlags();
+        return out;
+    };
+    nh.requestPermissionAsync = [](const std::string &rawCap, MemeNative::AsyncCallback cb) {
+        std::string cap = MemePermissions::normalizeCapability(rawCap);
+        MemeNative::AsyncResponse r;
+        int code = 1;
+        std::string msg = MemePermissions::getPermissionDescription(cap, "MEME App") + " Allow '" + cap + "'?";
+        if (std::getenv("DISPLAY") || std::getenv("WAYLAND_DISPLAY")) {
+            MemeNative::detail::execArgv({"zenity", "--question", "--title=Permission Request", "--text=" + msg}, nullptr, nullptr, &code);
+            r.ok = (code == 0);
+        } else {
+            r.ok = MemePermissions::isSupportedOnPlatform(cap, "linux");
+        }
+        r.accepted = r.ok;
+        r.permissionState = r.ok ? "granted" : "denied";
+        r.value = r.permissionState;
+        MemeNative::dispatchCallbackOnUiThread(cb, r);
+    };
+    nh.openAppSettings = [](const std::string &) -> bool {
+        return MemeNative::detail::execArgv({"gnome-control-center", "privacy"}, nullptr, nullptr, nullptr, true) ||
+               MemeNative::detail::execArgv({"xdg-open", "settings://privacy"}, nullptr, nullptr, nullptr, true);
+    };
 
     if (pXMapWindow) pXMapWindow(dpy, win);
 

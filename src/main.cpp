@@ -1459,6 +1459,14 @@ static void handleDev(int argc, char *argv[])
     state->port = port;
     state->platform = platform;
     state->appName = std::filesystem::path(targetFile).stem().string();
+    if (MemePlatform::isKnownConcretePlatform(MemePlatform::normalizePlatformName(platform)))
+    {
+        std::string normPlat = MemePlatform::normalizePlatformName(platform);
+        MemePlatform::setRuntimePlatformOverride(normPlat);
+#if !defined(_WIN32)
+        setenv("MEME_PLATFORM", normPlat.c_str(), 1);
+#endif
+    }
 
     auto interpreter = std::make_unique<Interpreter>();
     state->interpreter = interpreter.get();
@@ -1912,6 +1920,7 @@ static void handleCompile(int argc, char *argv[])
     CompileOptions options;
     options.outputPath = outputPath;
     options.sourcePath = file;
+    options.target = target;
     options.optimize = !debug;
     options.debug = debug;
     options.tsan = tsan;
@@ -2078,8 +2087,16 @@ static void handleBuild(int argc, char *argv[])
     if (buildTarget != "host" && buildTarget != "native")
     {
         std::string outDir = customOut.empty() ? "dist" : customOut;
+        MemePackager::PackageConfig pkgCfg;
+        pkgCfg.displayName = !manifest.displayName.empty() ? manifest.displayName : manifest.name;
+        pkgCfg.bundleId = manifest.bundleId;
+        if (!manifest.version.empty()) pkgCfg.version = manifest.version;
+        pkgCfg.description = manifest.description;
+        pkgCfg.iconPath = manifest.icon;
+        pkgCfg.urlScheme = manifest.scheme;
+        if (!manifest.themeColor.empty()) pkgCfg.themeColor = manifest.themeColor;
         std::cout << formatRichText("[asmani bold]📦 Building & packaging tapri project '" + manifest.name + "' (target=" + buildTarget + ") -> " + outDir + "...[/]\n");
-        MemePackager::PackageResult pr = MemePackager::packageForTarget(manifest.entry, buildTarget, outDir, verbose);
+        MemePackager::PackageResult pr = MemePackager::packageForTarget(manifest.entry, buildTarget, outDir, verbose, pkgCfg);
         if (!pr.success)
         {
             std::cerr << formatRichText("[laal bold]❌ Packaging failed:\n" + pr.error + "[/]\n");
@@ -2369,7 +2386,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Filter out --env-file flags from argument list
+    // Filter out --env-file (and --platform outside dev) flags from argument list
+    bool isDevCmd = (argc >= 2 && std::string(argv[1]) == "dev");
     std::vector<char *> cleanArgv;
     cleanArgv.push_back(argv[0]);
     for (int i = 1; i < argc; ++i)
@@ -2382,6 +2400,26 @@ int main(int argc, char *argv[])
         if (arg == "--env-file")
         {
             ++i;
+            continue;
+        }
+        if (!isDevCmd && arg.rfind("--platform=", 0) == 0)
+        {
+            std::string pval = arg.substr(11);
+            MemePlatform::setRuntimePlatformOverride(pval);
+#if !defined(_WIN32)
+            std::string np = MemePlatform::normalizePlatformName(pval);
+            if (!np.empty()) setenv("MEME_PLATFORM", np.c_str(), 1);
+#endif
+            continue;
+        }
+        if (!isDevCmd && arg == "--platform" && i + 1 < argc)
+        {
+            std::string pval = argv[++i];
+            MemePlatform::setRuntimePlatformOverride(pval);
+#if !defined(_WIN32)
+            std::string np = MemePlatform::normalizePlatformName(pval);
+            if (!np.empty()) setenv("MEME_PLATFORM", np.c_str(), 1);
+#endif
             continue;
         }
         cleanArgv.push_back(argv[i]);

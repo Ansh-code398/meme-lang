@@ -140,6 +140,9 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
         png_member = next((n for n in names if n.endswith(f"/icons/hicolor/256x256/apps/{pkg_id}.png")), None)
         if not png_member or tf.extractfile(png_member).read()[:4] != b"\x89PNG":
             fail_test(f"{prefix}_deb_icon", f"Missing/invalid PNG icon in deb: {names}")
+        cap_member = next((n for n in names if n.endswith(f"/usr/share/{pkg_id}/capabilities.json")), None)
+        if not cap_member:
+            fail_test(f"{prefix}_deb_caps", f"Missing capabilities.json in deb: {names}")
     pass_test(f"T1_{prefix}_deb_archive_and_elf")
 
     # 4. Linux RPM (.rpm)
@@ -153,8 +156,8 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
     if gz_idx < 0:
         fail_test(f"{prefix}_rpm_payload", "Missing gzipped cpio payload in rpm")
     cpio_raw = gzip.decompress(rpm_bytes[gz_idx:])
-    if b"\x7fELF" not in cpio_raw or f"/usr/local/bin/{pkg_id}".encode() not in cpio_raw or b"\x89PNG" not in cpio_raw:
-        fail_test(f"{prefix}_rpm_cpio_elf", "ELF binary or PNG icon missing in RPM cpio payload")
+    if b"\x7fELF" not in cpio_raw or f"usr/local/bin/{pkg_id}".encode() not in cpio_raw or b"\x89PNG" not in cpio_raw or f"usr/share/{pkg_id}/capabilities.json".encode() not in cpio_raw:
+        fail_test(f"{prefix}_rpm_cpio_elf", "ELF binary, PNG icon, or capabilities.json missing in RPM cpio payload")
     pass_test(f"T1_{prefix}_rpm_header_and_cpio_elf")
 
     # 5. Embedded Linux (.ipk)
@@ -167,10 +170,13 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
             fail_test(f"{prefix}_ipk_structure", str(ipk_names))
         data_gz = ipk_tf.extractfile("./data.tar.gz").read()
         with tarfile.open(fileobj=io.BytesIO(data_gz), mode="r:gz") as dtf:
-            elf_mem = next((n for n in dtf.getnames() if n.endswith(f"/usr/bin/{pkg_id}")), None)
+            dnames = dtf.getnames()
+            elf_mem = next((n for n in dnames if n.endswith(f"/usr/bin/{pkg_id}")), None)
             if not elf_mem:
-                fail_test(f"{prefix}_ipk_bin", str(dtf.getnames()))
+                fail_test(f"{prefix}_ipk_bin", str(dnames))
             check_elf_arch(dtf.extractfile(elf_mem).read(), 0x3E, f"T1_{prefix}_ipk_elf")
+            if not any(n.endswith(f"/usr/share/{pkg_id}/capabilities.json") for n in dnames):
+                fail_test(f"{prefix}_ipk_caps", str(dnames))
     pass_test(f"T1_{prefix}_ipk_archive_and_elf")
 
     # 6. Android (.apk)
@@ -185,6 +191,8 @@ def verify_target_artifacts(pkg_dir: Path, app_name_cap: str, pkg_id: str, prefi
             fail_test(f"{prefix}_apk_icons", f"Missing ic_launcher PNGs in APK: {znames}")
         check_elf_arch(zf.read("lib/arm64-v8a/libmemeapp.so"), 0xB7, f"T1_{prefix}_apk_arm64")
         check_elf_arch(zf.read("lib/x86_64/libmemeapp.so"), 0x3E, f"T1_{prefix}_apk_x86_64")
+        if prefix == "showcase" and "classes.dex" not in znames:
+            fail_test(f"{prefix}_apk_classes_dex", f"Expected classes.dex in Showcase APK, got {znames}")
     android_sdk = Path.home() / "Library" / "Android" / "sdk"
     if android_sdk.is_dir():
         bt_dirs = sorted((android_sdk / "build-tools").iterdir())
@@ -372,6 +380,10 @@ function loadWasmModule(jsFile) {
   act('native_clipboard_btn', 'click');
   appMod._meme_web_render(1040, 720);
   assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('Clipboard: MEME-UI-wasm')), 'Native clipboard button failed in Wasm');
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('Platform: web')), 'Platform badge missing in Showcase Wasm');
+  act('perm_check_camera', 'click');
+  appMod._meme_web_render(1040, 720);
+  assert(getCmds().some(c => c.type === 'DRAW_TEXT' && c.text.includes('camera check ->')), 'Permission check button did not update status in Wasm');
   console.log('[PASS] T4_wasm_showcase_canvas_editor_and_rtl');
 
   // Raw pointer coordinate clicks inside overflow-y-auto root container (desktop + mobile viewport!)
@@ -572,6 +584,133 @@ def main():
         if "io.example.brand" not in c_plist or "brandapp" not in c_plist:
             fail_test("T1_custom_plist_meta", c_plist)
         pass_test("T1_custom_icon_id_and_scheme_packaging")
+
+        # T5: Selective Per-Platform Permissions, Entitlements, Web Policy & Target File Separation
+        # Verify Showcase Web shell contains declared Permissions-Policy
+        showcase_html = (app_dist / "web" / "index.html").read_text(encoding="utf-8")
+        if 'http-equiv="Permissions-Policy"' not in showcase_html or "camera=(self)" not in showcase_html or "geolocation=(self)" not in showcase_html:
+            fail_test("T5_showcase_web_permissions_policy", showcase_html[:800])
+        pass_test("T5_showcase_web_permissions_policy")
+
+        # Verify macOS entitlements embedded on Showcase.app
+        r_ent = run_cmd(["codesign", "-d", "--entitlements", ":-", str(app_dist / "Showcase.app")])
+        if r_ent.returncode != 0 or "com.apple.security.device.camera" not in r_ent.stdout:
+            fail_test("T5_showcase_mac_entitlements", r_ent.stdout + "\n" + r_ent.stderr)
+        pass_test("T5_showcase_mac_entitlements")
+
+        # Verify Showcase APK includes classes.dex & selective permissions (CAMERA & POST_NOTIFICATIONS, not READ_CALENDAR)
+        android_sdk = Path.home() / "Library" / "Android" / "sdk"
+        bt_dirs = sorted((android_sdk / "build-tools").iterdir()) if android_sdk.is_dir() else []
+        if bt_dirs:
+            bt = bt_dirs[-1]
+            r_perms = run_cmd([str(bt / "aapt2"), "dump", "permissions", str(app_dist / "showcase.apk")])
+            if "android.permission.CAMERA" not in r_perms.stdout or "android.permission.POST_NOTIFICATIONS" not in r_perms.stdout:
+                fail_test("T5_showcase_apk_perms", r_perms.stdout + "\n" + r_perms.stderr)
+            if "READ_CALENDAR" in r_perms.stdout:
+                fail_test("T5_showcase_apk_unexpected_perm", r_perms.stdout)
+        pass_test("T5_showcase_apk_selective_perms_and_dex")
+
+        # Build isolated selective-permission & platform-separation fixture
+        fix_dir = WORK_DIR / "perm-sep-app"
+        (fix_dir / "src").mkdir(parents=True, exist_ok=True)
+        (fix_dir / "tapri.json").write_text(json.dumps({
+            "name": "perm-sep-app",
+            "displayName": "PermSepApp",
+            "bundleId": "dev.memelang.permsep",
+            "version": "1.0.0",
+            "strictPermissions": True,
+            "entry": "src/App.meme",
+            "permissions": {
+                "common": ["notifications"],
+                "ios": {"camera": "Fixture custom iOS camera prompt"},
+                "android": ["camera"],
+                "mac": ["camera"],
+                "web": ["notifications"]
+            }
+        }), encoding="utf-8")
+        (fix_dir / "src" / "adapter.meme").write_text('kaam tag() { de "MEME_ADAPTER_TARGET_DEFAULT_MARKER_V1"; }\n', encoding="utf-8")
+        (fix_dir / "src" / "adapter.ios.meme").write_text('kaam tag() { de "MEME_ADAPTER_TARGET_IOS_MARKER_V1"; }\n', encoding="utf-8")
+        (fix_dir / "src" / "adapter.android.meme").write_text('kaam tag() { de "MEME_ADAPTER_TARGET_ANDROID_MARKER_V1"; }\n', encoding="utf-8")
+        (fix_dir / "src" / "adapter.web.meme").write_text('kaam tag() { de "MEME_ADAPTER_TARGET_WEB_MARKER_V1"; }\n', encoding="utf-8")
+        (fix_dir / "src" / "App.meme").write_text("""bula "platform";
+bula "permissions";
+bula "./adapter" jaise adapter;
+bula "ui:shadcn" jaise { Platform };
+kaam App() {
+    pakad camSt = permissions.check("camera");
+    pakad locSt = permissions.check("location");
+    de (
+        <div class="p-4 flex flex-col gap-2">
+            <span testId="sep_adapter">{adapter.tag()}</span>
+            <span testId="sep_loc">{locSt.state + ":" + camSt.state}</span>
+            <Platform web><span testId="sep_web_only">WEB_BRANCH</span></Platform>
+        </div>
+    );
+}
+ui.mount(<App />);
+""", encoding="utf-8")
+
+        fix_out = WORK_DIR / "perm_sep_out"
+        for tgt in ("apk", "ipa", "mac", "web"):
+            rp = run_cmd([MEME_BIN, "package", str(fix_dir / "src" / "App.meme"), f"--target={tgt}", "-o", str(fix_out)], timeout=180)
+            if rp.returncode != 0:
+                fail_test(f"T5_fixture_pkg_{tgt}", rp.stdout + "\n" + rp.stderr)
+
+        # Check APK selective permissions: has CAMERA & POST_NOTIFICATIONS, does NOT have ACCESS_FINE_LOCATION or RECORD_AUDIO
+        if bt_dirs:
+            bt = bt_dirs[-1]
+            r_fp = run_cmd([str(bt / "aapt2"), "dump", "permissions", str(fix_out / "perm-sep-app.apk")])
+            if "android.permission.CAMERA" not in r_fp.stdout or "android.permission.POST_NOTIFICATIONS" not in r_fp.stdout:
+                fail_test("T5_fixture_apk_missing", r_fp.stdout)
+            if "ACCESS_FINE_LOCATION" in r_fp.stdout or "RECORD_AUDIO" in r_fp.stdout:
+                fail_test("T5_fixture_apk_leaked", r_fp.stdout)
+        with zipfile.ZipFile(fix_out / "perm-sep-app.apk", "r") as zf:
+            if "classes.dex" not in zf.namelist():
+                fail_test("T5_fixture_apk_dex", str(zf.namelist()))
+            so_bytes = zf.read("lib/arm64-v8a/libmemeapp.so")
+            if b"MEME_ADAPTER_TARGET_ANDROID_MARKER_V1" not in so_bytes or b"MEME_ADAPTER_TARGET_IOS_MARKER_V1" in so_bytes:
+                fail_test("T5_fixture_apk_adapter", "Expected ANDROID marker and no IOS marker in arm64 .so")
+
+        # Check iOS Info.plist: custom reason & NO NSLocationWhenInUseUsageDescription
+        with zipfile.ZipFile(fix_out / "PermSepApp.ipa", "r") as zf:
+            f_plist = zf.read("Payload/PermSepApp.app/Info.plist").decode("utf-8", errors="ignore")
+            if "Fixture custom iOS camera prompt" not in f_plist:
+                fail_test("T5_fixture_ios_reason", f_plist)
+            if "NSLocationWhenInUseUsageDescription" in f_plist or "NSMicrophoneUsageDescription" in f_plist:
+                fail_test("T5_fixture_ios_leaked", f_plist)
+            ios_bin = zf.read("Payload/PermSepApp.app/PermSepApp")
+            if b"MEME_ADAPTER_TARGET_IOS_MARKER_V1" not in ios_bin or b"MEME_ADAPTER_TARGET_WEB_MARKER_V1" in ios_bin:
+                fail_test("T5_fixture_ios_adapter", "Expected IOS marker and no WEB marker in iOS binary")
+
+        # Check macOS binary uses DEFAULT marker (since no .mac.meme exists) & excludes WEB/IOS markers
+        mac_bytes = (fix_out / "PermSepApp.app" / "Contents" / "MacOS" / "PermSepApp").read_bytes()
+        if b"MEME_ADAPTER_TARGET_DEFAULT_MARKER_V1" not in mac_bytes or b"MEME_ADAPTER_TARGET_IOS_MARKER_V1" in mac_bytes:
+            fail_test("T5_fixture_mac_adapter", "Expected DEFAULT marker in macOS binary")
+
+        # Check Web HTML policy & Wasm runtime output (WEB_MARKER + strict denied camera/location)
+        f_html = (fix_out / "web" / "index.html").read_text(encoding="utf-8")
+        if "geolocation=(self)" in f_html or "camera=(self)" in f_html:
+            fail_test("T5_fixture_web_policy_leaked", f_html[:600])
+        fix_node = WORK_DIR / "verify_fix_web.js"
+        fix_node.write_text(f"""
+const assert = require('node:assert');
+const m = require({json.dumps(str(fix_out / "web" / "perm-sep-app.js"))});
+const run = () => {{
+  m._meme_web_start();
+  m._meme_web_render(640, 480);
+  const cmds = JSON.parse(m.UTF8ToString(m._meme_web_get_commands_json()));
+  const texts = cmds.filter(c => c.type === 'DRAW_TEXT').map(c => c.text);
+  assert(texts.includes('MEME_ADAPTER_TARGET_WEB_MARKER_V1'), 'Expected WEB marker in Wasm: ' + JSON.stringify(texts));
+  assert(texts.includes('WEB_BRANCH'), 'Expected WEB_BRANCH <Platform web> in Wasm: ' + JSON.stringify(texts));
+  assert(texts.includes('denied:denied'), 'Expected strict denied:denied for undeclared location/camera on web: ' + JSON.stringify(texts));
+  console.log('[PASS] T5_fixture_web_wasm_runtime_and_strict');
+}};
+if (m.calledRun) run(); else m.onRuntimeInitialized = run;
+""", encoding="utf-8")
+        rw = run_cmd(["node", str(fix_node)], timeout=30)
+        if rw.returncode != 0 or "T5_fixture_web_wasm_runtime_and_strict" not in rw.stdout:
+            fail_test("T5_fixture_web_wasm", rw.stdout + "\n" + rw.stderr)
+        pass_test("T5_fixture_selective_manifests_and_target_separation")
 
         print("ALL MULTI-PLATFORM PACKAGING, WASM & SHOWCASE DUAL-ENGINE PARITY TESTS PASSED!")
     finally:

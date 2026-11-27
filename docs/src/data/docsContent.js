@@ -1867,7 +1867,11 @@ ui.mount(<App />, "ChaiVault Desktop");`
           '# Launch native macOS Cocoa desktop window',
           'meme dev src/App.meme --platform=desktop',
           '',
-          '# Or launch web browser target with HTML5 DOM',
+          '# Or simulate concrete platform targets (iOS / Android / Mac / Web)',
+          'meme dev src/App.meme --platform=ios',
+          'meme app.meme --platform=android',
+          '',
+          '# Or launch web browser canvas target',
           'meme dev src/App.meme --platform=web',
           '',
           '# Or launch terminal rich ASCII preview',
@@ -2170,6 +2174,245 @@ test("Immutability on note append", () => {
         commands: [
           'meme test tests/',
           '✔ Tests passed: 2 | Failed: 0 (100% green)'
+        ]
+      }
+    ]
+  },
+  {
+    id: 'native-permissions',
+    title: 'Cross-Platform Runtime Permissions',
+    badge: 'Permissions API',
+    description: 'Check, request, and enforce OS permissions uniformly across iOS, Android, macOS, Windows, Linux, and Web with selective manifest generation.',
+    content: [
+      {
+        type: 'text',
+        text: `The \`native.permissions\` (or \`permissions\`) module provides a single unified API modeled after Capacitor, Capawesome, and Tauri plugins. It handles OS dialogs, capability normalization, and per-platform manifest entries from \`tapri.json\`.`
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        title: 'Standardized Permission States & Dual API Styles',
+        text: `Every check or request resolves to a canonical status object (\`state\`, \`granted\`, \`canAskAgain\`, \`restricted\`, \`limited\`, \`platform\`, \`reason\`). States are \`granted\`, \`denied\`, \`prompt\`, \`prompt-with-rationale\`, \`restricted\`, \`limited\`, or \`unavailable\`. Both trailing callbacks and \`.then()\` / \`.phir()\` thenables work identically across the VM and Native AOT compiler.`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. Checking, Requesting & Opening Settings'
+      },
+      {
+        type: 'code',
+        title: 'permissions_example.meme',
+        code: `bula "permissions";
+bula "native";
+
+// Check without prompting the user
+pakad cam = permissions.check("camera");
+dikha "Camera state:", cam.state, "canAskAgain:", cam.canAskAgain;
+
+// Callback style (non-blocking across UI, iOS, Android, and Web)
+permissions.request("notifications", (res) => {
+    agar (res.granted || res.limited) {
+        native.notify.send("MEME-UI", "Notifications active on " + res.platform);
+    } elif (!res.canAskAgain) {
+        permissions.openSettings("notifications");
+    }
+});
+
+// Thenable / Promise style also works seamlessly
+permissions.request("location").then((res) => {
+    dikha "Location permission:", res.state;
+});
+
+// Batch-request multiple capabilities
+permissions.requestMany(["camera", "microphone"], (results) => {
+    dikha "Camera:", results.camera.state, "Mic:", results.microphone.state;
+});`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. Selective Per-Platform tapri.json Permissions'
+      },
+      {
+        type: 'text',
+        text: `Declare only the permissions each OS actually needs inside \`tapri.json\`. During \`meme package\`, MEMElang emits **only** the required native manifest keys (preventing App Store / Play Store over-permission rejections):`
+      },
+      {
+        type: 'code',
+        title: 'tapri.json',
+        code: `{
+  "name": "camera-notes",
+  "bundleId": "com.example.cameranotes",
+  "permissions": {
+    "strict": true,
+    "common": ["notifications", "clipboard"],
+    "ios": {
+      "camera": "Capture whiteboard notes directly inside the editor.",
+      "photos": "Attach existing photos from your library.",
+      "biometrics": "Unlock protected vaults with Face ID."
+    },
+    "android": ["camera", "photos", "location"],
+    "mac": {
+      "camera": "Capture photos with your Mac camera."
+    },
+    "web": ["notifications", "camera"]
+  }
+}`
+      },
+      {
+        type: 'table',
+        headers: ['Target OS', 'Generated Manifest / Metadata', 'Runtime Mechanism'],
+        rows: [
+          ['iOS (.ipa)', 'Selective NS*UsageDescription keys + UIBackgroundModes', 'UNUserNotificationCenter, AVFoundation, PHPhotoLibrary, CLLocationManager, LAContext'],
+          ['Android (.apk)', 'Selective <uses-permission> tags + MemeNativeActivity.java classes.dex', 'ActivityCompat checkSelfPermission, requestPermissions, JNI onRequestPermissionsResult'],
+          ['macOS (.app)', 'Info.plist usage strings + codesign entitlements.plist', 'TCC status queries, UNUserNotificationCenter, x-apple.securitypreferences URLs'],
+          ['Windows (.exe)', 'Embedded RT_MANIFEST XML + consent query', 'CapabilityAccessManager ConsentStore Registry + ms-settings:privacy*'],
+          ['Linux (.deb/.rpm/.ipk)', '/usr/share/<pkg>/capabilities.json', 'Policy/device presence checks, zenity prompt, Control Center settings'],
+          ['Web (.wasm)', '<meta http-equiv="Permissions-Policy"> HTML tag', 'Notification API, navigator.permissions.query, getUserMedia, Geolocation API']
+        ]
+      }
+    ]
+  },
+  {
+    id: 'platform-separation',
+    title: 'Platform Separation & Multi-Target Code',
+    badge: 'WORE + Escape Hatches',
+    description: 'Write shared UI once while separating OS-specific adapters cleanly via platform.select(), <Platform /> JSX, and .ios.meme / .android.meme / .web.meme files.',
+    content: [
+      {
+        type: 'text',
+        text: `Write-once doesn't mean one-size-fits-all. MEMElang provides three clean layers for platform-specific code across both the Interpreter and Native C++20 AOT compiler:`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '1. Runtime & Compile-Time platform Module'
+      },
+      {
+        type: 'code',
+        title: 'platform_api.meme',
+        code: `bula "platform";
+bula "platform" jaise { os, select, is, isMobile, isDesktop };
+
+dikha "OS:", os();           // "ios" | "android" | "mac" | "windows" | "linux" | "web"
+dikha "Mobile?:", isMobile(), "Apple?:", is("apple");
+
+pakad driverConfig = select({
+    "ios": "UIKit Metal + Haptic Engine",
+    "android": "NativeActivity + GLES2",
+    "mobile": "Generic Mobile Fallback",
+    "desktop": "High-DPI Window Chrome",
+    "web": "Browser WebGL2 Canvas",
+    "default": "Universal Mode"
+});`
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '2. Target-Aware Module File Extensions'
+      },
+      {
+        type: 'text',
+        text: `Import \`bula "./storage_adapter"\` (or \`@/adapters/auth\`) and place OS-specific implementations beside each other. Both \`./meme --platform=<os>\` and \`./meme package --target=<t>\` automatically pick the highest-priority file for the target and only compile that file's code into the final binary:`
+      },
+      {
+        type: 'table',
+        headers: ['Target Platform', 'Resolution Order (Highest -> Fallback)'],
+        rows: [
+          ['ios', '.ios.meme -> .mobile.meme -> .apple.meme -> .native.meme -> platforms/ios/ -> .meme'],
+          ['android', '.android.meme -> .mobile.meme -> .native.meme -> platforms/android/ -> .meme'],
+          ['mac', '.mac.meme -> .macos.meme -> .desktop.meme -> .apple.meme -> .native.meme -> platforms/mac/ -> .meme'],
+          ['windows', '.win.meme -> .windows.meme -> .desktop.meme -> .native.meme -> platforms/windows/ -> .meme'],
+          ['linux', '.linux.meme -> .desktop.meme -> .native.meme -> platforms/linux/ -> .meme'],
+          ['web', '.web.meme -> .wasm.meme -> platforms/web/ -> .meme']
+        ]
+      },
+      {
+        type: 'heading',
+        level: 2,
+        text: '3. Declarative <Platform /> JSX Component'
+      },
+      {
+        type: 'code',
+        title: 'platform_jsx.meme',
+        code: `bula "ui:shadcn" jaise { Platform, Card };
+
+kaam Header() {
+    de (
+        <Card class="p-4 flex flex-col gap-2">
+            <Platform ios android>
+                <span>Rendered strictly on Mobile touch devices</span>
+            </Platform>
+            <Platform only="mac,windows" exclude="web" fallback={<span>Browser Toolbar</span>}>
+                <span>Desktop Native Menu Bar</span>
+            </Platform>
+        </Card>
+    );
+}`
+      }
+    ]
+  },
+  {
+    id: 'native-os-apis',
+    title: 'Native OS & Hardware APIs',
+    badge: 'Hardware & Storage',
+    description: 'Access Clipboard, Notifications, Keychain, KV Storage, Biometrics, Haptics, Camera, Location, Sensors, and Window controls across every platform.',
+    content: [
+      {
+        type: 'text',
+        text: `Import \`bula "native"\` (or legacy alias \`bula "app"\`) to call native OS capabilities directly without writing Swift, Kotlin, Win32, or JS glue code.`
+      },
+      {
+        type: 'table',
+        headers: ['Namespace', 'Key Functions', 'Cross-Platform Backing'],
+        rows: [
+          ['native.clipboard', 'get(), set(text), hasText(), clear()', 'NSPasteboard / UIPasteboard / Android Clipboard / Win32 / xclip / Web'],
+          ['native.dialog', 'alert, confirm, prompt, pickFile, saveFile, pickFolder', 'NSAlert / UIAlertController / Native File Dialogs / Wasm'],
+          ['native.notify', 'requestPermission(cb), send(title, body), badge(n)', 'UNUserNotificationCenter / osascript / notify-send / Web Notifications'],
+          ['native.storage', 'get(k), set(k, v), remove(k), keys()', 'AppData JSON store / localStorage'],
+          ['native.keychain', 'get(svc, k), set(svc, k, v), remove(svc, k)', 'Apple Keychain Services / Android / Windows / Secret store'],
+          ['native.biometrics', 'isAvailable(), authenticate(reason, cb)', 'LocalAuthentication TouchID/FaceID / BiometricPrompt'],
+          ['native.device', 'info(), platform(), screen(), safeArea(), locale(), theme()', 'OS metrics, safe area insets & hardware specs'],
+          ['native.power', 'battery(), network()', 'Battery charge level, transport type (wifi/cellular/ethernet)'],
+          ['native.haptics / audio', 'impact(style), vibrate(ms), beep(freq, ms), speak(txt)', 'CoreHaptics / AudioServices / Android Vibrator / WebAudio'],
+          ['native.location / camera / sensors', 'get(cb), pickPhoto(cb), capture(cb), poll()', 'CoreLocation, AVCapture, UIImagePicker, CoreMotion']
+        ]
+      }
+    ]
+  },
+  {
+    id: 'multiplatform-packaging',
+    title: 'Multi-Platform Packaging & Icons',
+    badge: '8 Targets Zero-WebView',
+    description: 'Build signed native executables, installers, mobile bundles (.apk / .ipa), Linux packages (.deb / .rpm / .ipk), and Zero-DOM Wasm PWAs from one command.',
+    content: [
+      {
+        type: 'text',
+        text: `Run \`meme package <entry.meme> --target=...\` (or \`meme build --target=...\`) to cross-compile and package your app with automatic icon generation, manifests, entitlements, and Android \`classes.dex\`.`
+      },
+      {
+        type: 'terminal',
+        commands: [
+          '# Package all 8 targets cleanly from tapri.json',
+          'meme build --target=all -o dist/',
+          '',
+          '# Or package a single target with custom icon, name, bundle ID, and scheme',
+          'meme package src/App.meme --target=apk --name="MyApp" --id=com.example.myapp --icon=assets/icon.png',
+          'meme package src/App.meme --target=ipa -o dist/',
+          'meme package src/App.meme --target=mac -o dist/',
+          'meme package src/App.meme --target=web -o dist/'
+        ]
+      },
+      {
+        type: 'table',
+        headers: ['Target Flag', 'Output Artifact', 'Compiler & Linker Toolchain'],
+        rows: [
+          ['mac', '<App>.app Bundle + .icns + entitlements.plist', 'clang++ -x objective-c++ (Cocoa, Metal, CoreGraphics, ad-hoc codesign)'],
+          ['win', '<app>.exe PE32+ x64 + .ico + RT_MANIFEST', 'zig c++ -target x86_64-windows-gnu + llvm-rc (Win32, Direct2D, DirectWrite)'],
+          ['deb / rpm / ipk', '.deb / .rpm / .ipk + capabilities.json + 256px PNG', 'zig c++ -target x86_64-linux-musl (X11/EGL dynamic loader)'],
+          ['apk', '<app>.apk Dual-ABI + classes.dex + Mipmaps', 'Android NDK arm64-v8a & x86_64 + javac + d8 + aapt2 + zipalign + apksigner'],
+          ['ipa', '<App>.ipa + <App>-Simulator.app + Info.plist', 'xcrun --sdk iphoneos / iphonesimulator arm64 (UIKit, Metal, UserNotifications)'],
+          ['web', 'web/index.html + .js + .wasm PWA Bundle', 'Emscripten em++ (Zero-DOM WebGL2 Canvas + Permissions-Policy meta)']
         ]
       }
     ]
@@ -2835,5 +3078,43 @@ dikha "Decoded player name:", decoded.name;
 pakad start = waqt.ab();
 so_ja(0.05); // Sleep 50ms
 dikha "Elapsed seconds:", waqt.ab() - start;`
+  },
+  {
+    id: 'platform-separation-demo',
+    name: '📱 Platform Separation & platform.select',
+    description: 'Inspect target OS, architecture, boolean platform predicates, and React Native-style platform.select()',
+    code: `// 📱 Platform Detection & Target Separation in MEMElang
+bula "platform";
+bula "platform" jaise { os, arch, is, isWeb, isMobile, select };
+
+dikha "Platform OS:", os();
+dikha "Arch:", arch();
+dikha "Is Web Target:", is("web"), "isWeb():", isWeb(), "isMobile():", isMobile();
+
+pakad backend = select({
+    "ios": "UIKit + Metal Zero-WebView",
+    "android": "Android NativeActivity + GLES2",
+    "mac": "Cocoa AppKit + Metal",
+    "web": "WebAssembly Zero-DOM Canvas",
+    "default": "Universal Engine"
+});
+dikha "Select Result:", backend;`
+  },
+  {
+    id: 'native-permissions-demo',
+    name: '🔐 Cross-Platform Runtime Permissions',
+    description: 'Check capability availability, normalize aliases, and inspect permission states safely',
+    code: `// 🔐 Unified Cross-Platform Permissions API
+bula "permissions";
+bula "permissions" jaise { check, isSupported };
+
+pakad cam = check("cam");
+pakad loc = check("location");
+pakad bioSupported = isSupported("biometrics");
+
+dikha "Check Camera:", cam.permission, cam.state, "canAskAgain:", cam.canAskAgain;
+dikha "Check Location:", loc.permission, loc.state;
+dikha "Biometrics Supported Here:", bioSupported;
+dikha "Permissions Checked: OK";`
   }
 ];

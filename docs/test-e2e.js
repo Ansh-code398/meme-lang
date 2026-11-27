@@ -193,7 +193,72 @@ async function runE2ETests() {
     }, { timeout: 5000 });
     console.log('   ✅ hisab, waqt & json standard library verified in browser!');
 
-    // 11. Capture screenshot
+    // 11. Test Platform Separation recipe in Playground
+    console.log('11. Testing Platform Separation recipe in Playground...');
+    await page.select('select', 'platform-separation-demo');
+    await new Promise((r) => setTimeout(r, 400));
+    const runBtn9 = await page.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      return btns.find((b) => b.innerText.includes('Run'));
+    });
+    await runBtn9.click();
+
+    await page.waitForFunction(() => {
+      return (
+        document.body.innerText.includes('Platform OS: web') &&
+        document.body.innerText.includes('Select Result: WebAssembly Zero-DOM Canvas')
+      );
+    }, { timeout: 5000 });
+    console.log('   ✅ platform.os() & platform.select() verified in browser Wasm!');
+
+    // 12. Test Cross-Platform Permissions recipe in Playground
+    console.log('12. Testing Cross-Platform Permissions recipe in Playground...');
+    await page.select('select', 'native-permissions-demo');
+    await new Promise((r) => setTimeout(r, 400));
+    const runBtn10 = await page.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      return btns.find((b) => b.innerText.includes('Run'));
+    });
+    await runBtn10.click();
+
+    await page.waitForFunction(() => {
+      return (
+        document.body.innerText.includes('Check Camera: camera') &&
+        document.body.innerText.includes('Permissions Checked: OK')
+      );
+    }, { timeout: 5000 });
+    console.log('   ✅ permissions.check() & permissions.isSupported() verified in browser Wasm!');
+
+    // 13. Navigate to Docs sidebar and verify new Platform & Permissions docs sections
+    console.log('13. Verifying Documentation sidebar sections (Permissions & Platform Separation)...');
+    const docBtn = await page.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      return btns.find((b) => b.innerText.includes('Documentation'));
+    });
+    if (docBtn) {
+      await docBtn.click();
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const permNavBtn = await page.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('aside button'));
+      return btns.find((b) => b.innerText.includes('Cross-Platform Runtime Permissions'));
+    });
+    await permNavBtn.click();
+    await page.waitForFunction(() => {
+      return document.body.innerText.includes('MemeNativeActivity.java') && document.body.innerText.includes('prompt-with-rationale');
+    }, { timeout: 5000 });
+
+    const platNavBtn = await page.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('aside button'));
+      return btns.find((b) => b.innerText.includes('Platform Separation'));
+    });
+    await platNavBtn.click();
+    await page.waitForFunction(() => {
+      return document.body.innerText.includes('.ios.meme') && document.body.innerText.includes('<Platform');
+    }, { timeout: 5000 });
+    console.log('   ✅ New Permissions & Platform Separation Docs sections verified!');
+
+    // 14. Capture screenshot
     await page.screenshot({ path: 'docs-playground-input.png' });
     console.log('   📸 Screenshot saved to docs-playground-input.png');
 

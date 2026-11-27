@@ -7,5 +7,26 @@
   "themeColor": "#0f172a",
   "scheme": "memeshowcase",
   "entry": "src/App.meme",
-  "output": "bin/meme-showcase"
+  "output": "bin/meme-showcase",
+  "permissions": {
+    "strict": false,
+    "common": ["notifications", "clipboard", "storage", "sensors"],
+    "ios": {
+      "camera": "MEME-UI Showcase captures photos when testing the camera permission.",
+      "photos": "MEME-UI Showcase accesses photos when demonstrating media selection.",
+      "location": "MEME-UI Showcase reads your location for the telemetry demo.",
+      "microphone": "MEME-UI Showcase accesses microphone audio when requested.",
+      "biometrics": "MEME-UI Showcase demonstrates Face ID / Touch ID authentication."
+    },
+    "android": ["camera", "photos", "location", "microphone", "biometrics", "bluetooth"],
+    "mac": {
+      "camera": "MEME-UI Showcase accesses the webcam for camera permission verification.",
+      "location": "MEME-UI Showcase queries macOS CoreLocation when requested.",
+      "microphone": "MEME-UI Showcase accesses microphone audio when requested.",
+      "photos": "MEME-UI Showcase selects photos when requested."
+    },
+    "windows": ["location", "camera", "microphone"],
+    "linux": ["location", "camera"],
+    "web": ["location", "camera", "microphone"]
+  }
 }

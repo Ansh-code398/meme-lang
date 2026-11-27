@@ -35,7 +35,8 @@ struct CompileResult {
 class NativeCompiler {
 public:
     static std::string generateCpp(const std::vector<std::unique_ptr<Stmt>> &program,
-                                   const std::string &sourceName = "meme_program");
+                                   const std::string &sourceName = "meme_program",
+                                   const std::string &targetPlatform = "");
 
     static CompileResult compile(const std::vector<std::unique_ptr<Stmt>> &program,
                                  const CompileOptions &options,
