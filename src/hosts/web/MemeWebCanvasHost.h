@@ -27,6 +27,7 @@ inline std::string g_lastHitsJson = "[]";
 inline std::string g_lastAgentJson = "{}";
 inline std::string g_clipboardBuf = "";
 inline std::vector<uint8_t> g_atlasRgba;
+inline uint64_t g_atlasVersion = 0;
 
 inline void bindSession(MemeUI::UiSession *sess, std::function<void()> rerender = nullptr) {
     g_activeSession = sess;
@@ -105,7 +106,7 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
   let Mod = null;
   let gl = canvas.getContext("webgl2", { alpha: false, antialias: true });
   let ctx2d = gl ? null : canvas.getContext("2d");
-  let glProg = null, atlasTex = null, vbo = null, ibo = null;
+  let glProg = null, atlasTex = null, vbo = null, ibo = null, lastAtlasVer = 0;
   let uVp = null, uAtl = null, aPos = -1, aUv = -1, aCol = -1;
 
   function initGl() {
@@ -151,6 +152,7 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, aw, ah, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlasBytes);
+    lastAtlasVer = Mod._meme_web_get_atlas_version ? Mod._meme_web_get_atlas_version() : 1;
     return true;
   }
 
@@ -183,6 +185,15 @@ inline std::string generateZeroDomHtmlShell(const std::string &jsFileName, const
         gl.uniform2f(uVp, vw, vh);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, atlasTex);
+        const curVer = Mod._meme_web_get_atlas_version ? Mod._meme_web_get_atlas_version() : lastAtlasVer;
+        if (curVer !== lastAtlasVer) {
+          const aw = Mod._meme_web_get_atlas_width ? Mod._meme_web_get_atlas_width() : 1024;
+          const ah = Mod._meme_web_get_atlas_height ? Mod._meme_web_get_atlas_height() : 1024;
+          const atlasPtr = Mod._meme_web_get_atlas_rgba();
+          const atlasBytes = Mod.HEAPU8.subarray(atlasPtr, atlasPtr + aw * ah * 4);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, aw, ah, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlasBytes);
+          lastAtlasVer = curVer;
+        }
         gl.uniform1i(uAtl, 0);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -483,8 +494,16 @@ MEME_WEB_EXPORT inline const char *meme_web_get_batches_json() {
 }
 
 MEME_WEB_EXPORT inline const uint8_t *meme_web_get_atlas_rgba() {
-    if (MemeWebHost::g_atlasRgba.empty()) MemeWebHost::g_atlasRgba = MemeUI::FontAtlas::getRgbaAtlas();
+    uint64_t ver = MemeUI::FontAtlas::getAtlasVersion();
+    if (MemeWebHost::g_atlasRgba.empty() || MemeWebHost::g_atlasVersion != ver) {
+        MemeWebHost::g_atlasRgba = MemeUI::FontAtlas::getRgbaAtlas();
+        MemeWebHost::g_atlasVersion = ver;
+    }
     return MemeWebHost::g_atlasRgba.data();
+}
+
+MEME_WEB_EXPORT inline int meme_web_get_atlas_version() {
+    return static_cast<int>(MemeUI::FontAtlas::getAtlasVersion() & 0x7fffffffULL);
 }
 
 MEME_WEB_EXPORT inline int meme_web_get_atlas_width() {

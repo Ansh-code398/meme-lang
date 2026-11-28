@@ -326,7 +326,11 @@ public:
     bool is_alive() const { return !is_done(); }
 
     bool is_callable() const {
-        return (fn_var && *fn_var) || (fn0_val != nullptr);
+        if ((fn_var && *fn_var) || (fn0_val != nullptr)) return true;
+        if (type == TYPE_MAP && map_data) {
+            return map_data->map_val.find("__call__") != map_data->map_val.end();
+        }
+        return false;
     }
 
     MemeValue call_args(const std::vector<MemeValue> &args) const {
@@ -337,6 +341,10 @@ public:
         if (fn0_val) {
             auto fn0Copy = fn0_val;
             return fn0Copy();
+        }
+        if (type == TYPE_MAP && map_data) {
+            auto it = map_data->map_val.find("__call__");
+            if (it != map_data->map_val.end()) return it->second.call_args(args);
         }
         return *this;
     }
@@ -349,6 +357,10 @@ public:
         if (fn0_val) {
             auto fn0Copy = fn0_val;
             return fn0Copy();
+        }
+        if (type == TYPE_MAP && map_data) {
+            auto it = map_data->map_val.find("__call__");
+            if (it != map_data->map_val.end()) return it->second.call_args({});
         }
         return *this;
     }
@@ -364,6 +376,13 @@ public:
         if (fn0_val) {
             auto fn0Copy = fn0_val;
             return fn0Copy();
+        }
+        if (type == TYPE_MAP && map_data) {
+            auto it = map_data->map_val.find("__call__");
+            if (it != map_data->map_val.end()) {
+                std::vector<MemeValue> argv{MemeValue(std::forward<Args>(args))...};
+                return it->second.call_args(argv);
+            }
         }
         return *this;
     }
@@ -5855,7 +5874,9 @@ inline MemeValue build_native_module() {
 
     MemeValue clipboardMod = make_map({
         {"get", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardGet()); })},
+        {"read", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardGet()); })},
         {"set", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::clipboardSet(a.empty() ? "" : a[0].to_string())); })},
+        {"write", meme_fn([](const std::vector<MemeValue> &a) { return MemeValue(MemeNative::clipboardSet(a.empty() ? "" : a[0].to_string())); })},
         {"hasText", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardHasText()); })},
         {"clear", meme_fn([](const std::vector<MemeValue> &) { return MemeValue(MemeNative::clipboardClear()); })}
     });
@@ -6240,5 +6261,120 @@ inline MemeValue build_meme_module() {
 }
 
 inline MemeValue meme = build_meme_module();
+
+#ifdef MEME_HAS_JS_BRIDGE
+#include "../bridge/JsEngineCore.h"
+
+inline MemeValue meme_js_node_to_val(const MemeJs::JsNode &n, const std::shared_ptr<MemeJs::JsEngineSession> &sess, int depth = 0);
+
+inline MemeJs::JsNode meme_val_to_js_node(const MemeValue &v, const std::shared_ptr<MemeJs::JsEngineSession> &sess = nullptr, int depth = 0) {
+    if (depth >= 12) return MemeJs::JsNode::makeNull();
+    switch (v.type) {
+        case MemeValue::TYPE_NALLA: return MemeJs::JsNode::makeNull();
+        case MemeValue::TYPE_BOOL: return MemeJs::JsNode::makeBool(v.b_val);
+        case MemeValue::TYPE_INT: return MemeJs::JsNode::makeInt(v.i_val);
+        case MemeValue::TYPE_FLOAT: return MemeJs::JsNode::makeDouble(v.f_val);
+        case MemeValue::TYPE_STRING: return MemeJs::JsNode::makeString(v.s_val);
+        case MemeValue::TYPE_LIST: {
+            std::vector<MemeJs::JsNode> arr;
+            if (v.list_data) {
+                for (const auto &it : *v.list_data) arr.push_back(meme_val_to_js_node(it, sess, depth + 1));
+            }
+            return MemeJs::JsNode::makeArray(std::move(arr));
+        }
+        case MemeValue::TYPE_MAP: {
+            std::vector<std::pair<std::string, MemeJs::JsNode>> obj;
+            if (v.map_data) {
+                for (const auto &k : v.map_data->map_keys) {
+                    obj.emplace_back(k, meme_val_to_js_node(v.get(k), sess, depth + 1));
+                }
+            }
+            return MemeJs::JsNode::makeObject(std::move(obj));
+        }
+        default:
+            if (v.is_callable() && sess) {
+                MemeValue fnCopy = v;
+                return MemeJs::JsNode::makeHostFn([fnCopy, sess](const std::vector<MemeJs::JsNode> &args) -> MemeJs::JsNode {
+                    std::vector<MemeValue> margs;
+                    margs.reserve(args.size());
+                    for (const auto &a : args) margs.push_back(meme_js_node_to_val(a, sess));
+                    return meme_val_to_js_node(fnCopy.call_args(margs), sess);
+                });
+            }
+            return MemeJs::JsNode::makeString(v.to_string());
+    }
+}
+
+inline MemeValue meme_js_node_to_val(const MemeJs::JsNode &n, const std::shared_ptr<MemeJs::JsEngineSession> &sess, int depth) {
+    if (depth >= 12) return MemeValue();
+    switch (n.kind) {
+        case MemeJs::JsNode::K_NULL: return MemeValue();
+        case MemeJs::JsNode::K_BOOL: return MemeValue(n.bVal);
+        case MemeJs::JsNode::K_INT: return MemeValue(static_cast<int64_t>(n.iVal));
+        case MemeJs::JsNode::K_DOUBLE: return MemeValue(n.dVal);
+        case MemeJs::JsNode::K_STRING: return MemeValue(n.sVal);
+        case MemeJs::JsNode::K_ARRAY: {
+            std::vector<MemeValue> l;
+            for (const auto &el : n.arrVal) l.push_back(meme_js_node_to_val(el, sess, depth + 1));
+            return MemeValue(std::move(l));
+        }
+        case MemeJs::JsNode::K_OBJECT: {
+            MemeValue m = make_map({});
+            for (const auto &kv : n.objVal) m[kv.first] = meme_js_node_to_val(kv.second, sess, depth + 1);
+            return m;
+        }
+        case MemeJs::JsNode::K_FUNCTION: {
+            uint64_t fnId = n.fnId;
+            MemeValue fn = meme_fn([sess, fnId](const std::vector<MemeValue> &args) -> MemeValue {
+                std::vector<MemeJs::JsNode> jsArgs;
+                for (const auto &a : args) jsArgs.push_back(meme_val_to_js_node(a, sess));
+                return meme_js_node_to_val(sess->callFunction(fnId, jsArgs), sess);
+            });
+            if (!n.objVal.empty()) {
+                MemeValue m = make_map({});
+                m["__call__"] = fn;
+                m["default"] = fn;
+                for (const auto &kv : n.objVal) m[kv.first] = meme_js_node_to_val(kv.second, sess, depth + 1);
+                return m;
+            }
+            return fn;
+        }
+        case MemeJs::JsNode::K_HOST_FUNCTION:
+            return MemeValue();
+    }
+    return MemeValue();
+}
+
+inline MemeValue meme_load_npm_module(const std::string &pkg, const std::string &callerDir = "") {
+    auto sess = MemeJs::sharedSession();
+    if (pkg == "js:eval" || pkg == "eval") {
+        MemeValue m = make_map({});
+        m["eval"] = meme_fn([sess](const std::vector<MemeValue> &a) -> MemeValue {
+            return meme_js_node_to_val(sess->evalScript(a.empty() ? "" : a[0].to_string(), "<js:eval>"), sess);
+        });
+        m["__jsEngine"] = MemeValue(std::string(MemeJs::JsEngineSession::engineName()));
+        return m;
+    }
+    MemeJs::JsNode node = sess->loadPackage(pkg, callerDir);
+    MemeValue conv = meme_js_node_to_val(node, sess);
+    MemeValue mod = make_map({});
+    std::string aliasSym = MemeJs::deriveModuleSymbolAlias(pkg);
+    if (conv.type == MemeValue::TYPE_MAP && conv.map_data) {
+        mod = conv;
+        if (!mod.has("default") && mod.has(aliasSym)) mod["default"] = mod.get(aliasSym);
+    } else if (conv.is_callable()) {
+        mod["__call__"] = conv;
+        mod["default"] = conv;
+        if (!aliasSym.empty()) mod[aliasSym] = conv;
+    } else {
+        mod["default"] = conv;
+    }
+    mod["__jsEngine"] = MemeValue(std::string(MemeJs::JsEngineSession::engineName()));
+    mod["eval"] = meme_fn([sess](const std::vector<MemeValue> &a) -> MemeValue {
+        return meme_js_node_to_val(sess->evalScript(a.empty() ? "" : a[0].to_string(), "<js:eval>"), sess);
+    });
+    return mod;
+}
+#endif
 
 #endif // MEME_RUNTIME_H

@@ -69,6 +69,7 @@ public:
     std::unordered_map<std::string, int> componentInstanceCounters;
     std::unordered_map<std::string, int> componentHookCursors;
     std::unordered_map<int, TailwindEngine::HitRegion> interactiveRegions;
+    std::unordered_map<int, TailwindEngine::HitRegion> htmlInteractiveRegions;
     MemeUI::UiSession uiSession;
     std::unordered_map<std::string, std::vector<Value>> effectDepsSlots;
     std::unordered_map<std::string, bool> effectHasDeps;
@@ -84,6 +85,8 @@ public:
 
     std::vector<std::string> commandLineArgs;
     bool isHeadless = false;
+    bool devManagedUi = false;
+    std::string requestedWindowTitle;
     bool isInteractiveCLI = false;
 
     Interpreter(std::ostream &out = std::cout, std::istream &in = std::cin);
@@ -92,6 +95,10 @@ public:
     const std::vector<std::string> &getCommandLineArgs() const { return commandLineArgs; }
     void setHeadless(bool h) { isHeadless = h; }
     bool getHeadless() const { return isHeadless; }
+    void setDevManagedUi(bool d) { devManagedUi = d; }
+    bool getDevManagedUi() const { return devManagedUi; }
+    void setRequestedWindowTitle(const std::string &t) { requestedWindowTitle = t; }
+    const std::string &getRequestedWindowTitle() const { return requestedWindowTitle; }
     void setInteractiveCLI(bool i) { isInteractiveCLI = i; }
     bool getInteractiveCLI() const { return isInteractiveCLI; }
 
@@ -160,6 +167,7 @@ public:
 
     void triggerUiRerender();
     bool dispatchUiEvent(int nodeId, const std::string &eventType, const std::string &value = "");
+    bool dispatchHtmlUiEvent(int nodeId, const std::string &eventType, const std::string &value = "");
 
     Value importModule(const std::string &path, int line);
 

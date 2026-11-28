@@ -29,6 +29,7 @@
 #include "ui/NativeDesktopWindow.h"
 #include "compiler/NativeCompiler.h"
 #include "packager/MemePackager.h"
+#include "server/MemeSsrRouter.h"
 #include "lsp/LspServer.h"
 #include "dap/DapServer.h"
 
@@ -48,6 +49,7 @@ static void printUsage(const char *prog)
     std::cout << "  " << prog << " env <init|info|clean>     Manage project virtual environment (.meme_env/)\n";
     std::cout << "  " << prog << " tapri <install|suchi>     Package manager (py:numpy, npm:canvas, etc.)\n";
     std::cout << "  " << prog << " dev [file] [--platform]   Start dev server (Web 60FPS Canvas, Desktop, Terminal)\n";
+    std::cout << "  " << prog << " serve [dir|file] [--port] Start Next.js-style SSR + App Router + Middleware server\n";
     std::cout << "  " << prog << " gui <file> [args]         Run native desktop GUI window directly (Zero-WebView, 60 FPS Cocoa)\n";
     std::cout << "  " << prog << " setup                     Link 'meme' CLI globally into PATH (alias: link)\n";
     std::cout << "  " << prog << " run <script>              Run a script defined in tapri.json\n";
@@ -291,6 +293,110 @@ static bool installGitPackage(const DependencySpec &dep, std::string &outCommit)
     return true;
 }
 
+static bool installNpmPackageOffline(const std::string &spec,
+                                     std::unordered_set<std::string> &visited,
+                                     std::string &outResolvedVer,
+                                     std::string &outInstallPath,
+                                     int depth = 0)
+{
+    if (depth > 4 || spec.empty()) return false;
+    std::string raw = spec;
+    if (raw.rfind("npm:", 0) == 0) raw = raw.substr(4);
+    else if (raw.rfind("js:", 0) == 0) raw = raw.substr(3);
+
+    std::string pkgName = raw;
+    std::string reqVer = "latest";
+    size_t atSearchStart = (!raw.empty() && raw[0] == '@') ? 1 : 0;
+    size_t slashAfter = raw.find('/', atSearchStart);
+    size_t verSearchFrom = (slashAfter != std::string::npos) ? slashAfter + 1 : atSearchStart;
+    size_t atPos = raw.find('@', verSearchFrom);
+    if (atPos != std::string::npos) {
+        pkgName = raw.substr(0, atPos);
+        reqVer = raw.substr(atPos + 1);
+        if (reqVer.empty()) reqVer = "latest";
+    }
+    if (pkgName.empty()) return false;
+    if (!visited.insert(pkgName).second) return true;
+
+    std::filesystem::path tapriPkgDir = std::filesystem::path(".tapri_modules") / "npm" / pkgName;
+    std::filesystem::path nodePkgDir = std::filesystem::path("node_modules") / pkgName;
+    std::error_code ec;
+
+    auto readLocalVersion = [](const std::filesystem::path &pj) -> std::string {
+        std::ifstream f(pj);
+        if (!f.is_open()) return "";
+        std::stringstream ss; ss << f.rdbuf();
+        auto doc = memelang::lsp::JsonValue::parse(ss.str());
+        if (doc.contains("version")) return doc["version"].asString("local");
+        return "local";
+    };
+
+    if (std::filesystem::exists(tapriPkgDir / "package.json", ec)) {
+        outResolvedVer = readLocalVersion(tapriPkgDir / "package.json");
+        outInstallPath = tapriPkgDir.string();
+        return true;
+    }
+    if (std::filesystem::exists(nodePkgDir / "package.json", ec)) {
+        outResolvedVer = readLocalVersion(nodePkgDir / "package.json");
+        outInstallPath = nodePkgDir.string();
+        return true;
+    }
+
+    auto shellQuote = [](const std::string &s) -> std::string {
+        std::string r = "'";
+        for (char c : s) {
+            if (c == '\'') r += "'\\''";
+            else r.push_back(c);
+        }
+        r.push_back('\'');
+        return r;
+    };
+
+    std::string registryUrl = "https://registry.npmjs.org/" + pkgName + "/" + reqVer;
+    std::filesystem::path metaTmp = std::filesystem::temp_directory_path() / ("meme_npm_meta_" + std::to_string(std::hash<std::string>{}(pkgName)) + ".json");
+    std::string metaCmd = "curl -fsSL --max-time 8 " + shellQuote(registryUrl) + " -o " + shellQuote(metaTmp.string()) + " 2>/dev/null";
+    if (std::system(metaCmd.c_str()) != 0 || !std::filesystem::exists(metaTmp, ec)) {
+        std::filesystem::remove(metaTmp, ec);
+        return false;
+    }
+
+    std::string metaRaw;
+    {
+        std::ifstream mf(metaTmp);
+        std::stringstream mss; mss << mf.rdbuf();
+        metaRaw = mss.str();
+    }
+    std::filesystem::remove(metaTmp, ec);
+    auto doc = memelang::lsp::JsonValue::parse(metaRaw);
+    if (!doc.contains("dist") || !doc["dist"].isObject() || !doc["dist"].contains("tarball")) {
+        return false;
+    }
+    std::string tarball = doc["dist"]["tarball"].asString();
+    std::string ver = doc.contains("version") ? doc["version"].asString("latest") : "latest";
+    if (tarball.empty()) return false;
+
+    std::filesystem::create_directories(tapriPkgDir, ec);
+    std::filesystem::create_directories(nodePkgDir, ec);
+    std::filesystem::path tgzTmp = std::filesystem::temp_directory_path() / ("meme_npm_" + std::to_string(std::hash<std::string>{}(pkgName)) + ".tgz");
+    std::string dlCmd = "curl -fsSL --max-time 15 " + shellQuote(tarball) + " -o " + shellQuote(tgzTmp.string()) + " 2>/dev/null && "
+                        "tar -xzf " + shellQuote(tgzTmp.string()) + " --strip-components=1 -C " + shellQuote(tapriPkgDir.string()) + " && "
+                        "tar -xzf " + shellQuote(tgzTmp.string()) + " --strip-components=1 -C " + shellQuote(nodePkgDir.string());
+    int dlRc = std::system(dlCmd.c_str());
+    std::filesystem::remove(tgzTmp, ec);
+    if (dlRc != 0) return false;
+
+    outResolvedVer = ver;
+    outInstallPath = tapriPkgDir.string();
+
+    if (doc.contains("dependencies") && doc["dependencies"].isObject()) {
+        for (const auto &kv : doc["dependencies"].objVal) {
+            std::string subVer, subPath;
+            installNpmPackageOffline(kv.first + "@" + kv.second.asString("latest"), visited, subVer, subPath, depth + 1);
+        }
+    }
+    return true;
+}
+
 static void handleTapri(int argc, char *argv[])
 {
     if (argc < 3)
@@ -373,8 +479,17 @@ static void handleTapri(int argc, char *argv[])
         }
 
         std::string projName = "tapri-project";
-        std::string scriptsSection = "    \"dev\": \"meme dev src/App.meme\",\n    \"start\": \"meme src/App.meme\",\n    \"test\": \"meme test tests\"";
         std::unordered_map<std::string, std::string> allDeps;
+        memelang::lsp::JsonValue preservedDoc;
+        preservedDoc.type = memelang::lsp::JsonType::Object;
+        preservedDoc.objVal["name"] = memelang::lsp::JsonValue(projName);
+        preservedDoc.objVal["version"] = memelang::lsp::JsonValue("1.0.0");
+        memelang::lsp::JsonValue defScripts;
+        defScripts.type = memelang::lsp::JsonType::Object;
+        defScripts.objVal["dev"] = memelang::lsp::JsonValue("meme dev src/App.meme");
+        defScripts.objVal["start"] = memelang::lsp::JsonValue("meme src/App.meme");
+        defScripts.objVal["test"] = memelang::lsp::JsonValue("meme test tests");
+        preservedDoc.objVal["scripts"] = std::move(defScripts);
 
         std::ifstream oldTf("tapri.json");
         if (oldTf.is_open())
@@ -382,12 +497,15 @@ static void handleTapri(int argc, char *argv[])
             std::stringstream ss;
             ss << oldTf.rdbuf();
             memelang::lsp::JsonValue doc = memelang::lsp::JsonValue::parse(ss.str());
-            if (doc.contains("name")) projName = doc["name"].asString("tapri-project");
-            if (doc.contains("dependencies") && doc["dependencies"].isObject())
-            {
-                for (const auto &kv : doc["dependencies"].objVal)
+            if (doc.isObject()) {
+                preservedDoc = doc;
+                if (doc.contains("name")) projName = doc["name"].asString("tapri-project");
+                if (doc.contains("dependencies") && doc["dependencies"].isObject())
                 {
-                    allDeps[kv.first] = kv.second.asString();
+                    for (const auto &kv : doc["dependencies"].objVal)
+                    {
+                        allDeps[kv.first] = kv.second.asString();
+                    }
                 }
             }
         }
@@ -398,6 +516,7 @@ static void handleTapri(int argc, char *argv[])
             std::string path;
         };
         std::vector<LockEntry> lockEntries;
+        std::unordered_set<std::string> visitedNpm;
 
         for (size_t i = 0; i < pkgsToInstall.size(); ++i)
         {
@@ -423,15 +542,32 @@ static void handleTapri(int argc, char *argv[])
                 std::string pkg = pkgsToInstall[i].second;
                 std::string name = dep.name;
                 std::string shimCode = "";
+                std::string resolvedSource = "local";
+                std::string resolvedPath = ".meme_env/pkgs/" + name + ".meme";
 
                 if (pkg.rfind("py:", 0) == 0)
                 {
                     name = pkg.substr(3);
                     shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
                 }
-                else if (pkg.rfind("npm:", 0) == 0)
+                else if (pkg.rfind("npm:", 0) == 0 || pkg.rfind("js:", 0) == 0)
                 {
-                    name = pkg.substr(4);
+                    std::string rawNpm = (pkg.rfind("npm:", 0) == 0) ? pkg.substr(4) : pkg.substr(3);
+                    std::string npmVer, npmDir;
+                    if (installNpmPackageOffline(rawNpm, visitedNpm, npmVer, npmDir)) {
+                        resolvedSource = npmVer.empty() ? "npm" : npmVer;
+                        resolvedPath = npmDir;
+                        std::cout << formatRichText("[hara bold]✔ Bundled npm package offline:[/] " + rawNpm + "@" + resolvedSource + " -> " + npmDir + "\n");
+                    } else {
+                        std::cout << formatRichText("[peela]ℹ Offline/virtual npm shim for " + rawNpm + " (JSC/QuickJS builtin or adapter)[/]\n");
+                    }
+                    std::string safeAlias;
+                    for (char c : rawNpm) {
+                        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') safeAlias.push_back(c);
+                        else safeAlias.push_back('_');
+                    }
+                    if (safeAlias.empty()) safeAlias = "pkg";
+                    name = safeAlias;
                     shimCode = "// Auto-generated shim for " + pkg + "\nbula \"" + pkg + "\" jaise " + name + ";\nwapas " + name + ";\n";
                 }
                 else if (pkg.rfind("rust:", 0) == 0)
@@ -449,21 +585,20 @@ static void handleTapri(int argc, char *argv[])
                 std::ofstream sf2(".meme_env/pkgs/" + name + ".meme");
                 sf2 << shimCode;
 
-                lockEntries.push_back({name, "local", ".meme_env/pkgs/" + name + ".meme"});
+                lockEntries.push_back({name, resolvedSource, resolvedPath});
                 std::cout << formatRichText("[hara bold]✔ Mangwa liya:[/] " + pkg + " -> .meme_env/pkgs/" + name + ".meme\n");
             }
         }
 
-        // Write tapri.json
-        std::ofstream tf("tapri.json");
-        tf << "{\n  \"name\": \"" << projName << "\",\n  \"version\": \"1.0.0\",\n  \"scripts\": {\n" << scriptsSection << "\n  },\n  \"dependencies\": {\n";
-        size_t depCount = 0;
-        for (const auto &kv : allDeps)
-        {
-            tf << "    \"" << kv.first << "\": \"" << kv.second << "\"" << (depCount + 1 < allDeps.size() ? "," : "") << "\n";
-            depCount++;
+        // Write tapri.json preserving existing keys cleanly
+        memelang::lsp::JsonValue depsJson;
+        depsJson.type = memelang::lsp::JsonType::Object;
+        for (const auto &kv : allDeps) {
+            depsJson.objVal[kv.first] = memelang::lsp::JsonValue(kv.second);
         }
-        tf << "  }\n}\n";
+        preservedDoc.objVal["dependencies"] = std::move(depsJson);
+        std::ofstream tf("tapri.json");
+        tf << preservedDoc.stringify() << "\n";
 
         // Write tapri.lock
         std::ofstream lk("tapri.lock");
@@ -1207,7 +1342,7 @@ static void startDevHttpServer(DevServerState &state)
                 std::lock_guard<std::mutex> lock(state.mtx);
                 if (state.interpreter)
                 {
-                    ok = state.interpreter->dispatchUiEvent(handlerId, evType, evValue);
+                    ok = state.interpreter->dispatchHtmlUiEvent(handlerId, evType, evValue);
                     state.html = state.interpreter->getLastHtml();
                     state.gpuCommands = state.interpreter->getLastGpuCommandsJson();
                     state.hitRegions = state.interpreter->getLastHitRegionsJson();
@@ -1377,6 +1512,40 @@ static void handleGui(int argc, char *argv[])
 #endif
 }
 
+static void handleServe(int argc, char *argv[])
+{
+    std::string target = ".";
+    int port = 3000;
+    std::string host = "127.0.0.1";
+    int maxRequests = 0;
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string a = argv[i];
+        if (a.rfind("--port=", 0) == 0) {
+            try { port = std::stoi(a.substr(7)); } catch (...) {}
+        } else if (a.rfind("--host=", 0) == 0) {
+            host = a.substr(7);
+        } else if (a.rfind("--max-requests=", 0) == 0) {
+            try { maxRequests = std::stoi(a.substr(15)); } catch (...) {}
+        } else if (!a.empty() && a[0] != '-') {
+            target = a;
+        }
+    }
+
+    MemeSsr::MemeSsrEngine engine;
+    std::string err;
+    if (!engine.discover(target, err))
+    {
+        std::cerr << formatRichText("[laal bold]❌ SSR Server Error:[/] " + err + " (expected app/page.meme or App.meme)\n");
+        std::exit(1);
+    }
+    if (engine.serveHttp(port, host, maxRequests) != 0)
+    {
+        std::cerr << formatRichText("[laal bold]❌ Port " + std::to_string(port) + " bind nahi ho paya![/]\n");
+        std::exit(1);
+    }
+}
+
 static void handleDev(int argc, char *argv[])
 {
     std::string targetFile = "";
@@ -1469,6 +1638,7 @@ static void handleDev(int argc, char *argv[])
     }
 
     auto interpreter = std::make_unique<Interpreter>();
+    interpreter->setDevManagedUi(true);
     state->interpreter = interpreter.get();
 
     // Read and run initial file
@@ -1480,6 +1650,7 @@ static void handleDev(int argc, char *argv[])
         std::string src = ss.str();
         interpreter->setCurrentFilePath(targetFile);
         runSource(src, *interpreter);
+        if (!interpreter->getRequestedWindowTitle().empty()) state->appName = interpreter->getRequestedWindowTitle();
         state->gpuCommands = interpreter->getLastGpuCommandsJson();
         state->hitRegions = interpreter->getLastHitRegionsJson();
         state->terminalUi = interpreter->getLastTerminalUi();
@@ -1555,12 +1726,14 @@ static void handleDev(int argc, char *argv[])
                     ss << f.rdbuf();
                     std::string src = ss.str();
                     auto newInterp = std::make_unique<Interpreter>();
+                    newInterp->setDevManagedUi(true);
                     newInterp->setCurrentFilePath(targetFile);
                     if (runSource(src, *newInterp))
                     {
                         std::lock_guard<std::mutex> lock(state->mtx);
                         interpreter = std::move(newInterp);
                         state->interpreter = interpreter.get();
+                        if (!interpreter->getRequestedWindowTitle().empty()) state->appName = interpreter->getRequestedWindowTitle();
                         state->gpuCommands = interpreter->getLastGpuCommandsJson();
                         state->hitRegions = interpreter->getLastHitRegionsJson();
                         state->terminalUi = interpreter->getLastTerminalUi();
@@ -2018,6 +2191,7 @@ static void handleBuild(int argc, char *argv[])
 {
     std::string buildTarget = "host";
     std::string customOut = "";
+    std::string webRendererFlag = "";
     bool verbose = false;
     for (int i = 2; i < argc; ++i)
     {
@@ -2028,6 +2202,8 @@ static void handleBuild(int argc, char *argv[])
             return;
         }
         if (a.rfind("--target=", 0) == 0) buildTarget = a.substr(9);
+        else if (a.rfind("--web-renderer=", 0) == 0) webRendererFlag = a.substr(15);
+        else if (a == "--web-renderer" && i + 1 < argc) webRendererFlag = argv[++i];
         else if ((a == "-o" || a == "--output") && i + 1 < argc) customOut = argv[++i];
         else if (a == "-v" || a == "--verbose") verbose = true;
     }
@@ -2095,6 +2271,7 @@ static void handleBuild(int argc, char *argv[])
         pkgCfg.iconPath = manifest.icon;
         pkgCfg.urlScheme = manifest.scheme;
         if (!manifest.themeColor.empty()) pkgCfg.themeColor = manifest.themeColor;
+        if (!webRendererFlag.empty()) pkgCfg.webRenderer = webRendererFlag;
         std::cout << formatRichText("[asmani bold]📦 Building & packaging tapri project '" + manifest.name + "' (target=" + buildTarget + ") -> " + outDir + "...[/]\n");
         MemePackager::PackageResult pr = MemePackager::packageForTarget(manifest.entry, buildTarget, outDir, verbose, pkgCfg);
         if (!pr.success)
@@ -2206,6 +2383,14 @@ static void handlePackage(int argc, char *argv[])
         else if (a == "--scheme" && i + 1 < argc)
         {
             pkgCfg.urlScheme = argv[++i];
+        }
+        else if (a.rfind("--web-renderer=", 0) == 0)
+        {
+            pkgCfg.webRenderer = a.substr(15);
+        }
+        else if (a == "--web-renderer" && i + 1 < argc)
+        {
+            pkgCfg.webRenderer = argv[++i];
         }
         else if (a == "-v" || a == "--verbose")
         {
@@ -2501,6 +2686,11 @@ int main(int argc, char *argv[])
         else if (arg1 == "dev")
         {
             handleDev(argc, argv);
+            return 0;
+        }
+        else if (arg1 == "serve")
+        {
+            handleServe(argc, argv);
             return 0;
         }
         else if (arg1 == "gui" || arg1 == "desktop")

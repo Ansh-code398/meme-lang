@@ -76,6 +76,7 @@ struct AndroidAppState {
 
     GLuint program = 0;
     GLuint atlasTex = 0;
+    uint64_t atlasVersion = 0;
     GLuint vbo = 0;
     GLuint ibo = 0;
     GLint locPos = -1, locUv = -1, locCol = -1, locVp = -1, locAtlas = -1;
@@ -138,6 +139,7 @@ void initGles(AndroidAppState *st) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+    st->atlasVersion = MemeUI::FontAtlas::getAtlasVersion();
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
 
     glGenBuffers(1, &st->vbo);
@@ -170,6 +172,13 @@ void drawGlesFrame(AndroidAppState *st, MemeUI::UiSession *sess) {
     sess->input.safeBottom = 16.0f;
     if (sess->needsRender || sess->lastMesh.vertices.empty()) {
         sess->renderFrame(vw, vh);
+    }
+    uint64_t curVer = MemeUI::FontAtlas::getAtlasVersion();
+    if (st->atlasTex && curVer != st->atlasVersion) {
+        glBindTexture(GL_TEXTURE_2D, st->atlasTex);
+        auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        st->atlasVersion = curVer;
     }
 
     glViewport(0, 0, st->width, st->height);

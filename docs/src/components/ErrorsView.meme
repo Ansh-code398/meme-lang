@@ -1,4 +1,5 @@
 bula "ui" jaise { useState };
+bula "ui:icons" jaise { Icon };
 bula "meme";
 bula "./SyntaxHelper.meme" jaise shErr;
 
@@ -91,16 +92,18 @@ jugaad ErrorsView(props) {
 
                 <div className="flex flex-row items-center gap-2">
                     <button
-                        className="flex-1 py-2 px-3 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-xs"
+                        className="flex-1 inline-flex flex-row items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-xs"
                         onClick={() => triggerLive(errObj, dispCode)}
                     >
-                        Trigger Error Live
+                        <Icon name="zap" size={13} color="#09090b" />
+                        <span>Trigger Error Live</span>
                     </button>
                     <button
-                        className="py-2 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs"
+                        className="inline-flex flex-row items-center gap-1.5 py-2 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs"
                         onClick={() => onOpenPlayground(dispCode)}
                     >
-                        Playground
+                        <Icon name="terminal" size={13} color="#e4e4e7" />
+                        <span>Playground</span>
                     </button>
                 </div>
             </div>

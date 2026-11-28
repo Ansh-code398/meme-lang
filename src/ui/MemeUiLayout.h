@@ -2,6 +2,9 @@
 
 #include "MemeUiTypes.h"
 #include "MemeUiTextEngine.h"
+#include "MemeUiFontEngine.h"
+#include "MemeIconsRegistry.h"
+#include "MemeUiAnimation.h"
 #include "MemeUiPrimitives.h"
 #include <unordered_map>
 #include <vector>
@@ -31,6 +34,7 @@ struct UiInteractionState {
     std::unordered_map<std::string, float> scrollOffsetsY;
     std::unordered_map<std::string, float> scrollOffsetsX;
     std::unordered_map<std::string, UiRect> nodeBoundsByKey;
+    UiAnimationStore animStore;
 
     TextFieldState &getOrCreateTextField(const std::string &key, const std::string &propVal, bool multiline, bool password, bool readOnly, bool disabled) {
         auto &tf = textFields[key];
@@ -377,9 +381,34 @@ inline void applySingleTailwindToken(const std::string &token, ComputedStyle &st
     if (token == "font-bold") { style.fontWeight = 700; style.hasExplicitFontWeight = true; return; }
     if (token == "font-extrabold") { style.fontWeight = 800; style.hasExplicitFontWeight = true; return; }
     if (token == "font-black") { style.fontWeight = 900; style.hasExplicitFontWeight = true; return; }
-    if (token == "font-mono") { style.fontFamily = FontFamily::MONO; style.hasExplicitFontFamily = true; return; }
-    if (token == "font-sans") { style.fontFamily = FontFamily::SANS; style.hasExplicitFontFamily = true; return; }
-    if (token == "font-serif") { style.fontFamily = FontFamily::SERIF; style.hasExplicitFontFamily = true; return; }
+    if (token == "font-mono") { style.fontFamily = FontFamily::MONO; style.fontName.clear(); style.hasExplicitFontFamily = true; return; }
+    if (token == "font-sans") { style.fontFamily = FontFamily::SANS; style.fontName.clear(); style.hasExplicitFontFamily = true; return; }
+    if (token == "font-serif") { style.fontFamily = FontFamily::SERIF; style.fontName.clear(); style.hasExplicitFontFamily = true; return; }
+    if (token.rfind("font-[", 0) == 0 && token.back() == ']' && token.size() > 7) {
+        std::string fn = token.substr(6, token.size() - 7);
+        for (char &ch : fn) if (ch == '_') ch = ' ';
+        style.fontName = fn;
+        style.hasExplicitFontFamily = true;
+        return;
+    }
+    if (token == "animate-pulse" || token == "animate-spin" || token == "animate-bounce" ||
+        token == "animate-fade-in" || token == "animate-slide-up") {
+        style.animateName = token.substr(8);
+        return;
+    }
+    if (token.rfind("duration-", 0) == 0) {
+        try { style.transitionDurationMs = std::max(0, std::stoi(token.substr(9))); } catch (...) {}
+        return;
+    }
+    if (token == "ease-linear") { style.transitionEase = "linear"; return; }
+    if (token == "ease-in") { style.transitionEase = "ease-in"; return; }
+    if (token == "ease-out") { style.transitionEase = "ease-out"; return; }
+    if (token == "ease-in-out") { style.transitionEase = "ease-in-out"; return; }
+    if (token == "transition" || token == "transition-all" || token == "transition-colors" ||
+        token == "transition-opacity" || token == "transition-transform") {
+        if (style.transitionDurationMs <= 0) style.transitionDurationMs = 180;
+        return;
+    }
     if (token == "italic") { style.isItalic = true; return; }
     if (token == "uppercase") { style.isUppercase = true; return; }
     if (token == "lowercase") { style.isLowercase = true; return; }
@@ -458,19 +487,7 @@ inline ComputedStyle parseTailwindStyleWithStates(const std::string &twClasses, 
 }
 
 inline std::string getLucideSvgPath(const std::string &iconName) {
-    if (iconName == "check") return "M 20 6 L 9 17 L 4 12";
-    if (iconName == "x" || iconName == "close") return "M 18 6 L 6 18 M 6 6 L 18 18";
-    if (iconName == "chevron-down") return "M 6 9 L 12 15 L 18 9";
-    if (iconName == "chevron-up") return "M 18 15 L 12 9 L 6 15";
-    if (iconName == "chevron-right") return "M 9 18 L 15 12 L 9 6";
-    if (iconName == "chevron-left") return "M 15 18 L 9 12 L 15 6";
-    if (iconName == "plus") return "M 12 5 L 12 19 M 5 12 L 19 12";
-    if (iconName == "minus") return "M 5 12 L 19 12";
-    if (iconName == "search") return "M 11 4 A 7 7 0 1 1 11 18 A 7 7 0 1 1 11 4 M 21 21 L 16.65 16.65";
-    if (iconName == "zap") return "M 13 2 L 3 14 L 12 14 L 11 22 L 21 10 L 12 10 Z";
-    if (iconName == "menu") return "M 3 6 L 21 6 M 3 12 L 21 12 M 3 18 L 21 18";
-    if (iconName == "send") return "M 22 2 L 11 13 M 22 2 L 15 22 L 11 13 L 2 9 Z";
-    return "";
+    return Icons::lookupIconSvgPath(iconName);
 }
 
 struct LayoutEngineContext {
@@ -521,7 +538,10 @@ inline ComputedStyle computeNodeStyle(const UiNode &node, const ComputedStyle &i
     if (!style.hasExplicitTextColor) style.textColor = inherited.textColor;
     if (!style.hasExplicitFontSize) style.fontSize = inherited.fontSize;
     if (!style.hasExplicitFontWeight) style.fontWeight = inherited.fontWeight;
-    if (!style.hasExplicitFontFamily) style.fontFamily = inherited.fontFamily;
+    if (!style.hasExplicitFontFamily) {
+        style.fontFamily = inherited.fontFamily;
+        style.fontName = inherited.fontName;
+    }
     if (!style.hasExplicitTextAlign) style.textAlign = inherited.textAlign;
     if (inherited.isLineThrough) style.isLineThrough = true;
     if (node.zIndex != 0 && !style.hasExplicitZIndex) style.zIndex = node.zIndex;
@@ -598,10 +618,15 @@ inline float measureNaturalNodeWidth(const UiNode &node, const ComputedStyle &in
         std::string txt = node.text;
         if (inherited.isUppercase) for (char &c : txt) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         else if (inherited.isLowercase) for (char &c : txt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        return measureTextWidth(txt, inherited.fontSize, inherited.fontFamily == FontFamily::MONO);
+        return MemeUiFonts::measureTextWidth(txt, inherited.fontSize, inherited.fontFamily, inherited.fontName, inherited.fontWeight);
     }
     ComputedStyle style = computeNodeStyle(node, inherited, nodeKey, ctx);
     if (style.display == DisplayMode::NONE) return 0.0f;
+    if (node.tag == "icon" || node.tag == "svg") {
+        double explicitSz = node.getNumProp("size", 0.0);
+        float sz = explicitSz > 0.0 ? static_cast<float>(explicitSz) : (style.width > 0 ? style.width : 18.0f);
+        return sz + style.padding[1] + style.padding[3];
+    }
     if (style.width > 0) return style.width;
     if (node.tag == "input" && node.children.empty()) return 160.0f + style.padding[1] + style.padding[3];
     if (node.tag == "select" || node.tag == "combobox") return std::max(140.0f, measureTextWidth(collectNodeAccessibleText(node), 14.0f, false) + 36.0f);
@@ -640,7 +665,7 @@ inline void estimateNodeSize(const UiNode &node, float availW, const ComputedSty
         if (inherited.isUppercase) for (char &c : txt) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         else if (inherited.isLowercase) for (char &c : txt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         bool mono = (inherited.fontFamily == FontFamily::MONO);
-        float singleW = measureTextWidth(txt, inherited.fontSize, mono);
+        float singleW = MemeUiFonts::measureTextWidth(txt, inherited.fontSize, inherited.fontFamily, inherited.fontName, inherited.fontWeight);
         float lineH = inherited.fontSize * 1.35f;
         bool hasNewline = (txt.find('\n') != std::string::npos);
         if ((hasNewline || (availW > 24.0f && singleW > availW + 1.5f)) && !inherited.truncate) {
@@ -809,7 +834,8 @@ inline void solveUiNode(
         if (inherited.isUppercase) for (char &c : txt) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         else if (inherited.isLowercase) for (char &c : txt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         bool isMono = (inherited.fontFamily == FontFamily::MONO);
-        float singleW = measureTextWidth(txt, inherited.fontSize, isMono);
+        bool isSerif = (inherited.fontFamily == FontFamily::SERIF);
+        float singleW = MemeUiFonts::measureTextWidth(txt, inherited.fontSize, inherited.fontFamily, inherited.fontName, inherited.fontWeight);
         float lineH = inherited.fontSize * 1.35f;
         int zUse = (overrideZ != -999999) ? overrideZ : inherited.zIndex;
 
@@ -822,13 +848,15 @@ inline void solveUiNode(
             GpuDrawCmd cmd;
             cmd.type = "DRAW_TEXT";
             cmd.x = drawX;
-            cmd.y = ly + inherited.fontSize;
+            cmd.y = ly + inherited.fontSize * MemeUiFonts::getBaselineOffsetRatio(inherited.fontFamily, inherited.fontName);
             cmd.text = lineStr;
             cmd.fontSize = inherited.fontSize;
             cmd.fontWeight = inherited.fontWeight;
             cmd.color = inherited.textColor.hex;
             cmd.alpha = inherited.textColor.a * inherited.opacity;
             cmd.isMono = isMono;
+            cmd.isSerif = isSerif;
+            cmd.fontName = inherited.fontName;
             cmd.isItalic = inherited.isItalic;
             cmd.isUnderline = inherited.isUnderline;
             cmd.isStrike = inherited.isLineThrough;
@@ -887,6 +915,34 @@ inline void solveUiNode(
     ComputedStyle style = computeNodeStyle(node, inherited, nodeKey, ctx);
     if (style.display == DisplayMode::NONE) {
         outW = 0; outH = 0; return;
+    }
+
+    if (ctx.interaction) {
+        if (node.hasProp("animateOpacity") || node.tag.rfind("motion.", 0) == 0) {
+            float targetOp = static_cast<float>(node.getNumProp("animateOpacity", style.opacity));
+            float initOp = static_cast<float>(node.getNumProp("initialOpacity", style.opacity));
+            ctx.interaction->animStore.setTarget(nodeKey + ":op", targetOp, initOp, node.hasProp("initialOpacity"));
+            style.opacity = std::clamp(ctx.interaction->animStore.getValue(nodeKey + ":op", targetOp), 0.0f, 1.0f);
+        }
+        if (node.hasProp("animateY")) {
+            float targetY = static_cast<float>(node.getNumProp("animateY", 0.0));
+            float initY = static_cast<float>(node.getNumProp("initialY", 0.0));
+            ctx.interaction->animStore.setTarget(nodeKey + ":ty", targetY, initY, node.hasProp("initialY"));
+            style.translateY += ctx.interaction->animStore.getValue(nodeKey + ":ty", targetY);
+        }
+        if (style.animateName == "pulse") {
+            ctx.interaction->animStore.hasLoopingKeyframe = true;
+            float phase = 0.5f + 0.5f * std::sin(static_cast<float>(ctx.interaction->animStore.elapsedSec) * 3.14159265f);
+            style.opacity *= (0.45f + 0.55f * phase);
+        } else if (style.animateName == "fade-in") {
+            ctx.interaction->animStore.setTarget(nodeKey + ":fade", 1.0f, 0.0f, true);
+            style.opacity *= ctx.interaction->animStore.getValue(nodeKey + ":fade", 1.0f);
+        } else if (style.animateName == "slide-up") {
+            ctx.interaction->animStore.setTarget(nodeKey + ":fade", 1.0f, 0.0f, true);
+            ctx.interaction->animStore.setTarget(nodeKey + ":slideY", 0.0f, 10.0f, true);
+            style.opacity *= ctx.interaction->animStore.getValue(nodeKey + ":fade", 1.0f);
+            style.translateY += ctx.interaction->animStore.getValue(nodeKey + ":slideY", 0.0f);
+        }
     }
 
     int baseZ = (overrideZ != -999999) ? overrideZ : 0;
@@ -953,8 +1009,8 @@ inline void solveUiNode(
         }
     }
 
-    float nodeX = parentX + style.margin[3];
-    float nodeY = parentY + style.margin[0];
+    float nodeX = parentX + style.margin[3] + style.translateX;
+    float nodeY = parentY + style.margin[0] + style.translateY;
 
     float nodeW = parentW - style.margin[1] - style.margin[3];
     if (style.widthPercent > 0) nodeW = parentW * (style.widthPercent / 100.0f);
@@ -982,7 +1038,7 @@ inline void solveUiNode(
     bool isHorizScrollParent = (inherited.overflowX == OverflowMode::AUTO || inherited.overflowX == OverflowMode::SCROLL);
     bool isNaturalInline = (node.tag == "button" || node.tag == "span" || node.tag == "a" || node.tag == "label" ||
                             node.tag == "b" || node.tag == "i" || node.tag == "strong" || node.tag == "checkbox" ||
-                            node.tag == "switch" || node.tag == "radio" ||
+                            node.tag == "switch" || node.tag == "radio" || node.tag == "icon" || node.tag == "svg" ||
                             style.display == DisplayMode::INLINE || style.display == DisplayMode::INLINE_FLEX);
     if (style.width <= 0 && style.widthPercent <= 0 && style.flexGrow == 0.0f && (isNaturalInline || isFlexChild)) {
         float natW = measureNaturalNodeWidth(node, inherited, nodeKey, ctx);
@@ -1413,6 +1469,8 @@ inline void solveUiNode(
                         textCmd.fontSize = style.fontSize;
                         textCmd.fontWeight = style.fontWeight;
                         textCmd.isMono = isMono;
+                        textCmd.isSerif = (style.fontFamily == FontFamily::SERIF);
+                        textCmd.fontName = style.fontName;
                         textCmd.color = isPh ? "#64748b" : style.textColor.hex;
                         textCmd.alpha = (isPh ? 0.7f : style.textColor.a) * style.opacity;
                         textCmd.zIndex = effZ;
@@ -1428,6 +1486,8 @@ inline void solveUiNode(
                     textCmd.fontSize = style.fontSize;
                     textCmd.fontWeight = style.fontWeight;
                     textCmd.isMono = isMono;
+                    textCmd.isSerif = (style.fontFamily == FontFamily::SERIF);
+                    textCmd.fontName = style.fontName;
                     textCmd.color = isPh ? "#64748b" : style.textColor.hex;
                     textCmd.alpha = (isPh ? 0.7f : style.textColor.a) * style.opacity;
                     textCmd.zIndex = effZ;
@@ -1555,18 +1615,35 @@ inline void solveUiNode(
         fg.color = "#10b981"; fg.alpha = 1.0f; fg.zIndex = effZ;
         cmds.push_back(fg);
     } else if (node.tag == "svg" || node.tag == "icon") {
-        float w = style.width > 0 ? style.width : 18.0f;
-        float h = style.height > 0 ? style.height : 18.0f;
+        float iconSz = static_cast<float>(node.getNumProp("size", 0.0));
+        float w = iconSz > 0 ? iconSz : (style.width > 0 ? style.width : 16.0f);
+        float h = iconSz > 0 ? iconSz : (style.height > 0 ? style.height : 16.0f);
         contentH = std::max(contentH, h);
+        contentW = std::max(contentW, w);
         std::string pathD = node.getProp("d");
         if (pathD.empty()) pathD = getLucideSvgPath(node.getProp("name"));
+        std::string iconCol = node.hasProp("color") ? node.getProp("color") : style.textColor.hex;
+        float strokeW = static_cast<float>(node.getNumProp("strokeWidth", 2.0));
         if (!pathD.empty()) {
             GpuDrawCmd sc;
             sc.type = "DRAW_SVG_PATH";
             sc.x = innerX; sc.y = innerY; sc.width = w; sc.height = h;
-            sc.svgPath = pathD; sc.color = style.textColor.hex; sc.alpha = style.textColor.a * style.opacity;
-            sc.lineWidth = 2.0f; sc.filled = false; sc.zIndex = effZ;
+            sc.svgPath = pathD; sc.color = iconCol; sc.alpha = style.textColor.a * style.opacity;
+            sc.lineWidth = strokeW; sc.filled = false; sc.zIndex = effZ;
             cmds.push_back(sc);
+        }
+        for (const auto &ch : node.children) {
+            if (!ch.isText && ch.tag == "path") {
+                std::string cd = ch.getProp("d");
+                if (!cd.empty()) {
+                    GpuDrawCmd sc;
+                    sc.type = "DRAW_SVG_PATH";
+                    sc.x = innerX; sc.y = innerY; sc.width = w; sc.height = h;
+                    sc.svgPath = cd; sc.color = iconCol; sc.alpha = style.textColor.a * style.opacity;
+                    sc.lineWidth = strokeW; sc.filled = false; sc.zIndex = effZ;
+                    cmds.push_back(sc);
+                }
+            }
         }
     } else if (node.tag == "canvas" && node.onPaint) {
         float h = (style.height > 0) ? style.height : (style.minHeight > 0 ? style.minHeight : 160.0f);
@@ -1610,6 +1687,12 @@ inline void solveUiNode(
     if (effMaxH > 0.0f && finalH > effMaxH) finalH = effMaxH;
     if (clipCmdIndex != static_cast<size_t>(-1) && clipCmdIndex < cmds.size()) {
         cmds[clipCmdIndex].height = finalH;
+    }
+    if (emitOverflowClip && hitRegions) {
+        UiRect actualClip = clipRect.intersect({nodeX, nodeY, nodeW, finalH});
+        for (size_t hi = hitBgIndex; hi < hitRegions->size(); ++hi) {
+            (*hitRegions)[hi].clipRect = (*hitRegions)[hi].clipRect.intersect(actualClip);
+        }
     }
 
     // Draw scrollbar thumbs when scroll container overflows vertically or horizontally

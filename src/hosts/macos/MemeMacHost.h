@@ -157,11 +157,15 @@ fragment float4 meme_ui_fragment(
     CAMetalLayer *_metalLayer;
     NSTrackingArea *_trackingArea;
     BOOL _atlasUploaded;
+    uint64_t _atlasVersion;
 }
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)wantsUpdateLayer { return _useMetal; }
+- (NSViewLayerContentsRedrawPolicy)layerContentsRedrawPolicy {
+    return NSViewLayerContentsRedrawDuringViewResize;
+}
 
 - (void)setupRenderer {
     _useMetal = NO;
@@ -201,6 +205,7 @@ fragment float4 meme_ui_fragment(
                                                                               mipmapped:NO];
     _atlasTex = [_device newTextureWithDescriptor:td];
     auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+    _atlasVersion = MemeUI::FontAtlas::getAtlasVersion();
     [_atlasTex replaceRegion:MTLRegionMake2D(0, 0, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H)
                  mipmapLevel:0
                    withBytes:rgba.data()
@@ -210,13 +215,15 @@ fragment float4 meme_ui_fragment(
     _metalLayer = [CAMetalLayer layer];
     _metalLayer.device = _device;
     _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    _metalLayer.framebufferOnly = YES;
+    _metalLayer.framebufferOnly = (std::getenv("MEME_CAPTURE_FRAME") == nullptr) ? YES : NO;
+    _metalLayer.delegate = (id<CALayerDelegate>)self;
     CGFloat scale = (self.window ? self.window.backingScaleFactor : 2.0);
     _metalLayer.contentsScale = scale;
     _metalLayer.drawableSize = CGSizeMake(std::max(1.0, self.bounds.size.width * scale), std::max(1.0, self.bounds.size.height * scale));
     self.wantsLayer = YES;
     self.layer = _metalLayer;
     _useMetal = YES;
+    [_metalLayer setNeedsDisplay];
 }
 
 - (void)updateTrackingAreas {
@@ -278,6 +285,16 @@ fragment float4 meme_ui_fragment(
     meshCopy = _session->lastMesh;
     if (_sessionMutex) _sessionMutex->unlock();
 
+    uint64_t curAtlasVer = MemeUI::FontAtlas::getAtlasVersion();
+    if (_atlasTex && curAtlasVer != _atlasVersion) {
+        auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+        [_atlasTex replaceRegion:MTLRegionMake2D(0, 0, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H)
+                     mipmapLevel:0
+                       withBytes:rgba.data()
+                     bytesPerRow:MemeUI::FontAtlas::ATLAS_W * 4];
+        _atlasVersion = curAtlasVer;
+    }
+
     @autoreleasepool {
         id<CAMetalDrawable> drawable = [_metalLayer nextDrawable];
         if (!drawable) return;
@@ -326,14 +343,98 @@ fragment float4 meme_ui_fragment(
         }
 
         [enc endEncoding];
+        const char *capPath = std::getenv("MEME_CAPTURE_FRAME");
+        static bool s_capturedFrame = false;
+        id<MTLTexture> stagingTex = nil;
+        if (capPath && *capPath && !s_capturedFrame && !meshCopy.vertices.empty()) {
+            MTLTextureDescriptor *sd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawable.texture.pixelFormat
+                                                                                          width:drawable.texture.width
+                                                                                         height:drawable.texture.height
+                                                                                      mipmapped:NO];
+            sd.storageMode = MTLStorageModeShared;
+            sd.usage = MTLTextureUsageShaderRead;
+            stagingTex = [_device newTextureWithDescriptor:sd];
+            id<MTLBlitCommandEncoder> blit = [cmdBuf blitCommandEncoder];
+            [blit copyFromTexture:drawable.texture
+                      sourceSlice:0
+                      sourceLevel:0
+                     sourceOrigin:MTLOriginMake(0, 0, 0)
+                       sourceSize:MTLSizeMake(drawable.texture.width, drawable.texture.height, 1)
+                        toTexture:stagingTex
+                 destinationSlice:0
+                 destinationLevel:0
+                destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+        }
         [cmdBuf presentDrawable:drawable];
         [cmdBuf commit];
+        if (stagingTex) {
+            [cmdBuf waitUntilCompleted];
+            NSUInteger w = stagingTex.width;
+            NSUInteger h = stagingTex.height;
+            std::vector<uint8_t> bgra(w * h * 4, 0);
+            [stagingTex getBytes:bgra.data()
+                     bytesPerRow:w * 4
+                      fromRegion:MTLRegionMake2D(0, 0, w, h)
+                     mipmapLevel:0];
+            NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                                            pixelsWide:static_cast<NSInteger>(w)
+                                                                            pixelsHigh:static_cast<NSInteger>(h)
+                                                                         bitsPerSample:8
+                                                                       samplesPerPixel:4
+                                                                              hasAlpha:YES
+                                                                              isPlanar:NO
+                                                                        colorSpaceName:NSCalibratedRGBColorSpace
+                                                                           bytesPerRow:static_cast<NSInteger>(w * 4)
+                                                                          bitsPerPixel:32];
+            uint8_t *dst = [rep bitmapData];
+            for (NSUInteger i = 0; i < w * h; ++i) {
+                dst[i * 4 + 0] = bgra[i * 4 + 2];
+                dst[i * 4 + 1] = bgra[i * 4 + 1];
+                dst[i * 4 + 2] = bgra[i * 4 + 0];
+                dst[i * 4 + 3] = bgra[i * 4 + 3];
+            }
+            NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+            NSString *outPath = [NSString stringWithUTF8String:capPath];
+            if (png && outPath) {
+                [png writeToFile:outPath atomically:YES];
+                s_capturedFrame = true;
+            }
+            MEME_OBJC_RELEASE(rep);
+            MEME_OBJC_RELEASE(stagingTex);
+            if (std::getenv("MEME_CAPTURE_EXIT") != nullptr) {
+                if ([self window]) [[self window] close];
+            }
+        }
     }
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (_useMetal && self.window) {
+        if (_metalLayer) {
+            CGFloat scale = self.window.backingScaleFactor;
+            _metalLayer.contentsScale = scale;
+            _metalLayer.drawableSize = CGSizeMake(std::max(1.0, self.bounds.size.width * scale), std::max(1.0, self.bounds.size.height * scale));
+        }
+        [self renderMetalFrame];
+    }
+}
+
+- (void)updateLayer {
+    [self renderMetalFrame];
 }
 
 - (void)displayLayer:(CALayer *)layer {
     (void)layer;
     [self renderMetalFrame];
+}
+
+- (void)setNeedsDisplay:(BOOL)needsDisplay {
+    [super setNeedsDisplay:needsDisplay];
+    if (needsDisplay && _useMetal && _metalLayer) {
+        [_metalLayer setNeedsDisplay];
+    }
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -417,9 +518,22 @@ fragment float4 meme_ui_fragment(
             [p closePath];
             [p fill];
         } else if (c.type == "DRAW_TEXT" && !c.text.empty()) {
-            NSFont *font = c.isMono
-                ? [NSFont monospacedSystemFontOfSize:c.fontSize weight:NSFontWeightRegular]
-                : (c.fontWeight >= 600 ? [NSFont boldSystemFontOfSize:c.fontSize] : [NSFont systemFontOfSize:c.fontSize]);
+            NSFontWeight fw = (c.fontWeight >= 600) ? NSFontWeightBold : NSFontWeightRegular;
+            NSFont *font = nil;
+            if (!c.fontName.empty()) {
+                NSString *nsFam = [NSString stringWithUTF8String:c.fontName.c_str()];
+                if (nsFam) font = [NSFont fontWithName:nsFam size:c.fontSize];
+            }
+            if (!font) {
+                if (c.isMono) {
+                    font = [NSFont monospacedSystemFontOfSize:c.fontSize weight:fw];
+                } else if (c.isSerif) {
+                    font = [NSFont fontWithName:@"Times New Roman" size:c.fontSize];
+                    if (!font) font = [NSFont systemFontOfSize:c.fontSize weight:fw];
+                } else {
+                    font = [NSFont systemFontOfSize:c.fontSize weight:fw];
+                }
+            }
             NSDictionary *attrs = @{
                 NSFontAttributeName: font,
                 NSForegroundColorAttributeName: MemeMacHostInternal::nsColorFromHex(c.color, c.alpha)
@@ -446,12 +560,21 @@ fragment float4 meme_ui_fragment(
 - (void)mouseMoved:(NSEvent *)event {
     if (!_session) return;
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    bool ch = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
-    if (_sessionMutex) _sessionMutex->unlock();
+    bool ch = false;
+    try {
+        std::unique_lock<std::mutex> lk;
+        if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+        ch = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in mouseMoved: " << e.what() << "\n";
+    } catch (...) {}
     [self refreshCursorAt:pt];
     if (ch) {
-        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        try {
+            if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        } catch (const std::exception &e) {
+            std::cerr << "UI render error in mouseMoved: " << e.what() << "\n";
+        } catch (...) {}
         [self setNeedsDisplay:YES];
     }
 }
@@ -460,21 +583,36 @@ fragment float4 meme_ui_fragment(
     if (!_session) return;
     [[self window] makeFirstResponder:self];
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 0, static_cast<int>([event clickCount]));
-    if (_sessionMutex) _sessionMutex->unlock();
-    if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    try {
+        {
+            std::unique_lock<std::mutex> lk;
+            if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+            _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 0, static_cast<int>([event clickCount]));
+        }
+        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in mouseDown: " << e.what() << "\n";
+    } catch (...) {}
     [self setNeedsDisplay:YES];
 }
 
 - (void)mouseDragged:(NSEvent *)event {
     if (!_session) return;
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    bool ch = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
-    if (_sessionMutex) _sessionMutex->unlock();
+    bool ch = false;
+    try {
+        std::unique_lock<std::mutex> lk;
+        if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+        ch = _session->handlePointerMove(static_cast<float>(pt.x), static_cast<float>(pt.y));
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in mouseDragged: " << e.what() << "\n";
+    } catch (...) {}
     if (ch) {
-        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        try {
+            if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        } catch (const std::exception &e) {
+            std::cerr << "UI render error in mouseDragged: " << e.what() << "\n";
+        } catch (...) {}
         [self setNeedsDisplay:YES];
     }
 }
@@ -482,30 +620,48 @@ fragment float4 meme_ui_fragment(
 - (void)mouseUp:(NSEvent *)event {
     if (!_session) return;
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 0);
-    if (_sessionMutex) _sessionMutex->unlock();
-    if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    try {
+        {
+            std::unique_lock<std::mutex> lk;
+            if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+            _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 0);
+        }
+        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in mouseUp: " << e.what() << "\n";
+    } catch (...) {}
     [self setNeedsDisplay:YES];
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
     if (!_session) return;
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 2, 1);
-    if (_sessionMutex) _sessionMutex->unlock();
-    if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    try {
+        {
+            std::unique_lock<std::mutex> lk;
+            if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+            _session->handlePointerDown(static_cast<float>(pt.x), static_cast<float>(pt.y), 2, 1);
+        }
+        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in rightMouseDown: " << e.what() << "\n";
+    } catch (...) {}
     [self setNeedsDisplay:YES];
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
     if (!_session) return;
     NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
-    if (_sessionMutex) _sessionMutex->lock();
-    _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 2);
-    if (_sessionMutex) _sessionMutex->unlock();
-    if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    try {
+        {
+            std::unique_lock<std::mutex> lk;
+            if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+            _session->handlePointerUp(static_cast<float>(pt.x), static_cast<float>(pt.y), 2);
+        }
+        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in rightMouseUp: " << e.what() << "\n";
+    } catch (...) {}
     [self setNeedsDisplay:YES];
 }
 
@@ -515,11 +671,20 @@ fragment float4 meme_ui_fragment(
     float dx = static_cast<float>([event scrollingDeltaX]);
     float dy = static_cast<float>([event scrollingDeltaY]);
     float scaleDiv = [event hasPreciseScrollingDeltas] ? (1.0f / 28.0f) : 0.5f;
-    if (_sessionMutex) _sessionMutex->lock();
-    bool ch = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx * scaleDiv, dy * scaleDiv);
-    if (_sessionMutex) _sessionMutex->unlock();
+    bool ch = false;
+    try {
+        std::unique_lock<std::mutex> lk;
+        if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+        ch = _session->handleScroll(static_cast<float>(pt.x), static_cast<float>(pt.y), dx * scaleDiv, dy * scaleDiv);
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in scrollWheel: " << e.what() << "\n";
+    } catch (...) {}
     if (ch) {
-        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        try {
+            if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        } catch (const std::exception &e) {
+            std::cerr << "UI render error in scrollWheel: " << e.what() << "\n";
+        } catch (...) {}
         [self setNeedsDisplay:YES];
     }
 }
@@ -535,11 +700,20 @@ fragment float4 meme_ui_fragment(
     kev.key = MemeMacHostInternal::mapCocoaKey(event);
     kev.text = MemeMacHostInternal::mapCocoaText(event);
 
-    if (_sessionMutex) _sessionMutex->lock();
-    bool ch = _session->handleKeyEvent(kev);
-    if (_sessionMutex) _sessionMutex->unlock();
+    bool ch = false;
+    try {
+        std::unique_lock<std::mutex> lk;
+        if (_sessionMutex) lk = std::unique_lock<std::mutex>(*_sessionMutex);
+        ch = _session->handleKeyEvent(kev);
+    } catch (const std::exception &e) {
+        std::cerr << "UI error in keyDown: " << e.what() << "\n";
+    } catch (...) {}
     if (ch) {
-        if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        try {
+            if (_onNeedRender && *_onNeedRender) (*_onNeedRender)();
+        } catch (const std::exception &e) {
+            std::cerr << "UI render error in keyDown: " << e.what() << "\n";
+        } catch (...) {}
         [self setNeedsDisplay:YES];
     }
 }
@@ -1025,8 +1199,10 @@ inline int runMacNativeApp(const std::string &title, UiSession &session, int wid
         NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                   NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
         NSWindow *win = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+        [win setReleasedWhenClosed:NO];
         NSString *nsTitle = [NSString stringWithUTF8String:title.c_str()];
         [win setTitle:(nsTitle ? nsTitle : @"MEME-UI")];
+        [win setBackgroundColor:MemeMacHostInternal::nsColorFromHex("#09090b", 1.0f)];
         [win setAcceptsMouseMovedEvents:YES];
 
         bool isOpen = true;
@@ -1056,6 +1232,7 @@ inline int runMacNativeApp(const std::string &title, UiSession &session, int wid
         [NSApp activateIgnoringOtherApps:YES];
 
         session.renderFrame(static_cast<float>(width), static_cast<float>(height));
+        [view renderMetalFrame];
         [view setNeedsDisplay:YES];
 
         while (isOpen) {

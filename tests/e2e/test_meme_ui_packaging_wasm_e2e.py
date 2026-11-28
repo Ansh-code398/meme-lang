@@ -558,7 +558,7 @@ def main():
             fail_test("T1_package_eguitelemetry_all", r_pkg1.stdout + "\n" + r_pkg1.stderr)
         pass_test("T1_package_eguitelemetry_all_8_targets")
 
-        r_pkg2 = run_cmd([MEME_BIN, "package", "apps/showcase/src/App.meme", "--target=all", "-o", str(app_dist)], timeout=240)
+        r_pkg2 = run_cmd([MEME_BIN, "package", "apps/showcase/src/App.meme", "--target=all", "--web-renderer=canvas", "-o", str(app_dist)], timeout=240)
         if r_pkg2.returncode != 0:
             fail_test("T1_package_showcase_all", r_pkg2.stdout + "\n" + r_pkg2.stderr)
         pass_test("T1_package_showcase_all_8_targets")
@@ -656,10 +656,30 @@ ui.mount(<App />);
 """, encoding="utf-8")
 
         fix_out = WORK_DIR / "perm_sep_out"
-        for tgt in ("apk", "ipa", "mac", "web"):
+        for tgt in ("apk", "ipa", "mac"):
             rp = run_cmd([MEME_BIN, "package", str(fix_dir / "src" / "App.meme"), f"--target={tgt}", "-o", str(fix_out)], timeout=180)
             if rp.returncode != 0:
                 fail_test(f"T5_fixture_pkg_{tgt}", rp.stdout + "\n" + rp.stderr)
+        # Verify default Web DOM bundle (--target=web) separately alongside WebGL2 canvas parity
+        fix_dom_out = WORK_DIR / "perm_sep_dom_out"
+        rp_dom = run_cmd([MEME_BIN, "package", str(fix_dir / "src" / "App.meme"), "--target=web", "-o", str(fix_dom_out)], timeout=120)
+        if rp_dom.returncode != 0:
+            fail_test("T5_fixture_pkg_web_dom", rp_dom.stdout + "\n" + rp_dom.stderr)
+        dom_web_dir = fix_dom_out / "web"
+        for req_dom_file in ("index.html", "styles.css", "meme-dom.js", "app.js"):
+            if not (dom_web_dir / req_dom_file).is_file():
+                fail_test("T5_fixture_web_dom_files", f"Missing {req_dom_file} in default --target=web DOM output")
+        dom_app_js = (dom_web_dir / "app.js").read_text(encoding="utf-8")
+        dom_html = (dom_web_dir / "index.html").read_text(encoding="utf-8")
+        if "MEME_ADAPTER_TARGET_WEB_MARKER_V1" not in dom_app_js:
+            fail_test("T5_fixture_web_dom_marker", "Expected WEB adapter marker inside default Web DOM app.js")
+        if "camera=(self)" in dom_html or "geolocation=(self)" in dom_html:
+            fail_test("T5_fixture_web_dom_policy", dom_html[:600])
+        pass_test("T5_fixture_web_default_dom_bundle")
+
+        rp_web_canvas = run_cmd([MEME_BIN, "package", str(fix_dir / "src" / "App.meme"), "--target=web", "--web-renderer=canvas", "-o", str(fix_out)], timeout=180)
+        if rp_web_canvas.returncode != 0:
+            fail_test("T5_fixture_pkg_web_canvas", rp_web_canvas.stdout + "\n" + rp_web_canvas.stderr)
 
         # Check APK selective permissions: has CAMERA & POST_NOTIFICATIONS, does NOT have ACCESS_FINE_LOCATION or RECORD_AUDIO
         if bt_dirs:

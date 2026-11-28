@@ -9,12 +9,16 @@ const ARTIFACT_DIR = '/Users/anshsharma/.gemini/antigravity/brain/7525a83b-8ec9-
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.wasm': 'application/wasm',
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 function startSpaServer() {
@@ -168,9 +172,14 @@ async function main() {
 
     const pageErrors = [];
     const consoleLogs = [];
+    const requestedUrls = [];
+    await cdp.send('Network.enable');
     await cdp.send('Log.enable');
     cdp.ws.addEventListener('message', (ev) => {
       const m = JSON.parse(ev.data);
+      if (m.method === 'Network.requestWillBeSent') {
+        requestedUrls.push(m.params.request?.url || '');
+      }
       if (m.method === 'Runtime.exceptionThrown') pageErrors.push(JSON.stringify(m.params));
       if (m.method === 'Runtime.consoleAPICalled') {
         const text = (m.params.args || []).map((a) => a.value ?? a.description ?? '').join(' ');
@@ -184,7 +193,7 @@ async function main() {
     const baseUrl = `http://127.0.0.1:${port}`;
     await cdp.send('Page.navigate', { url: `${baseUrl}/` });
 
-    // 1. Docs home renders in WebGL2/Wasm
+    // 1. Docs home renders in Standard HTML/CSS/JS DOM with 0 eager .wasm downloads!
     try {
       await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '') === 'Run'), 'Docs Home loaded', 10000);
     } catch (e) {
@@ -195,8 +204,25 @@ async function main() {
       console.error('PAGE ERRORS:\n' + pageErrors.join('\n'));
       throw e;
     }
+    const wasmBeforeRun = requestedUrls.filter((u) => u.endsWith('.wasm'));
+    if (wasmBeforeRun.length > 0) {
+      throw new Error(`Expected 0 .wasm requests on initial DOM Docs Home load, got: ${JSON.stringify(wasmBeforeRun)}`);
+    }
+    const domAudit = (await cdp.send('Runtime.evaluate', {
+      expression: `(() => {
+        const bg = getComputedStyle(document.body).backgroundColor;
+        const buttons = document.querySelectorAll('button').length;
+        const inputs = document.querySelectorAll('input').length;
+        const fullCanvas = document.getElementById('meme-canvas');
+        return { bg, buttons, inputs, hasFullCanvas: Boolean(fullCanvas) };
+      })()`,
+      returnByValue: true,
+    })).result.value;
+    if (domAudit.hasFullCanvas || domAudit.buttons < 10 || domAudit.inputs < 1 || domAudit.bg === 'rgba(0, 0, 0, 0)') {
+      throw new Error(`DOM architecture check failed: ${JSON.stringify(domAudit)}`);
+    }
     await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_home.png'));
-    console.log('[PASS] Pure-.meme Docs Home rendered on WebGL2 Canvas');
+    console.log(`[PASS] Pure-.meme Docs Home rendered via standard HTML/CSS/JS DOM (${domAudit.buttons} buttons, 0 eager .wasm requests!)`);
 
     // 1b. Verify 2-section Track Segregation (Core Language hides UI/Platform items until switched)
     const coreCheck = (await cdp.send('Runtime.evaluate', {
@@ -220,9 +246,13 @@ async function main() {
     await clickByLabel(cdp, 'English (let, fn, if, print)');
     await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('English Word Syntax')), 'Switched docs syntax to English');
     await clickByLabel(cdp, 'Run');
-    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Close')), 'Inline English CodeBlock Run Drawer opened');
+    await waitForSnap(cdp, (s) => (s.nodes || []).some((r) => (r.accessibleName || '').includes('Close')), 'Inline English CodeBlock Run Drawer opened', 25000);
+    const wasmAfterRun = requestedUrls.filter((u) => u.endsWith('meme-eval.wasm'));
+    if (wasmAfterRun.length === 0) {
+      throw new Error(`Expected lazy meme-eval.wasm download after clicking Run, got requests: ${JSON.stringify(requestedUrls)}`);
+    }
     await capturePng(cdp, path.join(ARTIFACT_DIR, 'pure_docs_english_mode.png'));
-    console.log('[PASS] Hindi/English dropdown switched code to English & ran live in Wasm');
+    console.log('[PASS] Hindi/English dropdown switched code to English & lazy-loaded meme-eval.wasm on Run!');
 
     // 3. Switch to UI & Platform track, navigate to Hosting & Deployment & check URL history sync!
     await clickByLabel(cdp, 'UI & Platform');

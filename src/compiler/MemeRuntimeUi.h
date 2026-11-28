@@ -814,6 +814,19 @@ inline MemeValue useContext(const MemeValue &ctxObj) {
     return aot_ui().readContext(ctxId);
 }
 
+inline MemeValue useSpring(const MemeValue &targetVal, const MemeValue &keyOrCfg = MemeValue()) {
+    auto &rt = aot_ui();
+    double target = targetVal.as_double();
+    std::string compPath = rt.getCurrentComponentPath();
+    int cursor = rt.getNextHookCursor(compPath);
+    std::string key = compPath + "@spring@" + std::to_string(cursor);
+    if (keyOrCfg.type == MemeValue::TYPE_STRING && !keyOrCfg.s_val.empty()) {
+        key = "spring:" + keyOrCfg.s_val;
+    }
+    rt.session.interaction.animStore.setTarget(key, static_cast<float>(target), static_cast<float>(target), false);
+    return MemeValue(static_cast<double>(rt.session.interaction.animStore.getValue(key, static_cast<float>(target))));
+}
+
 inline MemeValue useRouter() {
     auto &rt = aot_ui();
     auto navFn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
@@ -1169,6 +1182,92 @@ inline MemeValue build_shadcn_module() {
     m["Separator"] = comp("div", "h-[1px] w-full bg-slate-800 my-2");
     m["Alert"] = comp("div", "relative w-full rounded-xl border border-slate-800 p-4 bg-slate-950");
     m["Platform"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Platform(a.empty() ? MemeValue() : a[0]); });
+    return m;
+}
+
+inline MemeValue build_icons_module() {
+    auto makeIconFn = [](const std::string &forcedName) {
+        return meme_fn([forcedName](const std::vector<MemeValue> &args) -> MemeValue {
+            MemeValue props = (!args.empty() && args[0].type == MemeValue::TYPE_MAP) ? args[0] : make_map({});
+            if (!forcedName.empty()) props["name"] = MemeValue(forcedName);
+            std::string uc = props.get("class", props.get("className", MemeValue(""))).to_string();
+            std::string merged = uc.empty() ? "w-4 h-4 text-slate-200" : ("w-4 h-4 text-slate-200 " + uc);
+            props["class"] = MemeValue(merged);
+            props["className"] = MemeValue(merged);
+            std::vector<std::pair<std::string, MemeValue>> pairs;
+            if (props.map_data) {
+                for (const auto &k : props.map_data->map_keys) {
+                    if (k != "children") pairs.emplace_back(k, props.get(k));
+                }
+            }
+            return make_jsx_element("icon", false, pairs, {});
+        });
+    };
+
+    MemeValue m = make_map({});
+    m["Icon"] = makeIconFn("");
+    for (const std::string &kebab : MemeUI::Icons::allIconNames()) {
+        MemeValue fn = makeIconFn(kebab);
+        m[MemeUI::Icons::toPascalIconName(kebab)] = fn;
+        m[kebab] = fn;
+    }
+    return m;
+}
+
+inline MemeValue build_motion_module() {
+    auto motionTag = [](const std::string &htmlTag) {
+        return meme_fn([htmlTag](const std::vector<MemeValue> &args) -> MemeValue {
+            MemeValue props = (!args.empty() && args[0].type == MemeValue::TYPE_MAP) ? args[0] : make_map({});
+            MemeValue ch = props.get("children", MemeValue(std::vector<MemeValue>{}));
+            std::vector<MemeValue> chVec;
+            if (ch.type == MemeValue::TYPE_LIST && ch.list_data) chVec = *ch.list_data;
+            else if (ch.type != MemeValue::TYPE_NALLA) chVec.push_back(ch);
+
+            MemeValue outProps = make_map({});
+            if (props.map_data) {
+                for (const auto &k : props.map_data->map_keys) {
+                    MemeValue v = props.get(k);
+                    if (k == "children") continue;
+                    if (k == "initial" && v.type == MemeValue::TYPE_MAP) {
+                        if (v.has("opacity")) outProps["initialOpacity"] = v.get("opacity");
+                        if (v.has("y")) outProps["initialY"] = v.get("y");
+                        continue;
+                    }
+                    if (k == "animate" && v.type == MemeValue::TYPE_MAP) {
+                        if (v.has("opacity")) outProps["animateOpacity"] = v.get("opacity");
+                        if (v.has("y")) outProps["animateY"] = v.get("y");
+                        continue;
+                    }
+                    outProps[k] = v;
+                }
+            }
+            std::string uc = outProps.get("class", outProps.get("className", MemeValue(""))).to_string();
+            std::string merged = uc.empty() ? "transition-all duration-200" : ("transition-all duration-200 " + uc);
+            outProps["class"] = MemeValue(merged);
+            outProps["className"] = MemeValue(merged);
+            std::vector<std::pair<std::string, MemeValue>> pairs;
+            if (outProps.map_data) {
+                for (const auto &k : outProps.map_data->map_keys) pairs.emplace_back(k, outProps.get(k));
+            }
+            return make_jsx_element(htmlTag, false, pairs, chVec);
+        });
+    };
+
+    MemeValue m = make_map({});
+    MemeValue inner = make_map({});
+    for (const char *tag : {"div", "span", "button", "section", "article", "aside", "header", "footer", "p", "h1", "h2", "h3", "ul", "li"}) {
+        MemeValue fn = motionTag(tag);
+        m[tag] = fn;
+        inner[tag] = fn;
+    }
+    MemeValue viewFn = motionTag("div");
+    m["View"] = viewFn;
+    inner["View"] = viewFn;
+    m["motion"] = inner;
+    m["useSpring"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
+        return useSpring(a.empty() ? MemeValue(0.0) : a[0], a.size() > 1 ? a[1] : MemeValue());
+    });
+    m["spring"] = m["useSpring"];
     return m;
 }
 
@@ -2250,6 +2349,15 @@ inline MemeValue build_ui_module() {
     m["Route"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Route(a.empty() ? MemeValue() : a[0]); });
     m["Link"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Link(a.empty() ? MemeValue() : a[0]); });
     m["Platform"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Platform(a.empty() ? MemeValue() : a[0]); });
+    m["useSpring"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
+        return useSpring(a.empty() ? MemeValue(0.0) : a[0], a.size() > 1 ? a[1] : MemeValue());
+    });
+    m["registerFont"] = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue {
+        if (a.size() < 2) return MemeValue(false);
+        return MemeValue(MemeUI::MemeUiFonts::registerFontFile(
+            a[0].to_string(), a[1].to_string(), a.size() > 2 ? a[2].to_string() : "400"));
+    });
+    m["register_font"] = m["registerFont"];
 
     return m;
 }
@@ -2345,6 +2453,7 @@ using MemeAotUI::useRef;
 using MemeAotUI::createContext;
 using MemeAotUI::useContext;
 using MemeAotUI::useRouter;
+using MemeAotUI::useSpring;
 using MemeAotUI::Router;
 using MemeAotUI::Route;
 using MemeAotUI::Link;
@@ -2358,6 +2467,8 @@ inline MemeValue view = ui;
 inline MemeValue gui = ui;
 inline MemeValue egui = MemeAotUI::build_egui_module(ui);
 inline MemeValue ui_shadcn = MemeAotUI::build_shadcn_module();
+inline MemeValue ui_icons = MemeAotUI::build_icons_module();
+inline MemeValue ui_motion = MemeAotUI::build_motion_module();
 inline MemeValue ui_primitives = MemeAotUI::build_primitives_module();
 inline MemeValue Router_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Router(a.empty() ? MemeValue() : a[0]); });
 inline MemeValue Route_fn = meme_fn([](const std::vector<MemeValue> &a) -> MemeValue { return Route(a.empty() ? MemeValue() : a[0]); });

@@ -1074,6 +1074,7 @@ void bindIosNativeHooks() {
     id<MTLCommandQueue> _queue;
     id<MTLRenderPipelineState> _pipeline;
     id<MTLTexture> _atlasTex;
+    uint64_t _atlasVersion;
     CAMetalLayer *_metalLayer;
     UITouch *_activeTouch;
     CGPoint _touchStartPt;
@@ -1161,6 +1162,7 @@ void bindIosNativeHooks() {
                                                                               mipmapped:NO];
     _atlasTex = [_device newTextureWithDescriptor:td];
     auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+    _atlasVersion = MemeUI::FontAtlas::getAtlasVersion();
     [_atlasTex replaceRegion:MTLRegionMake2D(0, 0, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H)
                  mipmapLevel:0
                    withBytes:rgba.data()
@@ -1199,6 +1201,15 @@ void bindIosNativeHooks() {
 
     if (_session->needsRender || _session->lastMesh.vertices.empty()) {
         _session->renderFrame(vw, vh);
+    }
+    uint64_t curAtlasVer = MemeUI::FontAtlas::getAtlasVersion();
+    if (_atlasTex && curAtlasVer != _atlasVersion) {
+        auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+        [_atlasTex replaceRegion:MTLRegionMake2D(0, 0, MemeUI::FontAtlas::ATLAS_W, MemeUI::FontAtlas::ATLAS_H)
+                     mipmapLevel:0
+                       withBytes:rgba.data()
+                     bytesPerRow:MemeUI::FontAtlas::ATLAS_W * 4];
+        _atlasVersion = curAtlasVer;
     }
 
     if (!_useMetal || !_metalLayer || !_pipeline) {

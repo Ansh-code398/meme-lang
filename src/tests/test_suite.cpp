@@ -11,6 +11,10 @@
 #include "../interpreter/Interpreter.h"
 #include "../packager/IconAssets.h"
 #include "../packager/MemePackager.h"
+#include "../server/MemeSsrRouter.h"
+#include "../ui/MemeUiAnimation.h"
+#include "../ui/MemeUiFontEngine.h"
+#include "../ui/MemeUiTessellator.h"
 
 // Test helper: runs code in a fresh interpreter and captures stdout
 static std::string runAndCapture(const std::string &code)
@@ -3522,6 +3526,253 @@ if total == 9 {
     std::cout << "PASSED\n";
 }
 
+void testWebDomFontsIconsMotionJsBridgeAndSsr()
+{
+    std::cout << "Testing Web DOM Transpiler, Multi-Fonts, Lucide Icons, Motion, Zero-WebView JS Bridge & SSR Middleware... " << std::flush;
+
+    namespace fs = std::filesystem;
+    fs::path tmpRoot = fs::temp_directory_path() / "meme_suite_m2_m3_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    // 1. WebDomTranspiler: AST -> standard HTML + Tailwind CSS + ES6 JS + Icons + Motion + Lazy Eval
+    {
+        fs::path domEntry = tmpRoot / "DomApp.meme";
+        std::ofstream df(domEntry);
+        df << R"(
+bula "ui" jaise { useState };
+bula "ui:icons" jaise { Icon, Terminal };
+bula "ui:motion" jaise { motion, useSpring };
+bula "meme";
+
+jugaad DomApp() {
+    pakad [count, setCount] = useState(0);
+    pakad val = useSpring(count * 10);
+    ye_le (
+        <motion.div className="min-h-screen bg-zinc-950 p-6 grid grid-cols-2 gap-4 animate-fade-in">
+            <Icon name="rocket" size={20} color="#f59e0b" />
+            <Terminal size={18} />
+            <button onClick={() => setCount(count + 1)}>{"Count=" + string(count) + ":" + string(val)}</button>
+            <button onClick={() => meme.eval("dikha 2 + 2;")}>Run</button>
+        </motion.div>
+    );
+}
+ui.mount(DomApp, "Dom Docs App");
+)";
+        df.close();
+
+        MemeWebDom::WebDomOptions wopts;
+        wopts.title = "Dom Docs App";
+        auto bundle = MemeWebDom::transpileToWebDomBundle(domEntry, wopts);
+        assert(bundle.success);
+        assert(bundle.usesIcons);
+        assert(bundle.usesMotion);
+        assert(bundle.usesEval);
+        assert(bundle.stylesCss.find(".animate-fade-in") != std::string::npos);
+        assert(bundle.stylesCss.find("grid-template-columns") != std::string::npos);
+        assert(bundle.memeDomJs.find("\"alert-triangle\"") != std::string::npos);
+        assert(bundle.memeDomJs.find("\"rocket\"") != std::string::npos);
+        assert(bundle.memeDomJs.find("getInitialData") != std::string::npos);
+        assert(bundle.indexHtml.find("<canvas") == std::string::npos);
+        assert(bundle.memeDomJs.find("lazyEval") != std::string::npos);
+        assert(bundle.appJs.find("$m.meme") != std::string::npos || bundle.appJs.find("lazyEval") != std::string::npos);
+    }
+
+    // 2. Multi-Font TrueType/Kerning Engine & 100+ Lucide Icons + Multi-Subpath Elliptical Arc SVG Tessellation
+    {
+        assert(MemeUI::Icons::registry().size() >= 100);
+        assert(MemeUI::Icons::normalizeIconName("AlertTriangle") == "alert-triangle");
+        assert(!MemeUI::Icons::lookupIconSvgPath("github").empty());
+        assert(!MemeUI::Icons::lookupIconSvgPath("shield-check").empty());
+
+        uint64_t ver0 = MemeUI::FontAtlas::getAtlasVersion();
+        assert(ver0 >= 1);
+        float wSans = MemeUI::MemeUiFonts::measureTextWidth("AVAVA", 16.0f, MemeUI::FontFamily::SANS);
+        float wMono = MemeUI::MemeUiFonts::measureTextWidth("AVAVA", 16.0f, MemeUI::FontFamily::MONO);
+        float wSerif = MemeUI::MemeUiFonts::measureTextWidth("AVAVA", 16.0f, MemeUI::FontFamily::SERIF);
+        assert(wSans > 15.0f && wMono > 15.0f && wSerif > 15.0f);
+        auto rgba = MemeUI::FontAtlas::getRgbaAtlas();
+        assert(rgba[0] == 255 && rgba[3] == 255);
+
+        std::vector<MemeUI::GpuDrawCmd> iconCmds;
+        for (const char *ic : {"github", "clock", "rocket", "alert-triangle"}) {
+            MemeUI::GpuDrawCmd sc;
+            sc.type = "DRAW_SVG_PATH";
+            sc.x = 10; sc.y = 10; sc.width = 24; sc.height = 24;
+            sc.svgPath = MemeUI::Icons::lookupIconSvgPath(ic);
+            sc.lineWidth = 2.0f;
+            sc.color = "#f59e0b";
+            iconCmds.push_back(sc);
+        }
+        auto mesh = MemeUI::Tessellator::tessellate(iconCmds, 400.0f, 300.0f);
+        assert(mesh.vertices.size() > 80);
+        assert(mesh.indices.size() > 120 && (mesh.indices.size() % 3) == 0);
+    }
+
+    // 3. Spring Animation Physics + ui:icons & ui:motion Interpreter Integration
+    {
+        MemeUI::UiAnimationStore store;
+        store.setTarget("card:op", 1.0f, 0.0f, true);
+        float prev = store.getValue("card:op", 0.0f);
+        assert(prev == 0.0f);
+        for (int i = 0; i < 60; ++i) store.tickAll(16.0);
+        float settled = store.getValue("card:op", 0.0f);
+        assert(settled > 0.9f && settled <= 1.05f);
+
+        std::string uiAnimOut = runAndCapture(R"(
+bula "ui:icons" jaise { Icon, Play };
+bula "ui:motion" jaise { motion, useSpring };
+pakad v = useSpring(42);
+pakad node = <motion.div initial={{"opacity": 0, "y": 10}} animate={{"opacity": 1, "y": 0}}><Icon name="play" size={20} /><Play size={24} /></motion.div>;
+dikha node.tag + ":" + string(node.props.animateOpacity) + ":" + string(node.children.lambai()) + ":" + string(v);
+)");
+        assert(uiAnimOut.find("div:1:2:42") != std::string::npos);
+    }
+
+    // 4. Zero-WebView Embedded JS Ecosystem (JavaScriptCore / QuickJS-NG) + ESM + local node_modules
+    {
+        fs::path modDir = tmpRoot / "node_modules" / "mini-math";
+        fs::create_directories(modDir);
+        std::ofstream pjf(modDir / "package.json");
+        pjf << "{\"name\":\"mini-math\",\"version\":\"1.2.3\",\"main\":\"index.js\"}";
+        pjf.close();
+        std::ofstream mjf(modDir / "index.js");
+        mjf << "export function add(a, b) { return a + b; }\nexport const VERSION = '1.2.3';\n";
+        mjf.close();
+
+        fs::path scriptPath = tmpRoot / "js_test.meme";
+        std::ofstream sf(scriptPath);
+        sf << R"(
+bula "npm:clsx" jaise clsx;
+bula "npm:tailwind-merge" jaise { twMerge };
+bula "npm:zustand" jaise { create };
+bula "npm:mini-math" jaise { add, VERSION };
+
+pakad cls = twMerge("p-2 p-6 text-sm", clsx("flex", {"hidden": nhi, "gap-2": han}));
+pakad store = create((set) => ({"score": 99}));
+dikha "ENGINE=" + clsx.__jsEngine;
+dikha "CLS=" + cls;
+dikha "ZUSTAND=" + string(store.getState().score);
+dikha "MINIMATH=" + string(add(15, 27)) + ":" + VERSION;
+)";
+        sf.close();
+
+        std::stringstream out, in;
+        Interpreter interp(out, in);
+        interp.setHeadless(true);
+        interp.setCurrentFilePath(scriptPath.string());
+        std::ifstream ifs(scriptPath);
+        std::stringstream src; src << ifs.rdbuf();
+        Lexer lex(src.str());
+        auto toks = lex.tokenize();
+        Parser parser(toks);
+        auto prog = parser.parseProgram();
+        interp.interpret(prog);
+        std::string s = out.str();
+        assert(s.find("ENGINE=JavaScriptCore") != std::string::npos || s.find("ENGINE=QuickJS-NG") != std::string::npos);
+        assert(s.find("CLS=p-6 text-sm flex gap-2") != std::string::npos);
+        assert(s.find("ZUSTAND=99") != std::string::npos);
+        assert(s.find("MINIMATH=42:1.2.3") != std::string::npos);
+    }
+
+    // 5. Next.js-Style SSR Router, Middleware, App Router Layouts, Loaders & API Route Handlers
+    {
+        fs::path ssrRoot = tmpRoot / "ssr_app";
+        fs::create_directories(ssrRoot / "app" / "blog" / "[slug]");
+        fs::create_directories(ssrRoot / "app" / "api" / "ping");
+
+        {
+            std::ofstream f(ssrRoot / "middleware.meme");
+            f << R"(
+jugaad middleware(ctx) {
+    ctx.setHeader("x-meme-mw", "active");
+    dekh ctx.req.path == "/old-home" {
+        ye_le ctx.redirect("/new-home", 302);
+    }
+    dekh ctx.req.path == "/alias-post" {
+        ye_le ctx.rewrite("/blog/middleware-rewrite");
+    }
+    ye_le ctx.next();
+}
+)";
+        }
+        {
+            std::ofstream f(ssrRoot / "app" / "layout.meme");
+            f << R"(
+jugaad Layout(props) {
+    ye_le <main className="min-h-screen bg-zinc-950 p-6"><header className="font-bold">SSR Shell</header>{props.children}</main>;
+}
+)";
+        }
+        {
+            std::ofstream f(ssrRoot / "app" / "page.meme");
+            f << R"(
+jugaad loader(ctx) {
+    ye_le {"greeting": "Namaste SSR", "q": ctx.query.tag};
+}
+jugaad head(ctx) {
+    ye_le {"title": "Home SSR Title", "description": "Fast MEMElang SSR"};
+}
+jugaad Page(props) {
+    ye_le <section className="p-4 text-zinc-100"><h1>{props.data.greeting}</h1></section>;
+}
+)";
+        }
+        {
+            std::ofstream f(ssrRoot / "app" / "blog" / "[slug]" / "page.meme");
+            f << R"(
+bula "ui:icons" jaise { Icon };
+jugaad head(ctx) {
+    ye_le {"title": "Post: " + ctx.params.slug};
+}
+jugaad Page(props) {
+    ye_le <article className="p-4"><Icon name="rocket" size={20} /><h2>{props.params.slug}</h2></article>;
+}
+)";
+        }
+        {
+            std::ofstream f(ssrRoot / "app" / "api" / "ping" / "route.meme");
+            f << R"(
+jugaad GET(ctx) {
+    ye_le {"ok": han, "method": ctx.method, "route": "/api/ping"};
+}
+)";
+        }
+
+        MemeSsr::MemeSsrEngine ssr;
+        std::string discoverErr;
+        assert(ssr.discover(ssrRoot, discoverErr));
+        assert(ssr.routes.size() == 3);
+        assert(!ssr.middlewareFile.empty());
+
+        auto rRedir = ssr.handleRequest({"GET", "/old-home", "/old-home", "", {}, {}, ""});
+        assert(rRedir.status == 302);
+        assert(rRedir.headers["Location"] == "/new-home");
+        assert(rRedir.headers["x-meme-mw"] == "active");
+
+        auto rHome = ssr.handleRequest({"GET", "/?tag=v1", "/?tag=v1", "", {}, {}, ""});
+        assert(rHome.status == 200);
+        assert(rHome.headers["x-meme-mw"] == "active");
+        assert(rHome.body.find("<title>Home SSR Title</title>") != std::string::npos);
+        assert(rHome.body.find("SSR Shell") != std::string::npos);
+        assert(rHome.body.find("Namaste SSR") != std::string::npos);
+        assert(rHome.body.find("__MEME_SSR_DATA__") != std::string::npos);
+
+        auto rRewrite = ssr.handleRequest({"GET", "/alias-post", "/alias-post", "", {}, {}, ""});
+        assert(rRewrite.status == 200);
+        assert(rRewrite.body.find("<title>Post: middleware-rewrite</title>") != std::string::npos);
+        assert(rRewrite.body.find("<svg") != std::string::npos);
+
+        auto rApi = ssr.handleRequest({"GET", "/api/ping", "/api/ping", "", {}, {}, ""});
+        assert(rApi.status == 200);
+        assert(rApi.headers["Content-Type"].find("application/json") != std::string::npos);
+        assert(rApi.body.find("\"ok\":true") != std::string::npos);
+    }
+
+    fs::remove_all(tmpRoot);
+    std::cout << "PASSED\n";
+}
+
 int main()
 {
     std::cout << "========================================\n";
@@ -3557,6 +3808,7 @@ int main()
     testInnerContainerScrollAndNativeApisAndIcons();
     testPlatformAndPermissionsAndManifest();
     testPureMemeEvalAndWebHostingArtifacts();
+    testWebDomFontsIconsMotionJsBridgeAndSsr();
 
     std::cout << "========================================\n";
     std::cout << "✅ ALL TESTS PASSED SUCCESSFULLY! Wah bete mauj kardi!\n";

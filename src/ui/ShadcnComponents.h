@@ -4,6 +4,7 @@
 #include "../interpreter/Value.h"
 #include "../interpreter/Callable.h"
 #include "../platform/MemePlatform.h"
+#include "MemeIconsRegistry.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -494,6 +495,92 @@ inline std::shared_ptr<MemeMap> createShadcnModule()
     m->set("Icon", Value(std::make_shared<NativeMethodCallable>("Icon", 0, 1, iconFn)));
     m->set("Platform", createPlatformComponent());
 
+    return m;
+}
+
+inline std::shared_ptr<MemeMap> createIconsModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto iconFn = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        auto props = (args.size() > 0 && args[0].deref().isMap()) ? args[0].deref().getMap() : std::make_shared<MemeMap>();
+        return createJsxElement("icon", "w-4 h-4 text-slate-200", props, Value(std::make_shared<MemeList>()));
+    };
+    m->set("Icon", Value(std::make_shared<NativeMethodCallable>("Icon", 0, 1, iconFn)));
+
+    for (const std::string &kebab : MemeUI::Icons::allIconNames()) {
+        auto namedFn = [kebab](Interpreter &, const std::vector<Value> &args) -> Value {
+            auto props = std::make_shared<MemeMap>();
+            if (!args.empty() && args[0].deref().isMap()) {
+                for (const auto &[k, v] : args[0].deref().getMap()->entries) {
+                    props->set(k, v);
+                }
+            }
+            props->set("name", Value(kebab));
+            return createJsxElement("icon", "w-4 h-4 text-slate-200", props, Value(std::make_shared<MemeList>()));
+        };
+        std::string pascalName = MemeUI::Icons::toPascalIconName(kebab);
+        m->set(pascalName, Value(std::make_shared<NativeMethodCallable>(pascalName, 0, 1, namedFn)));
+        m->set(kebab, Value(std::make_shared<NativeMethodCallable>(kebab, 0, 1, namedFn)));
+    }
+    return m;
+}
+
+inline std::shared_ptr<MemeMap> createMotionModule()
+{
+    auto m = std::make_shared<MemeMap>();
+    m->isModule = true;
+
+    auto makeMotionTag = [](const std::string &htmlTag) {
+        return Value(std::make_shared<NativeMethodCallable>(
+            "motion_" + htmlTag, 0, 1,
+            [htmlTag](Interpreter &, const std::vector<Value> &args) -> Value {
+                auto props = std::make_shared<MemeMap>();
+                Value childrenVal = Value(std::make_shared<MemeList>());
+                if (!args.empty() && args[0].deref().isMap()) {
+                    auto inP = args[0].deref().getMap();
+                    for (const auto &[k, v] : inP->entries) {
+                        if (k == "children") {
+                            childrenVal = v;
+                            continue;
+                        }
+                        if (k == "initial" && v.deref().isMap()) {
+                            auto im = v.deref().getMap();
+                            if (im->has("opacity")) props->set("initialOpacity", im->entries["opacity"]);
+                            if (im->has("y")) props->set("initialY", im->entries["y"]);
+                            continue;
+                        }
+                        if (k == "animate" && v.deref().isMap()) {
+                            auto am = v.deref().getMap();
+                            if (am->has("opacity")) props->set("animateOpacity", am->entries["opacity"]);
+                            if (am->has("y")) props->set("animateY", am->entries["y"]);
+                            continue;
+                        }
+                        props->set(k, v);
+                    }
+                }
+                return createJsxElement(htmlTag, "transition-all duration-200", props, childrenVal);
+            }));
+    };
+
+    auto innerMotion = std::make_shared<MemeMap>();
+    innerMotion->isModule = true;
+    for (const char *tag : {"div", "span", "button", "section", "article", "aside", "header", "footer", "p", "h1", "h2", "h3", "ul", "li"}) {
+        Value tv = makeMotionTag(tag);
+        m->set(tag, tv);
+        innerMotion->set(tag, tv);
+    }
+    Value viewV = makeMotionTag("div");
+    m->set("View", viewV);
+    innerMotion->set("View", viewV);
+    m->set("motion", Value(innerMotion));
+
+    auto springFallback = [](Interpreter &, const std::vector<Value> &args) -> Value {
+        return Value(args.empty() ? 0.0 : args[0].deref().asDouble());
+    };
+    m->set("useSpring", Value(std::make_shared<NativeMethodCallable>("useSpring", 1, 2, springFallback)));
+    m->set("spring", Value(std::make_shared<NativeMethodCallable>("spring", 1, 2, springFallback)));
     return m;
 }
 

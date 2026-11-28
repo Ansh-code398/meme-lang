@@ -1,4 +1,5 @@
 bula "ui" jaise { useState };
+bula "ui:icons" jaise { Icon };
 bula "native";
 bula "meme";
 bula "./SyntaxHelper.meme" jaise shPg;
@@ -77,7 +78,7 @@ jugaad PlaygroundView(props) {
     pakad startCode = hasInitial ? initialCode : shPg.formatSnippetForMode(defaultPreset.code, syntaxMode);
     pakad [selectedId, setSelectedId] = useState(hasInitial ? "custom" : defaultPreset.id);
     pakad [codeText, setCodeText] = useState(startCode);
-    pakad [stdinText, setStdinText] = useState(defaultPreset.stdin != nalla ? defaultPreset.stdin : "");
+    pakad [stdinText, setStdinText] = useState((defaultPreset.has("stdin") && defaultPreset.stdin != nalla) ? defaultPreset.stdin : "");
     pakad [showStdin, setShowStdin] = useState(nhi);
     pakad [outputTab, setOutputTab] = useState("console");
     pakad [hasRun, setHasRun] = useState(nhi);
@@ -122,7 +123,7 @@ jugaad PlaygroundView(props) {
     jugaad selectPreset(presetObj) {
         setSelectedId(presetObj.id);
         setCodeText(shPg.formatSnippetForMode(presetObj.code, syntaxMode));
-        pakad pStdin = presetObj.stdin != nalla ? presetObj.stdin : "";
+        pakad pStdin = (presetObj.has("stdin") && presetObj.stdin != nalla) ? presetObj.stdin : "";
         setStdinText(pStdin);
         setShowStdin(pStdin != "");
         setHasRun(nhi);
@@ -185,16 +186,18 @@ jugaad PlaygroundView(props) {
                         {showStdin ? "Hide Stdin" : "Stdin Input"}
                     </button>
                     <button
-                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
+                        className="inline-flex flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"
                         onClick={copyCode}
                     >
-                        {copied ? "Copied!" : "Copy Code"}
+                        <Icon name={copied ? "check" : "copy"} size={13} color={copied ? "#34d399" : "#e4e4e7"} />
+                        <span>{copied ? "Copied!" : "Copy Code"}</span>
                     </button>
                     <button
-                        className="px-4 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 font-bold text-xs"
+                        className="inline-flex flex-row items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 font-bold text-xs"
                         onClick={runCodeNow}
                     >
-                        Run in Wasm
+                        <Icon name="play" size={13} color="#09090b" />
+                        <span>Run in Wasm</span>
                     </button>
                 </div>
             </div>

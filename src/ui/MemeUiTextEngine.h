@@ -181,8 +181,17 @@ inline float getCharAdvanceFactor(uint32_t cp, bool isMono = false) {
     }
 }
 
+using CustomMeasureTextFn = float (*)(const std::string &, float, bool, const std::string &, int);
+inline CustomMeasureTextFn &customMeasureTextHook() {
+    static CustomMeasureTextFn fn = nullptr;
+    return fn;
+}
+
 inline float measureTextWidth(const std::string &text, float fontSize, bool isMono = false) {
     if (text.empty()) return 0.0f;
+    if (auto fn = customMeasureTextHook()) {
+        return fn(text, fontSize, isMono, "", 400);
+    }
     float w = 0.0f;
     for (size_t i = 0; i < text.size();) {
         size_t next = i;

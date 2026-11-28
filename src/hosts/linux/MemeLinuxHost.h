@@ -272,6 +272,7 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
     void *glLib = dlopen("libGLESv2.so.2", RTLD_LAZY);
     void *eglDpy = nullptr, *eglSurf = nullptr, *eglCtx = nullptr;
     unsigned int glProg = 0, glTex = 0, glVbo = 0, glIbo = 0;
+    uint64_t linuxAtlasVer = 0;
     int locPos = -1, locUv = -1, locCol = -1, locVp = -1, locAtl = -1;
     bool hasGles = false;
 
@@ -313,6 +314,7 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
     auto pGlUseProg = glLib ? reinterpret_cast<GlVoidUintFn>(dlsym(glLib, "glUseProgram")) : nullptr;
     auto pGlBindBuf = glLib ? reinterpret_cast<GlBindFn>(dlsym(glLib, "glBindBuffer")) : nullptr;
     auto pGlBufData = glLib ? reinterpret_cast<GlBufDataFn>(dlsym(glLib, "glBufferData")) : nullptr;
+    auto pGlTexImg = glLib ? reinterpret_cast<GlTexImgFn>(dlsym(glLib, "glTexImage2D")) : nullptr;
     auto pGlBindTex = glLib ? reinterpret_cast<GlBindFn>(dlsym(glLib, "glBindTexture")) : nullptr;
     auto pGlUnif2f = glLib ? reinterpret_cast<GlUnif2fFn>(dlsym(glLib, "glUniform2f")) : nullptr;
     auto pGlUnif1i = glLib ? reinterpret_cast<GlUnif1iFn>(dlsym(glLib, "glUniform1i")) : nullptr;
@@ -562,6 +564,12 @@ inline int runLinuxNativeApp(const std::string &title, UiSession &session, int w
                 pGlUseProg(glProg);
                 pGlUnif2f(locVp, static_cast<float>(curW), static_cast<float>(curH));
                 pGlBindTex(0x0DE1u, glTex);
+                uint64_t curAtlasVer = FontAtlas::getAtlasVersion();
+                if (pGlTexImg && curAtlasVer != linuxAtlasVer) {
+                    auto rgba = FontAtlas::getRgbaAtlas();
+                    pGlTexImg(0x0DE1u, 0, 0x1908, FontAtlas::ATLAS_W, FontAtlas::ATLAS_H, 0, 0x1908, 0x1401, rgba.data());
+                    linuxAtlasVer = curAtlasVer;
+                }
                 pGlUnif1i(locAtl, 0);
                 pGlBindBuf(0x8892u, glVbo);
                 pGlBufData(0x8892u, static_cast<ptrdiff_t>(mesh.vertices.size() * sizeof(UiVertex)), mesh.vertices.data(), 0x88E0u);

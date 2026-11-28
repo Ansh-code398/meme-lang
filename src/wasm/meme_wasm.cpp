@@ -47,7 +47,66 @@ static std::unique_ptr<Interpreter> g_wasm_interpreter;
 static std::ostringstream g_wasm_out;
 static std::istringstream g_wasm_in;
 
+extern "C" int meme_eval_sandbox(const char *source_code,
+                                 const char *stdin_text,
+                                 const char **out_stdout,
+                                 const char **out_error,
+                                 const char **out_gpu_json,
+                                 double *out_duration_ms);
+
+static std::string jsonEscapeWasm(const std::string &s) {
+    std::string out = "\"";
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    out += "\"";
+    return out;
+}
+
 extern "C" {
+
+static std::string eval_json_buffer;
+
+WASM_EXPORT
+const char* meme_eval_json(const char* source_code, const char* input_text) {
+    const char *outStdout = "";
+    const char *outErr = "";
+    const char *outGpu = "[]";
+    double ms = 0.0;
+    int isErr = meme_eval_sandbox(source_code ? source_code : "",
+                                  input_text ? input_text : "",
+                                  &outStdout, &outErr, &outGpu, &ms);
+    std::string gpuJson = (outGpu && outGpu[0]) ? std::string(outGpu) : "[]";
+    bool hasUi = (gpuJson.size() > 2);
+    std::ostringstream js;
+    js << "{"
+       << "\"output\":" << jsonEscapeWasm(outStdout ? outStdout : "") << ","
+       << "\"error\":" << jsonEscapeWasm(outErr ? outErr : "") << ","
+       << "\"isError\":" << (isErr != 0 ? "true" : "false") << ","
+       << "\"durationMs\":" << ms << ","
+       << "\"gpuCommands\":" << gpuJson << ","
+       << "\"gpuCommandsJson\":" << jsonEscapeWasm(gpuJson) << ","
+       << "\"hasUi\":" << (hasUi ? "true" : "false")
+       << "}";
+    eval_json_buffer = js.str();
+    return eval_json_buffer.c_str();
+}
 
 WASM_EXPORT
 const char* run_meme_code(const char* source_code, const char* input_text) {

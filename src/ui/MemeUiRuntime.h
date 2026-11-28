@@ -259,6 +259,7 @@ public:
         }
         if (toasts.tick(deltaMs)) changed = true;
         if (tooltips.tick(deltaMs)) changed = true;
+        if (interaction.animStore.tickAll(deltaMs)) changed = true;
         if (changed) {
             needsRender = true;
             version++;

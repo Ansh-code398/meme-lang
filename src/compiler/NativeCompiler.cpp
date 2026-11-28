@@ -125,6 +125,7 @@ private:
     std::unordered_set<std::string> emittedPass0NamedImports;
     bool programUsesUi = false;
     bool programUsesEval = false;
+    bool programUsesJsBridge = false;
     bool inMainPass = false;
     int tempCounter = 0;
 
@@ -415,6 +416,10 @@ public:
         if (auto *imp = dynamic_cast<const ImportStmt *>(stmt)) {
             if (imp->path == "ui" || imp->path == "egui" || imp->path == "view" || imp->path == "gui" ||
                 imp->path == "ui:shadcn" || imp->path == "ui:primitives" || imp->path == "primitives" ||
+                imp->path == "ui:icons" || imp->path == "ui:motion" ||
+                imp->path == "lucide-react" || imp->path == "framer-motion" ||
+                imp->path == "@radix-ui/react-popover" || imp->path == "@radix-ui/react-dialog" ||
+                imp->path == "@radix-ui/react-tabs" ||
                 imp->path == "vercel:ui" || imp->path.rfind("ui:", 0) == 0) {
                 return true;
             }
@@ -500,6 +505,14 @@ public:
             if (detectEvalInStmt(stmt.get())) {
                 programUsesEval = true;
             }
+            if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
+                if ((imp->path.rfind("npm:", 0) == 0 || imp->path.rfind("js:", 0) == 0) &&
+                    imp->path != "npm:lucide-react" && imp->path != "npm:framer-motion" &&
+                    imp->path != "npm:@radix-ui/react-popover" && imp->path != "npm:@radix-ui/react-dialog" &&
+                    imp->path != "npm:@radix-ui/react-tabs") {
+                    programUsesJsBridge = true;
+                }
+            }
             if (auto *c = dynamic_cast<const ClassDeclStmt *>(stmt.get())) {
                 knownClasses.insert(c->name);
                 for (const auto &cf : c->fields) {
@@ -524,6 +537,9 @@ public:
             } else if (auto *imp = dynamic_cast<const ImportStmt *>(stmt.get())) {
                 if (imp->path != "ui" && imp->path != "egui" && imp->path != "view" && imp->path != "gui" &&
                     imp->path != "ui:shadcn" && imp->path != "ui:primitives" && imp->path != "primitives" && imp->path != "vercel:ui" &&
+                    imp->path != "ui:icons" && imp->path != "ui:motion" && imp->path != "lucide-react" && imp->path != "framer-motion" &&
+                    imp->path != "@radix-ui/react-popover" && imp->path != "@radix-ui/react-dialog" && imp->path != "@radix-ui/react-tabs" &&
+                    imp->path.rfind("npm:", 0) != 0 && imp->path.rfind("js:", 0) != 0 &&
                     imp->path != "native" && imp->path != "app" && imp->path != "device" &&
                     imp->path != "platform" && imp->path != "permissions" && imp->path != "perms" && imp->path != "meme") {
                     std::string alias = imp->alias.empty() ? std::filesystem::path(imp->path).stem().string() : imp->alias;
@@ -1938,6 +1954,15 @@ public:
                 for (const auto &ni : imp->namedImports) {
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
                 }
+            } else if (imp->path == "ui:icons" || imp->path == "lucide-react") {
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_icons, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (imp->path == "ui:motion" || imp->path == "framer-motion") {
+                for (const auto &ni : imp->namedImports) {
+                    if (programUsesUi && ni == "useSpring") continue;
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_motion, \"" << escapeString(ni) << "\");\n";
+                }
             } else if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
                 for (const auto &ni : imp->namedImports) {
                     out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_primitives, \"" << escapeString(ni) << "\");\n";
@@ -1978,6 +2003,23 @@ public:
                     }
                 } else if (!alias.empty() && alias != "meme") {
                     out << indent() << "MemeValue " << alias << " = meme;\n";
+                }
+            } else if (imp->path == "@radix-ui/react-popover" || imp->path == "@radix-ui/react-dialog" ||
+                       imp->path == "@radix-ui/react-tabs" || imp->path == "npm:@radix-ui/react-popover" ||
+                       imp->path == "npm:@radix-ui/react-dialog" || imp->path == "npm:@radix-ui/react-tabs") {
+                for (const auto &ni : imp->namedImports) {
+                    out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (imp->path.rfind("npm:", 0) == 0 || imp->path.rfind("js:", 0) == 0) {
+                std::string pkgName = (imp->path.rfind("npm:", 0) == 0) ? imp->path.substr(4) : imp->path.substr(3);
+                if (!imp->namedImports.empty()) {
+                    std::string tmpMod = "_jsm_" + std::to_string(tempCounter++);
+                    out << indent() << "MemeValue " << tmpMod << " = meme_load_npm_module(\"" << escapeString(pkgName) << "\");\n";
+                    for (const auto &ni : imp->namedImports) {
+                        out << indent() << "MemeValue " << sanitizeIdentifier(ni) << " = meme_index(" << tmpMod << ", \"" << escapeString(ni) << "\");\n";
+                    }
+                } else if (!alias.empty()) {
+                    out << indent() << "MemeValue " << alias << " = meme_load_npm_module(\"" << escapeString(pkgName) << "\");\n";
                 }
             }
             return;
@@ -2567,6 +2609,9 @@ public:
         if (programUsesEval) {
             out << "#ifndef MEME_HAS_EVAL\n#define MEME_HAS_EVAL 1\n#endif\n";
         }
+        if (programUsesJsBridge || programUsesEval) {
+            out << "#ifndef MEME_HAS_JS_BRIDGE\n#define MEME_HAS_JS_BRIDGE 1\n#endif\n";
+        }
         out << "#include \"src/compiler/MemeRuntime.h\"\n";
         if (programUsesUi) {
             out << "#include \"src/compiler/MemeRuntimeUi.h\"\n";
@@ -2847,6 +2892,74 @@ public:
             }
             return true;
         }
+        if (imp->path == "ui:icons" || imp->path == "lucide-react") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_icons, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui_icons" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_icons;\n";
+            }
+            return true;
+        }
+        if (imp->path == "ui:motion" || imp->path == "framer-motion" || imp->path == "npm:framer-motion") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (programUsesUi && ni == "useSpring") continue;
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_motion, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui_motion" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_motion;\n";
+            }
+            return true;
+        }
+        if (imp->path == "ui:icons" || imp->path == "lucide-react" || imp->path == "npm:lucide-react") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_icons, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && alias != "ui_icons" && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_icons;\n";
+            }
+            return true;
+        }
+        if (imp->path == "@radix-ui/react-popover" || imp->path == "@radix-ui/react-dialog" ||
+            imp->path == "@radix-ui/react-tabs" || imp->path == "npm:@radix-ui/react-popover" ||
+            imp->path == "npm:@radix-ui/react-dialog" || imp->path == "npm:@radix-ui/react-tabs") {
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(ui_shadcn, \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = ui_shadcn;\n";
+            }
+            return true;
+        }
+        if (imp->path.rfind("npm:", 0) == 0 || imp->path.rfind("js:", 0) == 0) {
+            std::string pkgName = (imp->path.rfind("npm:", 0) == 0) ? imp->path.substr(4) : imp->path.substr(3);
+            std::string modVar = "_jsm_p0_" + sanitizeIdentifier(pkgName);
+            if (emittedPass0NamedImports.insert("_jsm_loaded_" + pkgName).second) {
+                globalDecls << "inline MemeValue " << modVar << " = meme_load_npm_module(\"" << escapeString(pkgName) << "\");\n";
+            }
+            if (!imp->namedImports.empty()) {
+                for (const auto &ni : imp->namedImports) {
+                    std::string sym = sanitizeIdentifier(ni);
+                    if (!emittedPass0NamedImports.insert(sym).second) continue;
+                    globalDecls << "inline MemeValue " << sym << " = meme_index(" << modVar << ", \"" << escapeString(ni) << "\");\n";
+                }
+            } else if (!alias.empty() && emittedPass0NamedImports.insert("_mod_" + alias).second) {
+                globalDecls << "inline MemeValue " << alias << " = " << modVar << ";\n";
+            }
+            return true;
+        }
         if (imp->path == "ui:primitives" || imp->path == "primitives" || imp->path == "vercel:ui") {
             if (!imp->namedImports.empty()) {
                 for (const auto &ni : imp->namedImports) {
@@ -3080,10 +3193,11 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
 
         bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
         bool usesEval = (cppCode.find("#define MEME_HAS_EVAL 1") != std::string::npos);
+        bool usesJsBridge = (cppCode.find("#define MEME_HAS_JS_BRIDGE 1") != std::string::npos) || usesEval;
 
         // Build clang++ command with PCH acceleration
         std::filesystem::path pchPath;
-        bool usePch = (!usesUi && !usesEval) && ensurePchReady(options, pchPath);
+        bool usePch = (!usesUi && !usesEval && !usesJsBridge) && ensurePchReady(options, pchPath);
 
         auto buildClangCmd = [&](bool withPch) {
             std::string c = "clang++ -std=c++20 ";
@@ -3101,6 +3215,9 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
             c += "-I. ";
             if (usesEval) {
                 c += "-DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP ";
+            }
+            if (usesJsBridge && !usesEval) {
+                c += "-DMEME_HAS_JS_BRIDGE ";
             }
             if (withPch && !options.tsan) {
                 c += "-include-pch \"" + pchPath.string() + "\" ";
@@ -3122,6 +3239,25 @@ CompileResult NativeCompiler::compile(const std::vector<std::unique_ptr<Stmt>> &
                 if (options.target == "host" || options.target == "mac") {
                     c += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
                 }
+#endif
+            }
+            if (usesJsBridge) {
+#if defined(__APPLE__)
+                c += "-framework JavaScriptCore ";
+#else
+                std::filesystem::path qd = resolveRepoSourceFile("third_party/quickjs/quickjs.c").parent_path();
+                std::filesystem::path qobjDir = std::filesystem::temp_directory_path() / "meme_qjs_host_objs";
+                std::filesystem::create_directories(qobjDir);
+                for (const char *qn : {"quickjs", "dtoa", "libregexp", "libunicode"}) {
+                    std::filesystem::path cf = qd / (std::string(qn) + ".c");
+                    std::filesystem::path of = qobjDir / (std::string(qn) + ".o");
+                    if (!std::filesystem::exists(of)) {
+                        std::string qcmd = "cc -std=c11 -O2 -D_GNU_SOURCE -I\"" + qd.string() + "\" -c \"" + cf.string() + "\" -o \"" + of.string() + "\"";
+                        std::system(qcmd.c_str());
+                    }
+                    c += "\"" + of.string() + "\" ";
+                }
+                c += "-lm -ldl -lpthread ";
 #endif
             }
             c += "-o \"" + binPath.string() + "\" 2>&1";

@@ -44,6 +44,7 @@ void initNativeDesktopApp() {
 void triggerNativeDesktopRepaint() {
     if (g_view != nil) {
         if (g_renderCallback) g_renderCallback();
+        [g_view renderMetalFrame];
         [g_view setNeedsDisplay:YES];
     }
 }
@@ -61,15 +62,19 @@ void showNativeDesktopWindow(DevServerState &state) {
     bindMacClipboard(*sess);
 
     g_renderCallback = [&state, sess]() {
-        if (state.onRenderFrame) {
-            state.onRenderFrame();
-        } else if (state.interpreter) {
-            state.interpreter->triggerUiRerender();
-        } else if (sess) {
-            float vw = sess->input.viewportW > 0 ? sess->input.viewportW : static_cast<float>(state.viewportWidth);
-            float vh = sess->input.viewportH > 0 ? sess->input.viewportH : static_cast<float>(state.viewportHeight);
-            sess->renderFrame(vw, vh);
-        }
+        try {
+            if (state.onRenderFrame) {
+                state.onRenderFrame();
+            } else if (state.interpreter) {
+                state.interpreter->triggerUiRerender();
+            } else if (sess) {
+                float vw = sess->input.viewportW > 0 ? sess->input.viewportW : static_cast<float>(state.viewportWidth);
+                float vh = sess->input.viewportH > 0 ? sess->input.viewportH : static_cast<float>(state.viewportHeight);
+                sess->renderFrame(vw, vh);
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "NativeDesktopWindow render error: " << e.what() << "\n";
+        } catch (...) {}
     };
 
     @autoreleasepool {
@@ -83,9 +88,11 @@ void showNativeDesktopWindow(DevServerState &state) {
                                   NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
 
         g_window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+        [g_window setReleasedWhenClosed:NO];
         std::string title = state.appName + " — MEME-UI Native Desktop";
         NSString *nsTitle = [NSString stringWithUTF8String:title.c_str()];
         [g_window setTitle:(nsTitle ? nsTitle : @"MEME-UI Native Desktop")];
+        [g_window setBackgroundColor:MemeMacHostInternal::nsColorFromHex("#09090b", 1.0f)];
         [g_window setAcceptsMouseMovedEvents:YES];
 
         g_delegate = [[MemeDevWindowDelegate alloc] init];
@@ -112,6 +119,7 @@ void showNativeDesktopWindow(DevServerState &state) {
             sess->input.viewportH = static_cast<float>(h);
             g_renderCallback();
         }
+        [g_view renderMetalFrame];
         [g_view setNeedsDisplay:YES];
     }
 }
@@ -154,10 +162,11 @@ void pumpNativeDesktopEvents(double timeoutSeconds) {
                                       dequeue:YES];
         }
         [NSApp updateWindows];
+        if (!g_windowOpen) return;
 
         if (g_view && g_view.session) {
             bool redraw = false;
-            if (g_view.session->needsRender || g_view.session->isImmediateMode) redraw = true;
+            if (g_view.session->tick(16.0) || g_view.session->needsRender || g_view.session->isImmediateMode) redraw = true;
             if (g_delegate && g_delegate.devState && g_delegate.devState->version != g_lastSeenVersion) {
                 g_lastSeenVersion = g_delegate.devState->version;
                 if (g_delegate.devState->uiSession) g_view.session = g_delegate.devState->uiSession;
@@ -166,6 +175,7 @@ void pumpNativeDesktopEvents(double timeoutSeconds) {
             }
             if (redraw) {
                 if (g_renderCallback) g_renderCallback();
+                [g_view renderMetalFrame];
                 [g_view setNeedsDisplay:YES];
             }
         }

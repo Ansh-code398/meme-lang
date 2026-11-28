@@ -1,5 +1,6 @@
 bula "ui" jaise { useState };
 bula "ui:shadcn" jaise { Badge };
+bula "ui:icons" jaise { Icon };
 bula "native";
 bula "meme";
 bula "./SyntaxHelper.meme" jaise shSyntax;
@@ -97,22 +98,25 @@ jugaad CodeBlockView(props) {
                 </div>
                 <div className="flex flex-row items-center gap-2">
                     <button
-                        className="px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200"
+                        className="inline-flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200"
                         onClick={() => onOpenPlayground(displayCode)}
                     >
-                        Playground
+                        <Icon name="terminal" size={12} color="#e4e4e7" />
+                        <span>Playground</span>
                     </button>
                     <button
-                        className="px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200"
+                        className="inline-flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200"
                         onClick={handleCopy}
                     >
-                        {copied ? "Copied!" : "Copy"}
+                        <Icon name={copied ? "check" : "copy"} size={12} color={copied ? "#34d399" : "#e4e4e7"} />
+                        <span>{copied ? "Copied!" : "Copy"}</span>
                     </button>
                     <button
-                        className="px-3 py-1 rounded-md bg-zinc-100 text-xs font-semibold text-zinc-950"
+                        className="inline-flex flex-row items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-100 text-xs font-semibold text-zinc-950"
                         onClick={handleRun}
                     >
-                        Run
+                        <Icon name="play" size={12} color="#09090b" />
+                        <span>Run</span>
                     </button>
                 </div>
             </div>

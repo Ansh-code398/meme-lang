@@ -3,6 +3,7 @@
 #include "ArchiveBuilders.h"
 #include "IconAssets.h"
 #include "../compiler/NativeCompiler.h"
+#include "../compiler/WebDomTranspiler.h"
 #include "../hosts/web/MemeWebCanvasHost.h"
 #include "../platform/MemePlatform.h"
 #include "../platform/MemePermissions.h"
@@ -34,6 +35,8 @@ struct PackageConfig {
     std::string themeColor = "#020617";
     std::string bgColor = "#020617";
     std::string categories = "Utility;";
+    std::string webRenderer;
+    std::vector<MemeWebDom::FontFaceConfig> fonts;
     MemePermissions::PlatformPermissionsConfig permissions;
 };
 
@@ -178,8 +181,28 @@ inline std::filesystem::path newestSubdir(const std::filesystem::path &dir) {
     return items.back();
 }
 
+inline std::string quickJsObjectFlags(const std::filesystem::path &repoRoot, const std::string &ccPrefix, const std::string &targetKey) {
+    std::filesystem::path qd = repoRoot / "third_party" / "quickjs";
+    std::filesystem::path objDir = std::filesystem::temp_directory_path() / ("meme_qjs_objs_" + targetKey);
+    std::error_code ec;
+    std::filesystem::create_directories(objDir, ec);
+    std::string out = " ";
+    for (const char *qn : {"quickjs", "dtoa", "libregexp", "libunicode"}) {
+        std::filesystem::path cf = qd / (std::string(qn) + ".c");
+        std::filesystem::path of = objDir / (std::string(qn) + ".o");
+        if (!std::filesystem::exists(of, ec)) {
+            std::string cmd = ccPrefix + " -std=c11 -O3 -DNDEBUG -D_GNU_SOURCE -I\"" + qd.string() + "\" -c \"" + cf.string() + "\" -o \"" + of.string() + "\"";
+            std::string cmdOut;
+            execCmd(cmd, cmdOut);
+        }
+        out += "\"" + of.string() + "\" ";
+    }
+    return out;
+}
+
 inline bool buildLinuxElf(const std::filesystem::path &repoRoot, const std::filesystem::path &cppPath,
-                          const std::filesystem::path &elfOut, std::string &errOut, bool verbose, bool usesEval = false) {
+                          const std::filesystem::path &elfOut, std::string &errOut, bool verbose,
+                          bool usesEval = false, bool usesJsBridge = false) {
     std::string zig = findInPathOrPaths("zig", {"/opt/homebrew/bin/zig", "/usr/local/bin/zig"});
     if (zig.empty()) {
         errOut = "zig compiler not found for Linux cross-compilation";
@@ -192,9 +215,12 @@ inline bool buildLinuxElf(const std::filesystem::path &repoRoot, const std::file
                     (repoRoot / "src" / "interpreter" / "Interpreter.cpp").string() + "\" \"" +
                     (repoRoot / "src" / "types" / "TypeChecker.cpp").string() + "\"";
     }
+    std::string extraQjs = (usesJsBridge || usesEval)
+        ? quickJsObjectFlags(repoRoot, "\"" + zig + "\" cc -target x86_64-linux-musl", "linux_x64")
+        : "";
     std::string cmd = "\"" + zig + "\" c++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                       "-target x86_64-linux-musl -I\"" + repoRoot.string() + "\" "
-                      "\"" + cppPath.string() + "\"" + extraEval + " -ldl -lpthread -o \"" + elfOut.string() + "\"";
+                      "\"" + cppPath.string() + "\"" + extraEval + extraQjs + " -ldl -lpthread -lm -o \"" + elfOut.string() + "\"";
     if (verbose) std::cout << "[package] " << cmd << "\n";
     std::string out;
     if (execCmd(cmd, out) != 0) {
@@ -425,8 +451,28 @@ inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, cons
         if (auto v = pick("themeColor"); !v.empty()) cfg.themeColor = v;
         if (auto v = pick("bgColor"); !v.empty()) cfg.bgColor = v;
         if (auto v = pick("categories"); !v.empty()) cfg.categories = v;
+        if (auto v = pick("webRenderer"); !v.empty()) cfg.webRenderer = v;
 
         if (root.kind == TinyJsonVal::J_OBJ) {
+            auto fit = root.obj.find("fonts");
+            if (fit != root.obj.end() && fit->second.kind == TinyJsonVal::J_ARR) {
+                for (const auto &fe : fit->second.arr) {
+                    if (fe.kind != TinyJsonVal::J_OBJ) continue;
+                    MemeWebDom::FontFaceConfig fc;
+                    auto gi = fe.obj.find("family");
+                    auto si = fe.obj.find("src");
+                    if (si == fe.obj.end()) si = fe.obj.find("path");
+                    auto wi = fe.obj.find("weight");
+                    if (gi != fe.obj.end() && gi->second.kind == TinyJsonVal::J_STR) fc.family = gi->second.sval;
+                    if (si != fe.obj.end() && si->second.kind == TinyJsonVal::J_STR) {
+                        std::filesystem::path fp = si->second.sval;
+                        if (fp.is_relative() && !tapriDir.empty()) fp = tapriDir / fp;
+                        fc.src = fp.string();
+                    }
+                    if (wi != fe.obj.end() && wi->second.kind == TinyJsonVal::J_STR) fc.weight = wi->second.sval;
+                    if (!fc.family.empty() && !fc.src.empty()) cfg.fonts.push_back(fc);
+                }
+            }
             auto sit = root.obj.find("strictPermissions");
             if (sit != root.obj.end() && sit->second.kind == TinyJsonVal::J_BOOL) {
                 cfg.permissions.strictMode = sit->second.bval;
@@ -496,6 +542,8 @@ inline PackageConfig mergeTapriConfig(const std::filesystem::path &srcPath, cons
     if (!overrides.themeColor.empty() && overrides.themeColor != "#020617") cfg.themeColor = overrides.themeColor;
     if (!overrides.bgColor.empty() && overrides.bgColor != "#020617") cfg.bgColor = overrides.bgColor;
     if (!overrides.categories.empty() && overrides.categories != "Utility;") cfg.categories = overrides.categories;
+    if (!overrides.webRenderer.empty()) cfg.webRenderer = overrides.webRenderer;
+    if (!overrides.fonts.empty()) cfg.fonts = overrides.fonts;
     if (overrides.permissions.hasPermissionsBlock) cfg.permissions = overrides.permissions;
     return cfg;
 }
@@ -582,7 +630,9 @@ inline PackageResult packageForTarget(
         return res;
     }
 
-    // Inject runtime app identity + target + declared permissions + embedded icon RGBA cleanly into generated C++
+    bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
+
+    // Inject runtime app identity + target + declared permissions + embedded icon RGBA + fonts cleanly into generated C++
     {
         std::ostringstream bootInject;
         bootInject << "\nnamespace {\n";
@@ -619,6 +669,27 @@ inline PackageResult packageForTarget(
             bootInject << "};\n";
             bootInject << "        MemeNative::setAppIconRgba(kIconRgba, " << smallIcon64.width << ", " << smallIcon64.height << ");\n";
         }
+        if (usesUi && !cfg.fonts.empty()) {
+            for (size_t fi = 0; fi < cfg.fonts.size(); ++fi) {
+                const auto &fc = cfg.fonts[fi];
+                if (fc.src.empty() || !std::filesystem::exists(fc.src)) continue;
+                std::ifstream ff(fc.src, std::ios::binary);
+                std::vector<uint8_t> fbytes((std::istreambuf_iterator<char>(ff)), std::istreambuf_iterator<char>());
+                if (fbytes.empty()) continue;
+                bool isBold = (fc.weight == "bold" || fc.weight == "700" || fc.weight == "800" || fc.weight == "600");
+                bootInject << "        {\n"
+                           << "            static const uint8_t kFontBytes" << fi << "[" << fbytes.size() << "] = {";
+                for (size_t bi = 0; bi < fbytes.size(); ++bi) {
+                    if (bi > 0) bootInject << ",";
+                    bootInject << static_cast<unsigned int>(fbytes[bi]);
+                }
+                bootInject << "};\n"
+                           << "            MemeUI::MemeUiFonts::registerFontBytes(\""
+                           << MemeNative::detail::jsonEscape(fc.family) << "\", std::vector<uint8_t>(kFontBytes" << fi
+                           << ", kFontBytes" << fi << " + " << fbytes.size() << "), " << (isBold ? "true" : "false") << ");\n"
+                           << "        }\n";
+            }
+        }
         bootInject << "    }\n} g_memePkgBootInit;\n}\n\n";
         size_t epPos = cppCode.find("#ifdef MEME_HOST_PROVIDES_MAIN");
         if (epPos != std::string::npos) {
@@ -626,8 +697,8 @@ inline PackageResult packageForTarget(
         }
     }
 
-    bool usesUi = (cppCode.find("#include \"src/compiler/MemeRuntimeUi.h\"") != std::string::npos);
     bool usesEval = (cppCode.find("#define MEME_HAS_EVAL 1") != std::string::npos);
+    bool usesJsBridge = (cppCode.find("#define MEME_HAS_JS_BRIDGE 1") != std::string::npos) || usesEval;
     std::string evalFlags = usesEval
         ? (" -DMEME_HAS_EVAL -DMEME_NO_INTERP_DESKTOP -x c++ \"" +
            (repoRoot / "src" / "interpreter" / "Interpreter.cpp").string() + "\" \"" +
@@ -667,6 +738,7 @@ inline PackageResult packageForTarget(
             cmd += "-framework Cocoa -framework CoreGraphics -framework Metal -framework QuartzCore ";
             if (hasDeclaredCap("notifications")) cmd += "-framework UserNotifications ";
         }
+        if (usesJsBridge) cmd += "-framework JavaScriptCore ";
         cmd += "-o \"" + binPath.string() + "\"";
         if (verbose) std::cout << "[package:mac] " << cmd << "\n";
         std::string out;
@@ -782,9 +854,12 @@ inline PackageResult packageForTarget(
             }
         }
 
+        std::string winQjs = usesJsBridge
+            ? detail::quickJsObjectFlags(repoRoot, "\"" + zig + "\" cc -target x86_64-windows-gnu", "win_x64")
+            : "";
         std::string cmd = "\"" + zig + "\" c++ -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD "
                           "-target x86_64-windows-gnu -I\"" + repoRoot.string() + "\" "
-                          "\"" + cppPath.string() + "\"" + evalFlagsNoLang + extraResArg + " -luser32 -lgdi32 -ld2d1 -ldwrite -lws2_32 -lole32 "
+                          "\"" + cppPath.string() + "\"" + evalFlagsNoLang + winQjs + extraResArg + " -luser32 -lgdi32 -ld2d1 -ldwrite -lws2_32 -lole32 "
                           "-o \"" + exePath.string() + "\"";
         if (verbose) std::cout << "[package:win] " << cmd << "\n";
         std::string out;
@@ -823,7 +898,7 @@ inline PackageResult packageForTarget(
     if (target == "deb") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval, usesJsBridge)) {
             res.error = err;
             return res;
         }
@@ -869,7 +944,7 @@ inline PackageResult packageForTarget(
     if (target == "rpm") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval, usesJsBridge)) {
             res.error = err;
             return res;
         }
@@ -893,7 +968,7 @@ inline PackageResult packageForTarget(
     if (target == "ipk") {
         std::filesystem::path elfPath = workDir / (pkgName + "_linux_x86_64");
         std::string err;
-        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval)) {
+        if (!detail::buildLinuxElf(repoRoot, cppPath, elfPath, err, verbose, usesEval, usesJsBridge)) {
             res.error = err;
             return res;
         }
@@ -961,8 +1036,12 @@ inline PackageResult packageForTarget(
         std::filesystem::path hostCpp = repoRoot / "src" / "hosts" / "android" / "MemeAndroidHost.cpp";
         auto buildAbi = [&](const std::filesystem::path &cc, const std::string &abi) -> bool {
             std::filesystem::path soOut = stage / "lib" / abi / "libmemeapp.so";
+            std::filesystem::path cCompiler = cc.parent_path() / (abi == "arm64-v8a" ? "aarch64-linux-android24-clang" : "x86_64-linux-android24-clang");
+            std::string androidQjs = usesJsBridge
+                ? detail::quickJsObjectFlags(repoRoot, "\"" + cCompiler.string() + "\" -fPIC", "android_" + abi)
+                : "";
             std::string cmd = "\"" + cc.string() + "\" -std=c++20 -O3 -DNDEBUG -DMEME_NO_DEPTH_GUARD -DMEME_HOST_PROVIDES_MAIN "
-                              "-shared -fPIC -I\"" + repoRoot.string() + "\" \"" + cppPath.string() + "\"" + evalFlagsNoLang + " "
+                              "-shared -fPIC -I\"" + repoRoot.string() + "\" \"" + cppPath.string() + "\"" + evalFlagsNoLang + androidQjs + " "
                               "\"" + hostCpp.string() + "\" -landroid -llog -lEGL -lGLESv2 -o \"" + soOut.string() + "\"";
             if (verbose) std::cout << "[package:apk:" << abi << "] " << cmd << "\n";
             std::string out;
@@ -1247,6 +1326,7 @@ public class MemeNativeActivity extends NativeActivity {
                              "-arch arm64 -miphoneos-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
                              "\"" + hostMm.string() + "\"" + evalFlags + " -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
+                             + std::string(usesJsBridge ? "-framework JavaScriptCore " : "") +
                              "-o \"" + devBin.string() + "\"";
         if (verbose) std::cout << "[package:ipa] " << cmdDev << "\n";
         std::string out;
@@ -1277,6 +1357,7 @@ public class MemeNativeActivity extends NativeActivity {
                              "-arch " + simArch + " -mios-simulator-version-min=15.0 -fobjc-arc -DMEME_HOST_PROVIDES_MAIN "
                              "-I\"" + repoRoot.string() + "\" -x objective-c++ \"" + cppPath.string() + "\" "
                              "\"" + hostMm.string() + "\"" + evalFlags + " -framework UIKit -framework Metal -framework QuartzCore -framework Foundation -framework UserNotifications "
+                             + std::string(usesJsBridge ? "-framework JavaScriptCore " : "") +
                              "-o \"" + simBin.string() + "\"";
         if (detail::execCmd(cmdSim, out) == 0) {
             writeIosIcons(simApp);
@@ -1287,15 +1368,8 @@ public class MemeNativeActivity extends NativeActivity {
     }
 
     if (target == "web" || target == "wasm") {
-        std::filesystem::path emppLocal = repoRoot / "tools" / "emsdk" / "upstream" / "emscripten" / "em++";
-        std::string empp = detail::findInPathOrPaths("em++", {emppLocal.string()});
-        if (empp.empty()) {
-            res.error = "em++ (Emscripten) not found";
-            return res;
-        }
         std::filesystem::path webDir = outBase / "web";
         std::filesystem::create_directories(webDir);
-        std::filesystem::path jsPath = webDir / (pkgName + ".js");
         std::filesystem::path htmlPath = webDir / "index.html";
         std::filesystem::path notFoundPath = webDir / "404.html";
         std::filesystem::path vercelPath = webDir / "vercel.json";
@@ -1305,32 +1379,6 @@ public class MemeNativeActivity extends NativeActivity {
         std::filesystem::path icon512Path = webDir / "icon-512.png";
         std::filesystem::path appleTouchPath = webDir / "apple-touch-icon.png";
         std::filesystem::path manifestWebPath = webDir / "manifest.webmanifest";
-
-        std::string envPrefix;
-        std::filesystem::path emConfig = repoRoot / "tools" / "emsdk" / ".emscripten";
-        if (std::filesystem::exists(emConfig)) {
-            envPrefix = "EM_CONFIG=\"" + emConfig.string() + "\" ";
-        }
-
-        std::string exportedFns = "'[\"_meme_web_start\",\"_meme_web_render\",\"_meme_web_get_mesh_vertices\","
-                                  "\"_meme_web_get_mesh_vertex_count\",\"_meme_web_get_mesh_indices\","
-                                  "\"_meme_web_get_mesh_index_count\",\"_meme_web_get_batches_json\","
-                                  "\"_meme_web_get_atlas_rgba\",\"_meme_web_get_atlas_width\",\"_meme_web_get_atlas_height\",\"_meme_web_get_commands_json\","
-                                  "\"_meme_web_get_hit_regions_json\",\"_meme_web_get_agent_snapshot\","
-                                  "\"_meme_web_pointer_move\",\"_meme_web_pointer_down\",\"_meme_web_pointer_up\","
-                                  "\"_meme_web_scroll\",\"_meme_web_key_event\",\"_meme_web_tick\","
-                                  "\"_meme_web_set_clipboard\",\"_meme_web_get_clipboard\",\"_meme_web_agent_act\",\"_meme_web_set_route\","
-                                  "\"_meme_native_complete_async\",\"_meme_native_complete_perm_async\",\"_malloc\",\"_free\"]'";
-        std::string cmd = envPrefix + "\"" + empp + "\" -std=c++20 -O3 -fexceptions -DMEME_HOST_PROVIDES_MAIN "
-                          "-I\"" + repoRoot.string() + "\" -s WASM=1 -s EXPORTED_FUNCTIONS=" + exportedFns + " "
-                          "-s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\",\"HEAPU8\",\"HEAPU32\"]' "
-                          "-s STACK_SIZE=4194304 -s INITIAL_MEMORY=33554432 -s ALLOW_MEMORY_GROWTH=1 \"" + cppPath.string() + "\"" + evalFlagsNoLang + " -o \"" + jsPath.string() + "\"";
-        if (verbose) std::cout << "[package:web] " << cmd << "\n";
-        std::string out;
-        if (detail::execCmd(cmd, out) != 0) {
-            res.error = "Wasm web build failed:\n" + out;
-            return res;
-        }
 
         detail::writeFileBytes(favPath, buildIcoFromRgba(baseIcon));
         detail::writeFileBytes(icon192Path, encodePngRgba(resizeBilinearRgba(baseIcon, 192, 192)));
@@ -1351,9 +1399,12 @@ public class MemeNativeActivity extends NativeActivity {
                                   "  ]\n"
                                   "}\n";
         detail::writeFileText(manifestWebPath, webManifest);
+
         std::string permissionsPolicy;
         std::unordered_set<std::string> seenWebDirectives;
+        std::vector<std::string> webCapsVec;
         for (const auto &cap : declaredCaps) {
+            webCapsVec.push_back(cap);
             for (const auto &dir : MemePermissions::webPolicyDirectivesFor(cap)) {
                 if (seenWebDirectives.insert(dir).second) {
                     if (!permissionsPolicy.empty()) permissionsPolicy += ", ";
@@ -1361,9 +1412,6 @@ public class MemeNativeActivity extends NativeActivity {
                 }
             }
         }
-        std::string htmlShell = MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true, permissionsPolicy);
-        detail::writeFileText(htmlPath, htmlShell);
-        detail::writeFileText(notFoundPath, htmlShell);
 
         std::string permHeaderEntry;
         if (!permissionsPolicy.empty()) {
@@ -1393,6 +1441,121 @@ public class MemeNativeActivity extends NativeActivity {
             "}\n";
         detail::writeFileText(vercelPath, vercelJson);
         detail::writeFileText(redirectsPath, "/* /index.html 200\n");
+
+        std::string renderer = !cfg.webRenderer.empty() ? MemePlatform::toLowerTrimmed(cfg.webRenderer) : "";
+        if (renderer.empty()) {
+            if (target == "wasm") {
+                renderer = "canvas";
+            } else {
+                std::ifstream sf(srcPath);
+                std::ostringstream sss;
+                if (sf.is_open()) sss << sf.rdbuf();
+                std::string entryTxt = sss.str();
+                bool hasEgui = (entryTxt.find("egui.") != std::string::npos);
+                bool hasJsx = (entryTxt.find("</") != std::string::npos || entryTxt.find("/>") != std::string::npos);
+                renderer = (hasEgui && !hasJsx) ? "canvas" : "dom";
+            }
+        }
+
+        if (renderer != "canvas") {
+            MemeWebDom::WebDomOptions domOpts;
+            domOpts.title = displayTitle;
+            domOpts.themeColor = cfg.themeColor;
+            domOpts.bgColor = cfg.bgColor;
+            domOpts.permissionsPolicy = permissionsPolicy;
+            domOpts.strictPermissions = cfg.permissions.strictMode;
+            domOpts.webPermissions = webCapsVec;
+            domOpts.includePwaMeta = true;
+            for (auto fc : cfg.fonts) {
+                std::filesystem::path srcF(fc.src);
+                if (std::filesystem::exists(srcF)) {
+                    std::filesystem::create_directories(webDir / "fonts");
+                    std::filesystem::path dstF = webDir / "fonts" / srcF.filename();
+                    std::error_code ec;
+                    std::filesystem::copy_file(srcF, dstF, std::filesystem::copy_options::overwrite_existing, ec);
+                    fc.src = "fonts/" + srcF.filename().string();
+                }
+                domOpts.fonts.push_back(fc);
+            }
+
+            MemeWebDom::WebDomBundle domBundle = MemeWebDom::transpileToWebDomBundle(srcPath, domOpts);
+            if (!domBundle.success) {
+                res.error = "Web DOM transpilation failed: " + domBundle.error;
+                return res;
+            }
+            std::filesystem::path stylesPath = webDir / "styles.css";
+            std::filesystem::path domJsPath = webDir / "meme-dom.js";
+            std::filesystem::path appJsPath = webDir / "app.js";
+            detail::writeFileText(htmlPath, domBundle.indexHtml);
+            detail::writeFileText(notFoundPath, domBundle.indexHtml);
+            detail::writeFileText(stylesPath, domBundle.stylesCss);
+            detail::writeFileText(domJsPath, domBundle.memeDomJs);
+            detail::writeFileText(appJsPath, domBundle.appJs);
+
+            std::vector<std::string> webArts = {
+                htmlPath.string(), stylesPath.string(), domJsPath.string(), appJsPath.string(),
+                favPath.string(), icon192Path.string(), icon512Path.string(), manifestWebPath.string(),
+                vercelPath.string(), redirectsPath.string(), notFoundPath.string()
+            };
+            if (domBundle.usesEval) {
+                std::filesystem::path preJs = repoRoot / "dist" / "wasm" / "meme-eval.js";
+                std::filesystem::path preWasm = repoRoot / "dist" / "wasm" / "meme-eval.wasm";
+                if (!std::filesystem::exists(preJs) || !std::filesystem::exists(preWasm)) {
+                    std::string bout;
+                    std::string bcmd = "bash \"" + (repoRoot / "scripts" / "build-wasm.sh").string() + "\"";
+                    if (detail::execCmd(bcmd, bout) != 0) {
+                        res.error = "Failed building lazy meme-eval.wasm coprocessor:\n" + bout;
+                        return res;
+                    }
+                }
+                std::filesystem::path dstEvalJs = webDir / "meme-eval.js";
+                std::filesystem::path dstEvalWasm = webDir / "meme-eval.wasm";
+                std::error_code ec;
+                std::filesystem::copy_file(preJs, dstEvalJs, std::filesystem::copy_options::overwrite_existing, ec);
+                std::filesystem::copy_file(preWasm, dstEvalWasm, std::filesystem::copy_options::overwrite_existing, ec);
+                webArts.push_back(dstEvalJs.string());
+                webArts.push_back(dstEvalWasm.string());
+            }
+            return finishOk(htmlPath.string(), webArts);
+        }
+
+        // Legacy/WebGL2 Canvas renderer (--web-renderer=canvas or immediate-mode egui)
+        std::filesystem::path emppLocal = repoRoot / "tools" / "emsdk" / "upstream" / "emscripten" / "em++";
+        std::string empp = detail::findInPathOrPaths("em++", {emppLocal.string()});
+        if (empp.empty()) {
+            res.error = "em++ (Emscripten) not found";
+            return res;
+        }
+        std::filesystem::path jsPath = webDir / (pkgName + ".js");
+
+        std::string envPrefix;
+        std::filesystem::path emConfig = repoRoot / "tools" / "emsdk" / ".emscripten";
+        if (std::filesystem::exists(emConfig)) {
+            envPrefix = "EM_CONFIG=\"" + emConfig.string() + "\" ";
+        }
+
+        std::string exportedFns = "'[\"_meme_web_start\",\"_meme_web_render\",\"_meme_web_get_mesh_vertices\","
+                                  "\"_meme_web_get_mesh_vertex_count\",\"_meme_web_get_mesh_indices\","
+                                  "\"_meme_web_get_mesh_index_count\",\"_meme_web_get_batches_json\","
+                                  "\"_meme_web_get_atlas_rgba\",\"_meme_web_get_atlas_version\",\"_meme_web_get_atlas_width\",\"_meme_web_get_atlas_height\",\"_meme_web_get_commands_json\","
+                                  "\"_meme_web_get_hit_regions_json\",\"_meme_web_get_agent_snapshot\","
+                                  "\"_meme_web_pointer_move\",\"_meme_web_pointer_down\",\"_meme_web_pointer_up\","
+                                  "\"_meme_web_scroll\",\"_meme_web_key_event\",\"_meme_web_tick\","
+                                  "\"_meme_web_set_clipboard\",\"_meme_web_get_clipboard\",\"_meme_web_agent_act\",\"_meme_web_set_route\","
+                                  "\"_meme_native_complete_async\",\"_meme_native_complete_perm_async\",\"_malloc\",\"_free\"]'";
+        std::string cmd = envPrefix + "\"" + empp + "\" -std=c++20 -O3 -fexceptions -DMEME_HOST_PROVIDES_MAIN "
+                          "-I\"" + repoRoot.string() + "\" -s WASM=1 -s EXPORTED_FUNCTIONS=" + exportedFns + " "
+                          "-s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\",\"HEAPU8\",\"HEAPU32\"]' "
+                          "-s STACK_SIZE=4194304 -s INITIAL_MEMORY=33554432 -s ALLOW_MEMORY_GROWTH=1 \"" + cppPath.string() + "\"" + evalFlagsNoLang + " -o \"" + jsPath.string() + "\"";
+        if (verbose) std::cout << "[package:web] " << cmd << "\n";
+        std::string out;
+        if (detail::execCmd(cmd, out) != 0) {
+            res.error = "Wasm web build failed:\n" + out;
+            return res;
+        }
+        std::string htmlShell = MemeWebHost::generateZeroDomHtmlShell(pkgName + ".js", displayTitle, cfg.themeColor, true, permissionsPolicy);
+        detail::writeFileText(htmlPath, htmlShell);
+        detail::writeFileText(notFoundPath, htmlShell);
 
         std::filesystem::path wasmPath = webDir / (pkgName + ".wasm");
         return finishOk(htmlPath.string(), {

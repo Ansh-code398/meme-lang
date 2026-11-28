@@ -325,9 +325,17 @@ struct ComputedStyle {
     int fontWeight = 400;
     bool hasExplicitFontWeight = false;
     FontFamily fontFamily = FontFamily::SANS;
+    std::string fontName = "";
     bool hasExplicitFontFamily = false;
     TextAlign textAlign = TextAlign::LEFT;
     bool hasExplicitTextAlign = false;
+
+    std::string animateName = "";
+    int transitionDurationMs = 0;
+    std::string transitionEase = "ease-out";
+    float transformScale = 1.0f;
+    float translateX = 0.0f;
+    float translateY = 0.0f;
 
     bool isItalic = false;
     bool isUppercase = false;
@@ -374,6 +382,8 @@ struct GpuDrawCmd {
     int nodeId = 0;
     int zIndex = 0;
     bool isMono = false;
+    bool isSerif = false;
+    std::string fontName = "";
     bool isItalic = false;
     bool isUnderline = false;
     bool isStrike = false;
